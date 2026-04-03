@@ -51,7 +51,7 @@ export default function EditorPost({ route, navigation }: any) {
     setLoading(true);
     try {
       // Processa as tags: separa por vírgula, tira os espaços em branco e remove os vazios
-      const tagsArray = tagsInput.split(',').map(t => t.trim()).filter(t => t !== '');
+      const tagsArray = tagsInput.split(',').map((t: string) => t.trim()).filter((t: string) => t !== '');
 
       const postData = {
         titulo: titulo.trim(),

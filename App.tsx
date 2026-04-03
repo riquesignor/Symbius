@@ -91,7 +91,7 @@ export default function App() {
             <Stack.Screen name="BuscarUsuarios" component={BuscarUsuarios} />
             <Stack.Screen name="PerfilPublico" component={PerfilPublico} />
             <Stack.Screen name="EditorPost" component={EditorPost} />
-            <Stack.Screen name="Chat" component={EditorPost}/>
+            <Stack.Screen name="Chat" component={Chat}/>
           </>
         ) : (
           <>

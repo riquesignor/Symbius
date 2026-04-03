@@ -14,41 +14,42 @@ export const cadastrarNoJumo = async (
   turmaFormatada: string, 
   perfilTipo: string
 ) => {
+  // ===== DEBUG - REMOVER DEPOIS =====
+  console.log("=== CADASTRO DEBUG ===");
+  console.log("Email:", JSON.stringify(email));
+  console.log("Senha length:", senha?.length);
+  console.log("Senha undefined?", senha === undefined);
+  console.log("Senha null?", senha === null);
+  // ==================================
+
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
     const user = userCredential.user;
 
     await sendEmailVerification(user);
 
-    // CORREÇÃO: Aceita 'Aluno' ou 'aluno' para não bugar a criação dos arrays
     const eAluno = perfilTipo.toLowerCase() === 'aluno';
 
-    // Monta o objeto com a NOVA ESTRUTURA
     const dadosUsuario = {
       nome_completo: nome,
       email_escolar: email.toLowerCase().trim(),
       ra: ra.toUpperCase().trim() || null,
       tipo: perfilTipo, 
       turma: turmaFormatada,
-      status: 0, // 0 = Pendente, 1 = Ativo, 2 = Suspenso
-      
-      // Novos campos blindados contra crash no perfil
+      status: 0,
       ensinar: eAluno ? [] : null,
       melhorar: eAluno ? [] : null,
       ajudas_realizadas: eAluno ? 0 : null,
-      
       foto: null, 
       bio: "",
     };
 
-    // Salva na coleção correta
     await setDoc(doc(db, "usuarios", user.uid), dadosUsuario);
-
-    // BLOQUEIO: Desloga imediatamente após criar
     await signOut(auth);
 
     return user;
   } catch (error: any) {
+    console.log("=== ERRO DEBUG ===", error.code, error.message);
     if (error.code === 'auth/email-already-in-use') {
       throw new Error('Esse e-mail já está cadastrado!');
     } else if (error.code === 'auth/weak-password') {

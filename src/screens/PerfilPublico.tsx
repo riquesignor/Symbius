@@ -149,7 +149,7 @@ export default function PerfilPublico({ route, navigation }: any) {
 
             {usuario?.ensinar?.length > 0 && (
               <View style={styles.tagSection}>
-                <div style={styles.divider} />
+                <View style={styles.divider} />
                 <Text style={styles.labelTags}>PODE AJUDAR EM</Text>
                 <View style={styles.tagWrap}>
                   {usuario.ensinar.map((item: string, i: number) => (

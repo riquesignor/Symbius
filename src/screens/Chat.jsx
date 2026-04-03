@@ -5,12 +5,20 @@ import {
 } from "react-native";
 import { db, auth } from "../config/firebaseConfig";
 import {
-  collection, addDoc, query, where, getDocs, 
+  collection, addDoc, query, where, getDocs,
   orderBy, serverTimestamp, setDoc, doc, getDoc
 } from "firebase/firestore";
+import Constants from "expo-constants";
+
+const getServerIP = () => {
+  const hostUri = Constants.expoConfig?.hostUri || Constants.manifest?.debuggerHost;
+  if (hostUri) return hostUri.split(":")[0];
+  return "192.168.3.40";
+};
+
+const WS_URL = `ws://${getServerIP()}:3001`;
 
 export default function Chat({ route, navigation }) {
-  // Pegando os dados que vêm da outra tela
   const { room, outroUid, outroNome } = route.params || {};
 
   const socketRef = useRef(null);
@@ -19,34 +27,43 @@ export default function Chat({ route, navigation }) {
   const [inputText, setInputText] = useState("");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
-
   const [meuNome, setMeuNome] = useState("");
   const [minhaFoto, setMinhaFoto] = useState(null);
 
-  // 1. Carrega seus dados (Remetente)
+  useEffect(() => {
+    // DEBUG — ver o que está chegando nos params
+    console.log("=== PARAMS DO CHAT ===");
+    console.log("room:", room);
+    console.log("outroUid:", outroUid);
+    console.log("outroNome:", outroNome);
+  }, []);
+
   useEffect(() => {
     const carregarMeusDados = async () => {
       const user = auth.currentUser;
-      if (user) {
-        try {
-          // Verifique se sua coleção no Firebase chama 'usuarios' ou 'cadastro'
-          const docRef = doc(db, "usuarios", user.uid); 
-          const snap = await getDoc(docRef);
-          if (snap.exists()) {
-            setMeuNome(snap.data().nome_completo || "Usuário");
-            setMinhaFoto(snap.data().foto || null);
-          }
-        } catch (e) {
-          console.log("Erro ao carregar perfil local:", e);
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+      try {
+        const snap = await getDoc(doc(db, "usuarios", user.uid));
+        if (snap.exists()) {
+          setMeuNome(snap.data().nome_completo || "Usuário");
+          setMinhaFoto(snap.data().foto || null);
         }
+      } catch (e) {
+        console.log("Erro ao carregar perfil:", e.message);
       }
     };
     carregarMeusDados();
   }, []);
 
-  // 2. Histórico e Socket
   useEffect(() => {
-    if (!meuNome || !room) return;
+    if (!room) {
+      setLoading(false);
+      return;
+    }
+    if (!meuNome) return;
 
     const carregarHistorico = async () => {
       try {
@@ -55,16 +72,12 @@ export default function Chat({ route, navigation }) {
           where("sala", "==", room),
           orderBy("data_postagem", "asc")
         );
-
-        const querySnapshot = await getDocs(q);
-        const msgs = [];
-        
-        querySnapshot.forEach((docItem) => {
-          msgs.push({ id: docItem.id, ...docItem.data() });
-        });
+        const snapshot = await getDocs(q);
+        const msgs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        console.log("Mensagens carregadas:", msgs.length);
         setMessages(msgs);
-      } catch (error) {
-        console.error("Erro ao buscar mensagens:", error);
+      } catch (e) {
+        console.log("Erro ao carregar histórico:", e.message);
       } finally {
         setLoading(false);
       }
@@ -72,90 +85,104 @@ export default function Chat({ route, navigation }) {
 
     carregarHistorico();
 
-    // Configuração do WebSocket
-    const ws = new WebSocket("ws://192.168.3.40:3001");
+    const ws = new WebSocket(WS_URL);
     socketRef.current = ws;
 
     ws.onopen = () => {
+      console.log("✅ WebSocket conectado!");
       ws.send(JSON.stringify({ type: "join", room, user: meuNome }));
     };
-
+    ws.onerror = (e) => console.log("❌ Erro WebSocket:", e.message);
+    ws.onclose = () => console.log("WebSocket fechado.");
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         if (data.type === "message") {
-          setMessages((prev) => [...prev, data]);
+          setMessages(prev => [...prev, data]);
         }
-      } catch (err) {
-        console.log("Erro no socket:", err);
+      } catch (e) {
+        console.log("Erro ao parsear mensagem:", e.message);
       }
     };
 
     return () => ws.close();
   }, [meuNome, room]);
 
-  // 3. Enviar Mensagem
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    }
+  }, [messages]);
+
   const sendMessage = async () => {
     if (!inputText.trim() || !auth.currentUser) return;
 
+    // Proteção contra undefined nos params
+    if (!room) {
+      console.log("❌ room está undefined! Verifique o navigation.navigate()");
+      return;
+    }
+
     const uidAtual = auth.currentUser.uid;
-    const msgTexto = inputText;
-    setInputText(""); 
+    const msgTexto = inputText.trim();
+    setInputText("");
 
     const novaMensagem = {
-      nome_remetente: meuNome,
-      nome_destinatario: outroNome,
+      id: String(Date.now()),
+      nome_remetente: meuNome || "Usuário",
+      nome_destinatario: outroNome || "Usuário",  // proteção contra undefined
       mensagem: msgTexto,
       sala: room,
       remetenteUid: uidAtual,
-      foto: minhaFoto
+      foto: minhaFoto || null
     };
 
-    // Socket
+    setMessages(prev => [...prev, novaMensagem]);
+
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ type: "message", ...novaMensagem }));
     }
 
-    // Update Local
-    setMessages((prev) => [...prev, novaMensagem]);
-
-    // Firestore
     try {
-      await addDoc(collection(db, "mensagens"), {
-        ...novaMensagem,
+      const docRef = await addDoc(collection(db, "mensagens"), {
+        nome_remetente: novaMensagem.nome_remetente,
+        nome_destinatario: novaMensagem.nome_destinatario,
+        mensagem: msgTexto,
+        sala: room,
+        remetenteUid: uidAtual,
+        foto: minhaFoto || null,
         data_postagem: serverTimestamp()
       });
+      console.log("✅ Mensagem salva! ID:", docRef.id);
 
-      // Atualiza a lista de conversas (Caixa de entrada)
       await setDoc(doc(db, "conversas", room), {
-        membros: [uidAtual, outroUid],
+        membros: [uidAtual, outroUid || ""],
         ultimaMensagem: msgTexto,
         data_postagem: serverTimestamp(),
         quemEnviou: uidAtual,
         visto: false,
         dadosMembros: {
-          [uidAtual]: { nome: meuNome, foto: minhaFoto },
-          [outroUid]: { nome: outroNome, foto: null }
+          [uidAtual]: { nome: meuNome || "Usuário", foto: minhaFoto || null },
+          [outroUid || "outro"]: { nome: outroNome || "Usuário", foto: null }
         }
       }, { merge: true });
+      console.log("✅ Conversa atualizada!");
 
     } catch (e) {
-      console.log("Erro ao salvar no Firebase:", e);
+      console.log("❌ ERRO Firestore:", e.code, "|", e.message);
     }
   };
 
   const getImageUri = (foto) => {
     const padrao = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
     if (!foto) return padrao;
-    if (typeof foto === 'string' && (foto.startsWith("data:image") || foto.startsWith("http"))) {
-      return foto;
-    }
+    if (typeof foto === "string" && (foto.startsWith("data:image") || foto.startsWith("http"))) return foto;
     return `data:image/jpeg;base64,${foto}`;
   };
 
   if (loading) {
     return (
-      <View style={[styles.container, { justifyContent: 'center' }]}>
+      <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
         <ActivityIndicator size="large" color="#E91E63" />
       </View>
     );
@@ -179,11 +206,9 @@ export default function Chat({ route, navigation }) {
       <FlatList
         ref={flatListRef}
         data={messages}
-        keyExtractor={(_, index) => index.toString()}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        keyExtractor={(item, index) => item.id || String(index)}
         renderItem={({ item }) => {
           const isMe = item.remetenteUid === auth.currentUser?.uid;
-
           return (
             <View style={[styles.messageRow, isMe ? styles.rowRight : styles.rowLeft]}>
               {!isMe && (
@@ -216,7 +241,7 @@ export default function Chat({ route, navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0f0f1a" },
-  header: { padding: 20, paddingTop: 50, backgroundColor: "#1c1c2e", flexDirection: 'row', alignItems: 'center' },
+  header: { padding: 20, paddingTop: 50, backgroundColor: "#1c1c2e", flexDirection: "row", alignItems: "center" },
   headerTitle: { color: "white", fontSize: 18, fontWeight: "bold" },
   headerUser: { color: "#aaa", fontSize: 12 },
   messageRow: { flexDirection: "row", alignItems: "flex-end", margin: 8 },
@@ -227,7 +252,7 @@ const styles = StyleSheet.create({
   myMessage: { backgroundColor: "#E91E63", borderBottomRightRadius: 0 },
   otherMessage: { backgroundColor: "#2f2f4a", borderBottomLeftRadius: 0 },
   messageText: { color: "white", fontSize: 15 },
-  inputArea: { flexDirection: "row", padding: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 10, backgroundColor: "#1c1c2e", alignItems: 'center' },
+  inputArea: { flexDirection: "row", padding: 10, paddingBottom: Platform.OS === "ios" ? 30 : 10, backgroundColor: "#1c1c2e", alignItems: "center" },
   input: { flex: 1, backgroundColor: "#111", color: "white", borderRadius: 20, paddingHorizontal: 15, paddingTop: 10, paddingBottom: 10, maxHeight: 100 },
-  sendButton: { marginLeft: 10, backgroundColor: "#E91E63", width: 45, height: 45, borderRadius: 25, justifyContent: 'center', alignItems: 'center' }
+  sendButton: { marginLeft: 10, backgroundColor: "#E91E63", width: 45, height: 45, borderRadius: 25, justifyContent: "center", alignItems: "center" }
 });
