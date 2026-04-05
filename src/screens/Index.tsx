@@ -10,13 +10,12 @@ import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
 
 const { width, height } = Dimensions.get('window');
 
-// Paleta de Cores Fiel às Imagens
 const CORES = {
-  azulEscuro: '#0B2046', // Azul da logo JUMO
-  rosa: '#E51C6A',       // Rosa/Magenta vibrante do card e da logo
-  amarelo: '#FFC82C',    // Amarelo do pontinho do J e badges
-  verde: '#4CAF50',      // Verde pastel (opcional para tags)
-  fundo: '#F5F7FA',      // Fundo bem clarinho para destacar os cards
+  azulEscuro: '#0B2046',
+  rosa: '#E51C6A',
+  amarelo: '#FFC82C',
+  verde: '#4CAF50',
+  fundo: '#F5F7FA',
   cinzaClaro: '#EAEFF4',
   textoDestaque: '#0B2046',
   textoSecundario: '#8D99AE',
@@ -113,14 +112,12 @@ export default function Index({ navigation }: any) {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={CORES.branco} />
       
-      {/* 1. NAVBAR - Logo Centralizada, Perfil e Lápis na Direita */}
+      {/* 1. NAVBAR FIXA */}
       <View style={styles.navbar}>
-        {/* Lado Esquerdo (Ícone de menu apenas para balancear o design e manter a logo no meio) */}
         <TouchableOpacity style={styles.navIconBtn}>
           <Ionicons name="menu" size={28} color={CORES.azulEscuro} />
         </TouchableOpacity>
 
-        {/* Centro - LOGO JUMO Estilizada */}
         <View style={styles.logoContainer}>
           <View style={styles.dotAmarelo} />
           <Text style={styles.logoText}>
@@ -129,7 +126,6 @@ export default function Index({ navigation }: any) {
           </Text>
         </View>
 
-        {/* Lado Direito - Botão Admin + Perfil */}
         <View style={styles.navRight}>
           {temPermissaoDeStaff && (
             <TouchableOpacity 
@@ -149,76 +145,73 @@ export default function Index({ navigation }: any) {
         </View>
       </View>
 
-      {/* 2. ÁREA DE CONTEÚDO (Scroll mantido e fluido!) */}
-      <ScrollView 
-        showsVerticalScrollIndicator={false} 
-        contentContainerStyle={{ paddingBottom: 110 }} 
-      >
-          <View style={styles.padraoContainer}>
-            {/* Aviso Modo Edição */}
-            {modoEdicao && (
-              <View style={styles.alertEdicao}>
-                <Ionicons name="alert-circle" size={16} color="#FFF" />
-                <Text style={styles.txtEdicao}>MODO EDITOR ATIVADO</Text>
-              </View>
-            )}
-
-            {/* Card Hero - Inspirado na Imagem (Fundo Rosa, Redondão) */}
-            <TouchableOpacity style={styles.cardHero} activeOpacity={0.9}>
-              <View style={styles.heroContent}>
-                <View style={styles.badgeAmarelo}>
-                  <Text style={styles.badgeTextAmarelo}>Novidades</Text>
+      {/* 2. AREA DE SCROLL - ENVOLVIDA POR VIEW FLEX 1 */}
+      <View style={{ flex: 1 }}>
+        <ScrollView 
+          showsVerticalScrollIndicator={false} 
+          contentContainerStyle={styles.scrollContent} 
+        >
+            <View style={styles.padraoContainer}>
+              {modoEdicao && (
+                <View style={styles.alertEdicao}>
+                  <Ionicons name="alert-circle" size={16} color="#FFF" />
+                  <Text style={styles.txtEdicao}>MODO EDITOR ATIVADO</Text>
                 </View>
-                <Text style={styles.heroTitle}>UM SÓ ANCHIETA:{"\n"}A REVOLUÇÃO{"\n"}COMEÇOU</Text>
-                <View style={styles.btnLerAgora}>
-                  <Text style={styles.txtLerAgora}>LER AGORA</Text>
-                </View>
-              </View>
-              {/* Imagem de Fundo Simulada */}
-              <Image source={{ uri: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=400' }} style={styles.heroImg} />
-            </TouchableOpacity>
-          </View>
-          
-          {CATEGORIAS.map(secao => {
-            const postsDaSecao = posts.filter(p => p.categoria === secao.cat);
-            const podeEditarSecao = modoEdicao && (isSuperAdmin || (isGremio && secao.cat === 'gremio'));
+              )}
 
-            return (
-              <View key={secao.cat} style={styles.sectionContainer}>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>{secao.titulo}</Text>
-                  {podeEditarSecao && (
-                    <TouchableOpacity style={styles.btnAddPost} onPress={() => navigation.navigate('EditorPost', { categoria: secao.cat })}>
-                      <MaterialIcons name="add" size={20} color="#FFF" />
-                    </TouchableOpacity>
-                  )}
+              <TouchableOpacity style={styles.cardHero} activeOpacity={0.9}>
+                <View style={styles.heroContent}>
+                  <View style={styles.badgeAmarelo}>
+                    <Text style={styles.badgeTextAmarelo}>Novidades</Text>
+                  </View>
+                  <Text style={styles.heroTitle}>UM SÓ ANCHIETA:{"\n"}A REVOLUÇÃO{"\n"}COMEÇOU</Text>
+                  <View style={styles.btnLerAgora}>
+                    <Text style={styles.txtLerAgora}>LER AGORA</Text>
+                  </View>
                 </View>
-                
-                {/* Scroll Horizontal - Agora com Cards Mais Largos! */}
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false} 
-                  contentContainerStyle={{ paddingLeft: 20, paddingRight: 20 }} 
-                  decelerationRate="fast"
-                  snapToInterval={235} // 220 largura + 15 margem
-                >
-                  {postsDaSecao.length > 0 ? postsDaSecao.map(post => renderCard(post, podeEditarSecao)) : (
-                    <View style={styles.emptySecao}>
-                      <Text style={styles.txtEmpty}>Nenhum post no momento.</Text>
-                    </View>
-                  )}
-                </ScrollView>
-              </View>
-            );
-          })}
-      </ScrollView>
+                <Image source={{ uri: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=400' }} style={styles.heroImg} />
+              </TouchableOpacity>
+            </View>
+            
+            {CATEGORIAS.map(secao => {
+              const postsDaSecao = posts.filter(p => p.categoria === secao.cat);
+              const podeEditarSecao = modoEdicao && (isSuperAdmin || (isGremio && secao.cat === 'gremio'));
 
-      {/* 3. BARRA INFERIOR (Com estilo focado na imagem) */}
+              return (
+                <View key={secao.cat} style={styles.sectionContainer}>
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>{secao.titulo}</Text>
+                    {podeEditarSecao && (
+                      <TouchableOpacity style={styles.btnAddPost} onPress={() => navigation.navigate('EditorPost', { categoria: secao.cat })}>
+                        <MaterialIcons name="add" size={20} color="#FFF" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  
+                  <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false} 
+                    contentContainerStyle={{ paddingLeft: 20, paddingRight: 20 }} 
+                    decelerationRate="fast"
+                    snapToInterval={235}
+                  >
+                    {postsDaSecao.length > 0 ? postsDaSecao.map(post => renderCard(post, podeEditarSecao)) : (
+                      <View style={styles.emptySecao}>
+                        <Text style={styles.txtEmpty}>Nenhum post no momento.</Text>
+                      </View>
+                    )}
+                  </ScrollView>
+                </View>
+              );
+            })}
+        </ScrollView>
+      </View>
+
+      {/* 3. BARRA INFERIOR FIXA */}
       <View style={styles.bottomTabBar}>
-        <TabItem icon="home" label="Início" onPress={() => {}} destaque={false} ativo={true} />
-        <TabItem icon="chatbubbles-outline" label="Chat" onPress={() => navigation.navigate('Chat')} />
+        <TabItem icon="home" label="Início" onPress={() => {}} ativo={true} />
+        <TabItem icon="chatbubbles-outline" label="HallChat" onPress={() => navigation.navigate('Hall')} />
         
-        {/* Botão Central de Match com círculo em volta (Estilo Imagem) */}
         <View style={styles.centerTabContainer}>
           <TouchableOpacity style={styles.centerTabBtn} onPress={() => navigation.navigate('Match')}>
             <View style={styles.centerTabInner}>
@@ -231,7 +224,7 @@ export default function Index({ navigation }: any) {
         <TabItem icon="ellipsis-horizontal" label="Mais" onPress={() => setMiniMenuAberto(true)} />
       </View>
 
-      {/* 4. MINI MENU (POPOVER) */}
+      {/* 4. MODAIS E MENUS */}
       <Modal visible={miniMenuAberto} transparent animationType="fade">
         <TouchableWithoutFeedback onPress={() => setMiniMenuAberto(false)}>
           <View style={styles.miniMenuOverlay}>
@@ -256,7 +249,6 @@ export default function Index({ navigation }: any) {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* 5. MODAL DE POST PREMIUM MANTIDO */}
       <Modal visible={modalVisible} transparent animationType="slide">
         <View style={styles.modalFullContainer}>
           <View style={styles.postCoverContainer}>
@@ -275,7 +267,6 @@ export default function Index({ navigation }: any) {
 
           <View style={styles.modalBodyWrapper}>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScrollGordinho}>
-              
               {selectedPost?.tags && selectedPost.tags.length > 0 && (
                 <View style={styles.tagContainer}>
                   {selectedPost.tags.map((tag: string, index: number) => (
@@ -283,13 +274,10 @@ export default function Index({ navigation }: any) {
                   ))}
                 </View>
               )}
-
               <Text style={styles.modalTitleBig}>{selectedPost?.titulo}</Text>
-              
               {selectedPost?.subtitulo && (
                 <Text style={styles.modalSubLine}>{selectedPost?.subtitulo}</Text>
               )}
-              
               <View style={styles.postMetaBox}>
                 <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
                   <View style={styles.authorAvatar}><MaterialIcons name="person" size={20} color={CORES.branco} /></View>
@@ -305,7 +293,6 @@ export default function Index({ navigation }: any) {
                   </View>
                 )}
               </View>
-
               <View style={styles.dividerGordinho} />
               <Text style={styles.modalDescText}>{selectedPost?.conteudo}</Text>
               <View style={{height: 60}} />
@@ -326,44 +313,34 @@ const TabItem = ({ icon, label, onPress, ativo }: any) => (
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: CORES.fundo },
+  
+  // O SEGREDO DO SCROLL:
+  scrollContent: { 
+    paddingBottom: 120, // Espaço para a TabBar absoluta
+    paddingTop: 10 
+  },
 
-  // 1. NAVBAR - Centralizada e Ajustada
   navbar: { 
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
     paddingHorizontal: 20, height: 75, backgroundColor: CORES.branco,
-    borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro
+    borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro,
+    zIndex: 10
   },
-  navIconBtn: { width: 40, justifyContent: 'center' }, // Mesma largura do grupo da direita pra balancear
+  navIconBtn: { width: 40, justifyContent: 'center' },
   logoContainer: { alignItems: 'center', justifyContent: 'center' },
   dotAmarelo: { width: 6, height: 6, backgroundColor: CORES.amarelo, borderRadius: 3, position: 'absolute', top: -4, left: 4 },
   logoText: { fontSize: 28, fontWeight: '900', letterSpacing: -1 },
-  navRight: { flexDirection: 'row', alignItems: 'center', gap: 10, width: 70, justifyContent: 'flex-end' },
-  
-  topProfile: { 
-    width: 40, height: 40, borderRadius: 20, backgroundColor: CORES.cinzaClaro, 
-    overflow: 'hidden', borderWidth: 2, borderColor: CORES.azulEscuro 
-  },
+  navRight: { flexDirection: 'row', alignItems: 'center', gap: 10, width: 80, justifyContent: 'flex-end' },
+  topProfile: { width: 40, height: 40, borderRadius: 20, backgroundColor: CORES.cinzaClaro, overflow: 'hidden', borderWidth: 2, borderColor: CORES.azulEscuro },
   imgProfile: { width: '100%', height: '100%' },
   avatarPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   iniciais: { color: CORES.azulEscuro, fontWeight: '900', fontSize: 16 },
-  
-  btnEditMode: { 
-    width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', 
-    borderWidth: 2, borderColor: CORES.cinzaClaro, backgroundColor: CORES.branco 
-  },
+  btnEditMode: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: CORES.cinzaClaro, backgroundColor: CORES.branco },
 
-  // 2. CONTEÚDO
   padraoContainer: { paddingHorizontal: 20 },
   alertEdicao: { backgroundColor: CORES.rosa, padding: 10, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 15 },
   txtEdicao: { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
-  
-  cardHero: { 
-    width: '100%', height: 200, // Mais alto pra caber os textos
-    backgroundColor: CORES.rosa, 
-    borderRadius: 25, overflow: 'hidden', flexDirection: 'row', 
-    marginTop: 20, marginBottom: 35,
-    elevation: 8, shadowColor: CORES.rosa, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: {width: 0, height: 5}
-  },
+  cardHero: { width: '100%', height: 200, backgroundColor: CORES.rosa, borderRadius: 25, overflow: 'hidden', flexDirection: 'row', marginTop: 20, marginBottom: 35, elevation: 8, shadowColor: CORES.rosa, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: {width: 0, height: 5} },
   heroContent: { flex: 1, padding: 20, justifyContent: 'center', zIndex: 2 },
   badgeAmarelo: { backgroundColor: CORES.amarelo, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, alignSelf: 'flex-end', position: 'absolute', top: 15, right: 15 },
   badgeTextAmarelo: { fontSize: 11, fontWeight: '900', color: CORES.azulEscuro },
@@ -372,76 +349,37 @@ const styles = StyleSheet.create({
   txtLerAgora: { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
   heroImg: { position: 'absolute', right: -30, bottom: -20, width: '60%', height: '120%', opacity: 0.2 },
 
-  // Listas Horizontais
   sectionContainer: { marginBottom: 35 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingRight: 20, marginBottom: 15 },
   sectionTitle: { fontSize: 22, fontWeight: '900', color: CORES.azulEscuro, marginLeft: 20, letterSpacing: -0.5 },
   btnAddPost: { backgroundColor: CORES.rosa, width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
   
-  // CARDS MAIS LARGOS (Landscape)
-  popupCard: { 
-    width: 220, // BEM MAIS LARGO
-    height: 190, 
-    backgroundColor: CORES.branco, 
-    borderRadius: 20, marginRight: 15, elevation: 4, 
-    shadowColor: CORES.azulEscuro, shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: {width: 0, height: 3},
-    overflow: 'hidden', borderWidth: 1, borderColor: CORES.cinzaClaro 
-  },
+  popupCard: { width: 220, height: 190, backgroundColor: CORES.branco, borderRadius: 20, marginRight: 15, elevation: 4, shadowColor: CORES.azulEscuro, shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: {width: 0, height: 3}, overflow: 'hidden', borderWidth: 1, borderColor: CORES.cinzaClaro },
   cardEditavel: { borderColor: CORES.rosa, borderWidth: 2 },
-  popupImg: { width: '100%', height: 110, backgroundColor: CORES.cinzaClaro }, // Imagem ocupa boa parte
+  popupImg: { width: '100%', height: 110, backgroundColor: CORES.cinzaClaro },
   emptyCard: { width: '100%', height: 110, backgroundColor: CORES.cinzaClaro, justifyContent: 'center', alignItems: 'center' },
   popupInfo: { padding: 15, flex: 1, justifyContent: 'space-between' },
   popupTitle: { fontSize: 16, fontWeight: '800', color: CORES.azulEscuro, lineHeight: 22 },
-  
   cardFooter: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' },
   viewBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFE4EC', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
   txtViews: { fontSize: 12, color: CORES.rosa, fontWeight: '900' },
   editBadge: { position: 'absolute', top: 10, right: 10, backgroundColor: CORES.rosa, width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', elevation: 3 },
-  
   emptySecao: { padding: 20, backgroundColor: CORES.cinzaClaro, borderRadius: 20, alignItems: 'center', justifyContent: 'center', width: width - 40 },
   txtEmpty: { color: CORES.textoSecundario, fontSize: 14, fontWeight: '600' },
 
-  // 3. BARRA INFERIOR
-  bottomTabBar: { 
-    position: 'absolute', bottom: 0, width: '100%', 
-    height: Platform.OS === 'ios' ? 85 : 70, 
-    backgroundColor: CORES.branco, 
-    flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', 
-    borderTopWidth: 1, borderTopColor: CORES.cinzaClaro, 
-    paddingBottom: Platform.OS === 'ios' ? 20 : 0, 
-  },
+  bottomTabBar: { position: 'absolute', bottom: 0, width: '100%', height: Platform.OS === 'ios' ? 85 : 70, backgroundColor: CORES.branco, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', borderTopWidth: 1, borderTopColor: CORES.cinzaClaro, paddingBottom: Platform.OS === 'ios' ? 20 : 0, elevation: 20, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
   tabItem: { alignItems: 'center', justifyContent: 'center', flex: 1 },
   tabLabel: { fontSize: 10, fontWeight: '600', color: CORES.textoSecundario, marginTop: 4 },
-  
-  // Design exato do botão do meio na foto
   centerTabContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  centerTabBtn: { 
-    width: 50, height: 50, borderRadius: 25, 
-    backgroundColor: CORES.branco, 
-    borderWidth: 2, borderColor: '#FF8A65', // O aro em volta (na foto parece rosa/laranja)
-    justifyContent: 'center', alignItems: 'center',
-    marginTop: -20, // Sobe um pouco
-  },
+  centerTabBtn: { width: 50, height: 50, borderRadius: 25, backgroundColor: CORES.branco, borderWidth: 2, borderColor: '#FF8A65', justifyContent: 'center', alignItems: 'center', marginTop: -20 },
   centerTabInner: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#FFE4EC', justifyContent: 'center', alignItems: 'center' },
 
-  // 4. MINI MENU (POPOVER)
   miniMenuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.1)' },
-  miniMenuPopup: { 
-    position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 95 : 80, 
-    right: 15, 
-    backgroundColor: CORES.branco, 
-    borderRadius: 16, 
-    paddingVertical: 10,
-    width: 150,
-    elevation: 10,
-    shadowColor: CORES.azulEscuro, shadowOpacity: 0.15, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }
-  },
+  miniMenuPopup: { position: 'absolute', bottom: Platform.OS === 'ios' ? 95 : 80, right: 15, backgroundColor: CORES.branco, borderRadius: 16, paddingVertical: 10, width: 150, elevation: 10, shadowColor: CORES.azulEscuro, shadowOpacity: 0.15, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
   miniMenuBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 15, gap: 12 },
   miniMenuBtnText: { fontSize: 15, fontWeight: '700', color: CORES.azulEscuro },
   miniMenuDivider: { height: 1, backgroundColor: CORES.cinzaClaro, marginVertical: 4, marginHorizontal: 15 },
 
-  // 5. MODAL DE POST
   modalFullContainer: { flex: 1, backgroundColor: CORES.fundo },
   postCoverContainer: { width: '100%', height: height * 0.45, position: 'absolute', top: 0 }, 
   modalImgFull: { width: '100%', height: '100%' },

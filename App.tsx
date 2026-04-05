@@ -17,6 +17,7 @@ import BuscarUsuarios from './src/screens/BuscarUsuarios';
 import PerfilPublico from './src/screens/PerfilPublico';
 import EditorPost from './src/screens/EditorPost';
 import Chat from 'src/screens/Chat';
+import HallChat from 'src/screens/HallChat';
 
 const Stack = createStackNavigator();
 
@@ -92,6 +93,7 @@ export default function App() {
             <Stack.Screen name="PerfilPublico" component={PerfilPublico} />
             <Stack.Screen name="EditorPost" component={EditorPost} />
             <Stack.Screen name="Chat" component={Chat}/>
+            <Stack.Screen name="Hall" component={HallChat} />
           </>
         ) : (
           <>
