@@ -149,8 +149,11 @@ export default function Login({ navigation }: any) {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={styles.forgotPassword}>
-              <Text style={styles.forgotPasswordText}>Esqueceu a senha?</Text>
+            <TouchableOpacity 
+                style={styles.forgotPassword} 
+                onPress={() => navigation.navigate('RedefinirSenha')}
+                                                                      >
+                <Text style={styles.forgotPasswordText}>Esqueceu a senha?</Text>
             </TouchableOpacity>
 
             {/* Botão Entrar (Rosa Vibrante) */}

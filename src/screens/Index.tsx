@@ -210,7 +210,7 @@ export default function Index({ navigation }: any) {
       {/* 3. BARRA INFERIOR FIXA */}
       <View style={styles.bottomTabBar}>
         <TabItem icon="home" label="Início" onPress={() => {}} ativo={true} />
-        <TabItem icon="chatbubbles-outline" label="HallChat" onPress={() => navigation.navigate('Hall')} />
+        <TabItem icon="chatbubbles-outline" label="Homechat" onPress={() => navigation.navigate('Hall')} />
         
         <View style={styles.centerTabContainer}>
           <TouchableOpacity style={styles.centerTabBtn} onPress={() => navigation.navigate('Match')}>
