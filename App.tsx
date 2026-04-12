@@ -14,6 +14,7 @@ import Index from './src/screens/Index';
 import Perfil from './src/screens/Perfil';
 import PerfilPublico from './src/screens/PerfilPublico';
 import EditorPost from './src/screens/EditorPost';
+import AchadosPerdidos from './src/screens/AchadosPerdidos';
 import Chat from 'src/screens/Chat';
 import Homechat from 'src/screens/Homechat';
 import RedefinirSenha from 'src/screens/RecuperarSenha';
@@ -93,6 +94,7 @@ export default function App() {
         <Stack.Screen name="PerfilPublico" component={PerfilPublico} />
         <Stack.Screen name="EditorPost" component={EditorPost} />
         <Stack.Screen name="Chat" component={Chat} />
+        <Stack.Screen name="AchadosPerdidos" component={AchadosPerdidos} />
         <Stack.Screen name="Hall" component={Homechat} />
       </Stack.Navigator>
     </NavigationContainer>
