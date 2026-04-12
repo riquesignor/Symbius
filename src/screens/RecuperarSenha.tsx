@@ -99,6 +99,11 @@ export default function RecuperarSenha({ navigation }: any) {
     return;
   }
 
+    if (novaSenha !== confirmarSenha) {
+    Alert.alert("Erro", "As senhas não coincidem.");
+    return;
+  }
+
   setLoading(true);
   try {
     const emailAlvo = email.toLowerCase().trim();

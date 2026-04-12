@@ -16,7 +16,8 @@ const BANNERS_LAB = [
   'https://images.unsplash.com/photo-1531297484001-80022131f5a1?q=80&w=500'
 ];
 
-export default function Perfil({ navigation }: any) {
+
+export default function Perfil({ navigation, route }: any) {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [userData, setUserData] = useState<any>(null);
@@ -31,33 +32,37 @@ export default function Perfil({ navigation }: any) {
   const hasChanges = bio !== originalBio || fotoBase64 !== originalFoto;
 
   useEffect(() => {
-    const randomIdx = Math.floor(Math.random() * BANNERS_LAB.length);
-    setBannerSorteado(BANNERS_LAB[randomIdx]);
+  const randomIdx = Math.floor(Math.random() * BANNERS_LAB.length);
+  setBannerSorteado(BANNERS_LAB[randomIdx]);
 
-    const carregarMeusDados = async () => {
-      try {
-        const meuUid = auth.currentUser?.uid;
-        if (!meuUid) return;
-
-        const docRef = doc(db, "usuarios", meuUid);
-        const docSnap = await getDoc(docRef);
-        
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setUserData(data);
-          setBio(data.bio || '');
-          setOriginalBio(data.bio || '');
-          setFotoBase64(data.foto || null);
-          setOriginalFoto(data.foto || null);
-        }
-      } catch (error) {
-        Alert.alert("Erro", "Erro ao carregar seu perfil.");
-      } finally {
-        setLoading(false);
+  const carregarMeusDados = async () => {
+    try {
+      // ✅ Pega o uid vindo da navegação em vez do auth.currentUser
+      const uid = route?.params?.uid;
+      if (!uid) {
+        Alert.alert("Erro", "Usuário não identificado.");
+        return;
       }
-    };
-    carregarMeusDados();
-  }, []);
+
+      const docRef = doc(db, "usuarios", uid);
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setUserData({ ...data, uid }); // ✅ guarda o uid junto
+        setBio(data.bio || '');
+        setOriginalBio(data.bio || '');
+        setFotoBase64(data.foto || null);
+        setOriginalFoto(data.foto || null);
+      }
+    } catch (error) {
+      Alert.alert("Erro", "Erro ao carregar seu perfil.");
+    } finally {
+      setLoading(false);
+    }
+  };
+  carregarMeusDados();
+}, []);
 
   const trocarFoto = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -74,23 +79,23 @@ export default function Perfil({ navigation }: any) {
   };
 
   const salvarAlteracoes = async () => {
-    setUpdating(true);
-    try {
-      const meuUid = auth.currentUser?.uid;
-      if (!meuUid) return;
+  setUpdating(true);
+  try {
+    const uid = userData?.uid; // ✅ vem do state agora
+    if (!uid) return;
 
-      await updateDoc(doc(db, "usuarios", meuUid), { 
-        foto: fotoBase64, bio: bio.trim() 
-      });
-      setOriginalBio(bio.trim());
-      setOriginalFoto(fotoBase64);
-      Alert.alert("Sucesso!", "Seu perfil foi atualizado.");
-    } catch (e) {
-      Alert.alert("Erro", "Falha ao salvar alterações.");
-    } finally {
-      setUpdating(false);
-    }
-  };
+    await updateDoc(doc(db, "usuarios", uid), { 
+      foto: fotoBase64, bio: bio.trim() 
+    });
+    setOriginalBio(bio.trim());
+    setOriginalFoto(fotoBase64);
+    Alert.alert("Sucesso!", "Seu perfil foi atualizado.");
+  } catch (e) {
+    Alert.alert("Erro", "Falha ao salvar alterações.");
+  } finally {
+    setUpdating(false);
+  }
+};
 
   if (loading) return <View style={styles.center}><ActivityIndicator size="large" color="#E91E63" /></View>;
 
@@ -208,7 +213,7 @@ export default function Perfil({ navigation }: any) {
             </View>
           </View>
 
-          <TouchableOpacity style={styles.btnLogOut} onPress={() => auth.signOut()}>
+          <TouchableOpacity style={styles.btnLogOut} onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Login' }] })}>
             <MaterialIcons name="logout" size={20} color="#FF5252" />
             <Text style={styles.txtLogOut}>Sair da Conta</Text>
           </TouchableOpacity>

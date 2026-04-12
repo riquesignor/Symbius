@@ -14,14 +14,6 @@ export const cadastrarNoJumo = async (
   turmaFormatada: string, 
   perfilTipo: string
 ) => {
-  // ===== DEBUG - REMOVER DEPOIS =====
-  console.log("=== CADASTRO DEBUG ===");
-  console.log("Email:", JSON.stringify(email));
-  console.log("Senha length:", senha?.length);
-  console.log("Senha undefined?", senha === undefined);
-  console.log("Senha null?", senha === null);
-  // ==================================
-
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
     const user = userCredential.user;
@@ -33,6 +25,9 @@ export const cadastrarNoJumo = async (
     const dadosUsuario = {
       nome_completo: nome,
       email_escolar: email.toLowerCase().trim(),
+      // ✅ CAMPO SENHA SALVO NO FIRESTORE para que o login funcione
+      // mesmo quando a senha for redefinida manualmente no banco.
+      senha: senha,
       ra: ra.toUpperCase().trim() || null,
       tipo: perfilTipo, 
       turma: turmaFormatada,
@@ -45,11 +40,12 @@ export const cadastrarNoJumo = async (
     };
 
     await setDoc(doc(db, "usuarios", user.uid), dadosUsuario);
+
+    // ✅ Desloga do Firebase Auth após cadastro — o login será feito via Firestore
     await signOut(auth);
 
     return user;
   } catch (error: any) {
-    console.log("=== ERRO DEBUG ===", error.code, error.message);
     if (error.code === 'auth/email-already-in-use') {
       throw new Error('Esse e-mail já está cadastrado!');
     } else if (error.code === 'auth/weak-password') {
