@@ -42,7 +42,7 @@ export default function Index({ navigation, route }: any) {
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const userEmail        = userData?.email_escolar || '';
-  const isSuperAdmin     = userEmail.endsWith('@anchieta.br') || userData?.tipo === 'Administrador';
+  const isSuperAdmin = userEmail.endsWith('@anchieta.br') || userData?.tipo?.toLowerCase() === 'Administrador';
   const isGremio         = userData?.tipo === 'Gremista';
   const temPermissaoDeStaff = isSuperAdmin || isGremio;
 
