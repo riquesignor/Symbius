@@ -18,6 +18,7 @@ import AchadosPerdidos from './src/screens/AchadosPerdidos';
 import Chat from 'src/screens/Chat';
 import Homechat from 'src/screens/Homechat';
 import RedefinirSenha from 'src/screens/RecuperarSenha';
+import Calendario from 'src/screens/Calendario';
 
 const Stack = createStackNavigator();
 
@@ -96,6 +97,7 @@ export default function App() {
         <Stack.Screen name="Chat" component={Chat} />
         <Stack.Screen name="AchadosPerdidos" component={AchadosPerdidos} />
         <Stack.Screen name="Hall" component={Homechat} />
+        <Stack.Screen name="Calendario" component={Calendario} />
       </Stack.Navigator>
     </NavigationContainer>
   );

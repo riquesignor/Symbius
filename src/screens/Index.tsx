@@ -256,7 +256,7 @@ export default function Index({ navigation, route }: any) {
       {/* TAB BAR */}
       <View style={styles.tabBar}>
         <TabItem icon="home"                label="Início"   ativo  onPress={() => {}} />
-        <TabItem icon="chatbubbles-outline" label="Chat"            onPress={() => navigation.navigate('Hall', { uid: userData?.uid })} />
+          <TabItem icon="calendar-outline" label="Agenda" onPress={() => navigation.navigate('Calendario', { uid: userData?.uid, tipo: userData?.tipo, turma: userData?.turma })} />
         <View style={styles.centerTab}>
           <TouchableOpacity style={styles.centerBtn} onPress={() => navigation.navigate('Match')}>
             <Ionicons name="heart" size={22} color={CORES.rosa} />
