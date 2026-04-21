@@ -268,28 +268,40 @@ export default function Index({ navigation, route }: any) {
 
       {/* MINI MENU */}
       <Modal visible={miniMenuAberto} transparent animationType="fade">
-        <TouchableWithoutFeedback onPress={() => setMiniMenuAberto(false)}>
-          <View style={styles.menuOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.menuPopup}>
-                <TouchableOpacity style={styles.menuItem} onPress={() => { setMiniMenuAberto(false); navigation.navigate('Contatos'); }}>
-                  <Ionicons name="call" size={17} color={CORES.azulEscuro} />
-                  <Text style={styles.menuItemText}>Contatos</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.menuItem} onPress={() => { setMiniMenuAberto(false); navigation.navigate('Ajuda'); }}>
-                  <Ionicons name="help-circle" size={17} color={CORES.azulEscuro} />
-                  <Text style={styles.menuItemText}>Ajuda</Text>
-                </TouchableOpacity>
-                <View style={styles.menuDivider} />
-                <TouchableOpacity style={styles.menuItem} onPress={handleSair}>
-                  <Ionicons name="log-out" size={17} color="#FF5252" />
-                  <Text style={[styles.menuItemText, { color: '#FF5252' }]}>Sair</Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+  <TouchableWithoutFeedback onPress={() => setMiniMenuAberto(false)}>
+    <View style={styles.menuOverlay}>
+      <TouchableWithoutFeedback>
+        <View style={styles.menuPopup}>
+          <TouchableOpacity style={styles.menuItem} onPress={() => { setMiniMenuAberto(false); navigation.navigate('Contatos'); }}>
+            <Ionicons name="call" size={17} color={CORES.azulEscuro} />
+            <Text style={styles.menuItemText}>Contatos</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.menuItem} onPress={() => { setMiniMenuAberto(false); navigation.navigate('Ajuda'); }}>
+            <Ionicons name="help-circle" size={17} color={CORES.azulEscuro} />
+            <Text style={styles.menuItemText}>Ajuda</Text>
+          </TouchableOpacity>
+
+          {/* ✅ Só aparece se for Administrador */}
+          {userData?.tipo?.toLowerCase() === 'administrador' && (
+            <>
+              <View style={styles.menuDivider} />
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setMiniMenuAberto(false); navigation.navigate('Admin', { uid: userData?.uid }); }}>
+                <Ionicons name="shield-checkmark" size={17} color={CORES.azulEscuro} />
+                <Text style={styles.menuItemText}>Painel Admin</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          <View style={styles.menuDivider} />
+          <TouchableOpacity style={styles.menuItem} onPress={handleSair}>
+            <Ionicons name="log-out" size={17} color="#FF5252" />
+            <Text style={[styles.menuItemText, { color: '#FF5252' }]}>Sair</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableWithoutFeedback>
+    </View>
+  </TouchableWithoutFeedback>
+</Modal>
 
       {/* MODAL POST */}
       <Modal visible={modalVisible} transparent animationType="slide">
