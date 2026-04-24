@@ -8,10 +8,11 @@ import { db } from "../config/firebaseConfig";
 import {
   collection, addDoc, query, where, getDocs,
   orderBy, serverTimestamp, setDoc, updateDoc,
-  doc as firestoreDoc, getDoc, deleteDoc
+  doc as firestoreDoc, getDoc, deleteDoc, onSnapshot
 } from "firebase/firestore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
+import { Ionicons } from "@expo/vector-icons";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const IMG_MAX = 220;
@@ -49,6 +50,22 @@ const injectStyles = () => {
     .chat-scroll::-webkit-scrollbar { width: 0px; background: transparent; }
     .chat-scroll { scrollbar-width: none; -ms-overflow-style: none; }
     html, body, #root { height: 100%; overflow: hidden; }
+
+    @keyframes typingBounce {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+      30% { transform: translateY(-5px); opacity: 1; }
+    }
+    .typing-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.7);
+      display: inline-block;
+      margin: 0 2px;
+      animation: typingBounce 1.2s infinite ease-in-out;
+    }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
   `;
   document.head.appendChild(style);
 };
@@ -87,7 +104,6 @@ const getDimensoesWeb = (base64: string): Promise<{ w: number; h: number }> =>
 const calcDimensoes = (w: number, h: number) => {
   if (w === 0 || h === 0) return { width: IMG_MAX, height: IMG_MAX };
   const ratio = h / w;
-  // Largura fixa em IMG_MAX, altura proporcional limitada a 1.4x
   const width  = IMG_MAX;
   const height = Math.max(IMG_MIN, Math.min(Math.round(IMG_MAX * 1.4), Math.round(width * ratio)));
   return { width, height };
@@ -134,6 +150,54 @@ const ImagemMensagem = ({ base64, onPress }: { base64: string; onPress: () => vo
   );
 };
 
+// ── Bolinhas de digitando (mobile) ─────────────────────────
+const TypingDotsNative = () => {
+  const [phase, setPhase] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setPhase(p => (p + 1) % 3), 400);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+      {[0, 1, 2].map(i => (
+        <View
+          key={i}
+          style={{
+            width: 7, height: 7, borderRadius: 4,
+            backgroundColor: "rgba(255,255,255,0.7)",
+            opacity: phase === i ? 1 : 0.35,
+            transform: [{ translateY: phase === i ? -4 : 0 }],
+          }}
+        />
+      ))}
+    </View>
+  );
+};
+
+// ── Agrupa mensagens por data ──────────────────────────────
+const formatarDataSeparador = (data: any): string => {
+  if (!data) return "";
+  const date = data?.toDate ? data.toDate() : new Date(data);
+  const hoje = new Date();
+  const ontem = new Date();
+  ontem.setDate(hoje.getDate() - 1);
+
+  const mesmoDia = (a: Date, b: Date) =>
+    a.getDate() === b.getDate() &&
+    a.getMonth() === b.getMonth() &&
+    a.getFullYear() === b.getFullYear();
+
+  if (mesmoDia(date, hoje))  return "Hoje";
+  if (mesmoDia(date, ontem)) return "Ontem";
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+};
+
+const getDataChave = (data: any): string => {
+  if (!data) return "";
+  const date = data?.toDate ? data.toDate() : new Date(data);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+};
+
 export default function Chat({ route, navigation }: any) {
   const { outroUid, outroNome } = route.params || {};
 
@@ -141,6 +205,8 @@ export default function Chat({ route, navigation }: any) {
   const scrollRef    = useRef<ScrollView>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const docIdMap     = useRef<Record<string, string>>({});
+  // Debounce ref para parar de "digitar"
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [uidAtual,          setUidAtual]         = useState<string | null>(null);
   const [conversaId,        setConversaId]        = useState<string | null>(null);
@@ -158,8 +224,41 @@ export default function Chat({ route, navigation }: any) {
   const [menuMsg,           setMenuMsg]           = useState<any | null>(null);
   const [editandoId,        setEditandoId]        = useState<string | null>(null);
   const [citando,           setCitando]           = useState<any | null>(null);
+  const [outraFoto,         setOutraFoto]         = useState<string | null>(null);
+  const [onlineStatus,      setOnlineStatus]      = useState<boolean>(false);
+  // ── NOVO: digitando ──
+  const [outroDigitando,    setOutroDigitando]    = useState<boolean>(false);
 
   useEffect(() => { injectStyles(); }, []);
+
+  // ── Busca foto do outro usuário e ouve status online + digitando ──
+  useEffect(() => {
+    if (!outroUid) return;
+
+    getDoc(firestoreDoc(db, "usuarios", outroUid)).then(snap => {
+      if (snap.exists()) setOutraFoto(snap.data().foto || null);
+    });
+
+    const unsub = onSnapshot(firestoreDoc(db, "usuarios", outroUid), (snap) => {
+      if (snap.exists()) {
+        setOnlineStatus(snap.data().online === true);
+        // Só mostra "digitando" se estiver digitando NESTA conversa
+        const digitandoEm = snap.data().digitandoEm || null;
+        const conversaIdAtual = [outroUid, snap.data().uid].sort().join("_");
+        setOutroDigitando(!!digitandoEm);
+      }
+    });
+    return () => unsub();
+  }, [outroUid]);
+
+  // ── Marca usuário como online ao entrar, offline ao sair ──
+  useEffect(() => {
+    if (!uidAtual) return;
+    setDoc(firestoreDoc(db, "usuarios", uidAtual), { online: true }, { merge: true });
+    return () => {
+      setDoc(firestoreDoc(db, "usuarios", uidAtual), { online: false, digitandoEm: null }, { merge: true });
+    };
+  }, [uidAtual]);
 
   useEffect(() => {
     if (Platform.OS !== "web") return;
@@ -206,52 +305,84 @@ export default function Chat({ route, navigation }: any) {
       .catch(e => { console.log("Erro conversa:", e.message); setLoading(false); });
   }, [uidAtual, outroUid]);
 
+  // ── MENSAGENS EM TEMPO REAL via onSnapshot ─────────────────
   useEffect(() => {
     if (!conversaId || !meuNome) return;
-    let ws: WebSocket;
-    const iniciar = async () => {
-      try {
-        const q = query(
-          collection(db, "mensagens"),
-          where("conversaId", "==", conversaId),
-          orderBy("data_postagem", "asc")
-        );
-        const snapshot = await getDocs(q);
-        const msgs = snapshot.docs.map(d => {
-          docIdMap.current[d.id] = d.id;
-          return { docId: d.id, id: d.id, ...d.data() };
-        });
-        setMessages(msgs);
-      } catch (e: any) { console.log("Erro histórico:", e.message); }
-      finally { setLoading(false); }
 
-      ws = new WebSocket(WS_URL);
-      socketRef.current = ws;
-      ws.onopen  = () => ws.send(JSON.stringify({ type: "join", room: conversaId, user: meuNome }));
-      ws.onerror = (e: any) => console.log("❌ WS:", e.message);
-      ws.onclose = () => console.log("WS fechado.");
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === "message" && data.remetenteUid !== uidAtual)
-            setMessages(prev => [...prev, { ...data, docId: data.docId || data.id }]);
-          if (data.type === "edit")
-            setMessages(prev => prev.map(m =>
-              m.docId === data.docId ? { ...m, mensagem: data.mensagem, editada: true } : m
-            ));
-          if (data.type === "delete")
-            setMessages(prev => prev.filter(m => m.docId !== data.docId));
-        } catch { }
-      };
+    setLoading(true);
+
+    const q = query(
+      collection(db, "mensagens"),
+      where("conversaId", "==", conversaId),
+      orderBy("data_postagem", "asc")
+    );
+
+    // onSnapshot substitui o getDocs — atualiza automaticamente
+    const unsubMsgs = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(d => {
+        docIdMap.current[d.id] = d.id;
+        return { docId: d.id, id: d.id, ...d.data() };
+      });
+      setMessages(msgs);
+      setLoading(false);
+    }, (e) => {
+      console.log("Erro onSnapshot mensagens:", e.message);
+      setLoading(false);
+    });
+
+    // WebSocket apenas para notificar edições/deleções em tempo real
+    // (o onSnapshot já cuida das novas mensagens)
+    let ws: WebSocket;
+    ws = new WebSocket(WS_URL);
+    socketRef.current = ws;
+    ws.onopen  = () => ws.send(JSON.stringify({ type: "join", room: conversaId, user: meuNome }));
+    ws.onerror = (e: any) => console.log("❌ WS:", e.message);
+    ws.onclose = () => console.log("WS fechado.");
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        // Edições e deleções via WS (o Firestore onSnapshot também pega, mas WS é mais rápido)
+        if (data.type === "edit")
+          setMessages(prev => prev.map(m =>
+            m.docId === data.docId ? { ...m, mensagem: data.mensagem, editada: true } : m
+          ));
+        if (data.type === "delete")
+          setMessages(prev => prev.filter(m => m.docId !== data.docId));
+      } catch { }
     };
-    iniciar();
-    return () => ws?.close();
+
+    return () => {
+      unsubMsgs();
+      ws?.close();
+    };
   }, [conversaId, meuNome]);
 
   useEffect(() => {
     if (messages.length > 0)
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
-  }, [messages.length]);
+  }, [messages.length, outroDigitando]);
+
+  // ── Gerencia estado de "digitando" no Firestore ────────────
+  const handleTyping = (text: string) => {
+    setInputText(text);
+    if (!uidAtual || !conversaId) return;
+
+    // Seta digitandoEm com o conversaId atual
+    setDoc(firestoreDoc(db, "usuarios", uidAtual), { digitandoEm: conversaId }, { merge: true });
+
+    // Limpa o timeout anterior e seta um novo
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      setDoc(firestoreDoc(db, "usuarios", uidAtual), { digitandoEm: null }, { merge: true });
+    }, 2000);
+  };
+
+  // Limpa "digitando" ao enviar
+  const clearTyping = () => {
+    if (!uidAtual) return;
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    setDoc(firestoreDoc(db, "usuarios", uidAtual), { digitandoEm: null }, { merge: true });
+  };
 
   const resolverDocId = (msg: any): string => {
     return docIdMap.current[msg.id] || docIdMap.current[msg.docId] || msg.docId || msg.id;
@@ -261,6 +392,7 @@ export default function Chat({ route, navigation }: any) {
     if (!inputText.trim() || !uidAtual || !conversaId || !outroUid) return;
     const msgTexto = inputText.trim();
     setInputText("");
+    clearTyping();
 
     if (editandoId) {
       const docId = resolverDocId({ docId: editandoId, id: editandoId });
@@ -273,33 +405,28 @@ export default function Chat({ route, navigation }: any) {
       return;
     }
 
-    const localId = String(Date.now());
-    const nova: any = {
-      id: localId, docId: localId, conversaId, mensagem: msgTexto,
+    const novaMsgPayload: any = {
+      conversaId, mensagem: msgTexto, tipo: "texto",
       remetenteUid: uidAtual, nome_remetente: meuNome,
-      foto: minhaFoto || null, tipo: "texto",
-      data_postagem: new Date().toISOString(),
+      foto: minhaFoto || null, data_postagem: serverTimestamp(),
     };
+
     if (citando) {
-      nova.citacao = {
+      novaMsgPayload.citacao = {
         id: resolverDocId(citando),
         mensagem: citando.tipo === "imagem" ? "📷 Imagem" : citando.mensagem,
         nome: citando.nome_remetente, tipo: citando.tipo,
       };
       setCitando(null);
     }
-    setMessages(prev => [...prev, nova]);
+
+    // WS ainda usado para notificar o outro lado imediatamente
     if (socketRef.current?.readyState === WebSocket.OPEN)
-      socketRef.current.send(JSON.stringify({ type: "message", ...nova }));
+      socketRef.current.send(JSON.stringify({ type: "message", ...novaMsgPayload, data_postagem: new Date().toISOString() }));
+
     try {
-      const ref = await addDoc(collection(db, "mensagens"), {
-        conversaId, mensagem: msgTexto, tipo: "texto",
-        remetenteUid: uidAtual, nome_remetente: meuNome,
-        foto: minhaFoto || null, data_postagem: serverTimestamp(),
-        ...(nova.citacao ? { citacao: nova.citacao } : {}),
-      });
-      docIdMap.current[localId] = ref.id;
-      setMessages(prev => prev.map(m => m.id === localId ? { ...m, docId: ref.id } : m));
+      const ref = await addDoc(collection(db, "mensagens"), novaMsgPayload);
+      docIdMap.current[ref.id] = ref.id;
       await setDoc(firestoreDoc(db, "conversas", conversaId), {
         ultimaMensagem: msgTexto, data_postagem: serverTimestamp(),
         quemEnviou: uidAtual, visto: false,
@@ -313,27 +440,19 @@ export default function Chat({ route, navigation }: any) {
 
   const apagarMensagem = async (msg: any) => {
     setMenuMsg(null);
-
-    // Resolve o docId real — prioriza o mapa de ids
     const localId = msg.docId || msg.id;
     const realDocId = docIdMap.current[localId] || localId;
 
-    // Remove da UI usando todas as formas possíveis de identificação
     setMessages(prev => prev.filter(m =>
       m.docId !== localId && m.id !== localId &&
       m.docId !== realDocId && m.id !== realDocId
     ));
 
-    // Avisa outros via WebSocket com o id real
     if (socketRef.current?.readyState === WebSocket.OPEN)
       socketRef.current.send(JSON.stringify({ type: "delete", docId: realDocId }));
 
-    // Deleta no Firestore
     try {
       await deleteDoc(firestoreDoc(db, "mensagens", realDocId));
-
-      // ✅ Atualiza ultimaMensagem da conversa com a mensagem anterior
-      // para que o Homechat não mostre a mensagem apagada
       if (conversaId) {
         const msgsRestantes = [...messages].filter(m =>
           m.docId !== localId && m.id !== localId &&
@@ -362,33 +481,26 @@ export default function Chat({ route, navigation }: any) {
     if (!previewBase64 || !uidAtual || !conversaId || !outroUid) return;
     setPreviewVisible(false);
     setUploading(true);
+    clearTyping();
     try {
-      const localId = String(Date.now());
-      const nova: any = {
-        id: localId, docId: localId, conversaId, mensagem: previewBase64,
+      const novaMsgPayload: any = {
+        conversaId, mensagem: previewBase64, tipo: "imagem",
         remetenteUid: uidAtual, nome_remetente: meuNome,
-        foto: minhaFoto || null, tipo: "imagem",
-        data_postagem: new Date().toISOString(),
+        foto: minhaFoto || null, data_postagem: serverTimestamp(),
       };
       if (citando) {
-        nova.citacao = {
+        novaMsgPayload.citacao = {
           id: resolverDocId(citando),
           mensagem: citando.tipo === "imagem" ? "📷 Imagem" : citando.mensagem,
           nome: citando.nome_remetente, tipo: citando.tipo,
         };
         setCitando(null);
       }
-      setMessages(prev => [...prev, nova]);
       if (socketRef.current?.readyState === WebSocket.OPEN)
-        socketRef.current.send(JSON.stringify({ type: "message", ...nova }));
-      const ref = await addDoc(collection(db, "mensagens"), {
-        conversaId, mensagem: previewBase64, tipo: "imagem",
-        remetenteUid: uidAtual, nome_remetente: meuNome,
-        foto: minhaFoto || null, data_postagem: serverTimestamp(),
-        ...(nova.citacao ? { citacao: nova.citacao } : {}),
-      });
-      docIdMap.current[localId] = ref.id;
-      setMessages(prev => prev.map(m => m.id === localId ? { ...m, docId: ref.id } : m));
+        socketRef.current.send(JSON.stringify({ type: "message", ...novaMsgPayload, data_postagem: new Date().toISOString() }));
+
+      const ref = await addDoc(collection(db, "mensagens"), novaMsgPayload);
+      docIdMap.current[ref.id] = ref.id;
       await setDoc(firestoreDoc(db, "conversas", conversaId), {
         ultimaMensagem: "📷 Imagem", data_postagem: serverTimestamp(),
         quemEnviou: uidAtual, visto: false,
@@ -425,13 +537,36 @@ export default function Chat({ route, navigation }: any) {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : "height"}>
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ paddingRight: 15 }}>
-          <Text style={styles.backButton}>←</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={22} color="#0B2046" />
         </TouchableOpacity>
-        <View>
-          <Text style={styles.headerTitle}>{outroNome || "Chat"}</Text>
-          <Text style={styles.headerUser}>Conversa privada</Text>
+
+        <View style={styles.headerCenter}>
+          <View style={styles.headerAvatarWrap}>
+            <Image
+              source={{ uri: outraFoto
+                ? (outraFoto.startsWith("data:") || outraFoto.startsWith("http")
+                    ? outraFoto
+                    : `data:image/jpeg;base64,${outraFoto}`)
+                : "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+              }}
+              style={styles.headerAvatar}
+            />
+            <View style={[styles.headerOnlineDot, { backgroundColor: onlineStatus ? "#22C55E" : "#94A3B8" }]} />
+          </View>
+          <View>
+            <Text style={styles.headerTitle}>{outroNome || "Chat"}</Text>
+            {outroDigitando ? (
+              <Text style={[styles.headerUser, { color: "#E91E63" }]}>digitando...</Text>
+            ) : (
+              <Text style={[styles.headerUser, { color: onlineStatus ? "#22C55E" : "#94A3B8" }]}>
+                {onlineStatus ? "online" : "offline"}
+              </Text>
+            )}
+          </View>
         </View>
+
+        <View style={{ width: 40 }} />
       </View>
 
       <ScrollView
@@ -448,12 +583,24 @@ export default function Chat({ route, navigation }: any) {
           const proxMsg = messages[index + 1];
           const ultimaDaSequencia = proxMsg?.remetenteUid !== item.remetenteUid || !proxMsg;
 
+          const chaveAtual  = getDataChave(item.data_postagem);
+          const chaveAnterior = index > 0 ? getDataChave(messages[index - 1].data_postagem) : null;
+          const mostrarSeparador = chaveAtual !== chaveAnterior;
+
           return (
+            <React.Fragment key={item.docId || item.id || String(index)}>
+              {mostrarSeparador && (
+                <View style={styles.separadorDataWrap}>
+                  <View style={styles.separadorDataLinha} />
+                  <Text style={styles.separadorDataTxt}>
+                    {formatarDataSeparador(item.data_postagem)}
+                  </Text>
+                  <View style={styles.separadorDataLinha} />
+                </View>
+              )}
             <TouchableOpacity
-              key={item.docId || item.id || String(index)}
               activeOpacity={0.8}
               onLongPress={() => setMenuMsg(item)}
-              // ✅ FIX: justifyContent muda conforme o remetente para alinhar bolha corretamente
               style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
             >
               {!isMe && (
@@ -464,7 +611,6 @@ export default function Chat({ route, navigation }: any) {
                 </View>
               )}
 
-              {/* ✅ FIX: sem flex:1 — a bolha cresce só até o tamanho do conteúdo */}
               <View style={[styles.bolha, isMe ? styles.bolhaMe : styles.bolhaOther]}>
                 {!isMe && ultimaDaSequencia && (
                   <Text style={styles.nomeRemetente}>{item.nome_remetente}</Text>
@@ -499,8 +645,41 @@ export default function Chat({ route, navigation }: any) {
                 </View>
               )}
             </TouchableOpacity>
+            </React.Fragment>
           );
         })}
+
+        {/* ── Bolha de "digitando..." ── */}
+        {outroDigitando && (
+          <View style={[styles.messageRow, styles.messageRowOther]}>
+            <View style={styles.avatarSlot}>
+              <Image
+                source={{ uri: outraFoto
+                  ? (outraFoto.startsWith("data:") || outraFoto.startsWith("http")
+                      ? outraFoto
+                      : `data:image/jpeg;base64,${outraFoto}`)
+                  : "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+                }}
+                style={styles.avatar}
+              />
+            </View>
+            <View style={[styles.bolha, styles.bolhaOther, styles.bolhaDigitando]}>
+              {Platform.OS === "web" ? (
+                // @ts-ignore
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  {/* @ts-ignore */}
+                  <span className="typing-dot" />
+                  {/* @ts-ignore */}
+                  <span className="typing-dot" />
+                  {/* @ts-ignore */}
+                  <span className="typing-dot" />
+                </div>
+              ) : (
+                <TypingDotsNative />
+              )}
+            </View>
+          </View>
+        )}
       </ScrollView>
 
       {(citando || editandoId) && (
@@ -514,7 +693,7 @@ export default function Chat({ route, navigation }: any) {
               : <Text style={styles.citandoNome}>✏️ Editando mensagem</Text>
             }
           </View>
-          <TouchableOpacity onPress={() => { setCitando(null); setEditandoId(null); setInputText(""); }}>
+          <TouchableOpacity onPress={() => { setCitando(null); setEditandoId(null); setInputText(""); clearTyping(); }}>
             <Text style={styles.citandoFechar}>✕</Text>
           </TouchableOpacity>
         </View>
@@ -522,15 +701,21 @@ export default function Chat({ route, navigation }: any) {
 
       <View style={styles.inputArea}>
         <TouchableOpacity onPress={() => fileInputRef.current?.click()} style={styles.imgButton} disabled={uploading}>
-          {uploading ? <ActivityIndicator size="small" color="#E91E63" /> : <Text style={styles.imgIcon}>🖼️</Text>}
+          {uploading
+            ? <ActivityIndicator size="small" color="#E91E63" />
+            : <Ionicons name="image-outline" size={22} color="#0B2046" />
+          }
         </TouchableOpacity>
         <TextInput
-          value={inputText} onChangeText={setInputText}
-          style={styles.input} placeholder="Mensagem..."
-          placeholderTextColor="#888" multiline
+          value={inputText}
+          onChangeText={handleTyping}
+          style={styles.input}
+          placeholder="Digite aqui..."
+          placeholderTextColor="#94A3B8"
+          multiline
         />
         <TouchableOpacity onPress={sendMessage} style={styles.sendButton}>
-          <Text style={styles.sendButtonText}>➤</Text>
+          <Ionicons name="send" size={18} color="white" />
         </TouchableOpacity>
       </View>
 
@@ -549,7 +734,6 @@ export default function Chat({ route, navigation }: any) {
                 <Text style={styles.menuItemText}>Editar</Text>
               </TouchableOpacity>
             )}
-            {/* Apagar: usa confirm nativo no web, Alert no mobile */}
             <TouchableOpacity style={styles.menuItem} onPress={() => {
               if (menuMsg.remetenteUid !== uidAtual) return;
               if (Platform.OS === "web") {
@@ -615,70 +799,96 @@ export default function Chat({ route, navigation }: any) {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1, backgroundColor: "#0f0f1a",
+    flex: 1, backgroundColor: "#F0F2F5",
     ...(Platform.OS === "web"
       ? { height: "100vh" as any, maxHeight: "100vh" as any, overflow: "hidden" as any }
       : {}),
   },
-  header:        { backgroundColor: "#1c1c2e", flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingTop: Platform.OS === "ios" ? 50 : 40, paddingBottom: 16 },
-  backButton:    { color: "white", fontSize: 28 },
-  headerTitle:   { color: "white", fontSize: 18, fontWeight: "bold" },
-  headerUser:    { color: "#aaa", fontSize: 12 },
-  scrollView:    { flex: 1 },
-  scrollContent: { paddingVertical: 10, paddingHorizontal: 6, flexGrow: 1 },
 
-  // ✅ FIX: messageRow agora tem variantes por lado, sem definir justifyContent fixo
+  // ── HEADER ──
+  header:            { backgroundColor: "#FFFFFF", flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingTop: Platform.OS === "ios" ? 50 : 40, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: "#EAEFF4", elevation: 2, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 4 },
+  backBtn:           { width: 38, height: 38, borderRadius: 19, backgroundColor: "#F0F2F5", justifyContent: "center", alignItems: "center" },
+  headerCenter:      { flexDirection: "row", alignItems: "center", gap: 10, flex: 1, paddingLeft: 10 },
+  headerAvatarWrap:  { position: "relative" },
+  headerAvatar:      { width: 42, height: 42, borderRadius: 21, backgroundColor: "#EAEFF4" },
+  headerOnlineDot:   { position: "absolute", bottom: 1, right: 1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: "#FFFFFF" },
+  headerTitle:       { color: "#0B2046", fontSize: 16, fontWeight: "800" },
+  headerUser:        { fontSize: 12, fontWeight: "600", marginTop: 1 },
+
+  // ── SCROLL ──
+  scrollView:    { flex: 1 },
+  scrollContent: { paddingVertical: 12, paddingHorizontal: 8, flexGrow: 1 },
+
+  // ── MENSAGENS ──
   messageRow:      { flexDirection: "row", alignItems: "flex-end", marginVertical: 2, paddingHorizontal: 4, width: "100%" },
   messageRowMe:    { justifyContent: "flex-end" },
   messageRowOther: { justifyContent: "flex-start" },
 
-  avatarSlot:    { width: 40, alignItems: "center", justifyContent: "flex-end" },
-  avatarEspaco:  { width: 34, height: 34 },
-  avatar:        { width: 34, height: 34, borderRadius: 17 },
+  avatarSlot:    { width: 36, alignItems: "center", justifyContent: "flex-end" },
+  avatarEspaco:  { width: 32, height: 32 },
+  avatar:        { width: 32, height: 32, borderRadius: 16 },
 
-  // ✅ FIX: removido flex:1 — bolha cresce conforme conteúdo, limitada por maxWidth
-  bolha:         { maxWidth: SCREEN_WIDTH * 0.72, padding: 10, borderRadius: 15, marginHorizontal: 4, flexShrink: 1 },
-  bolhaMe:       { backgroundColor: "#E91E63", borderBottomRightRadius: 0, alignSelf: "flex-end" },
-  bolhaOther:    { backgroundColor: "#2f2f4a", borderBottomLeftRadius: 0, alignSelf: "flex-start" },
+  bolha:         { maxWidth: SCREEN_WIDTH * 0.72, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, marginHorizontal: 4, flexShrink: 1, elevation: 1, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 3 },
+  bolhaMe:       { backgroundColor: "#E91E63", borderBottomRightRadius: 4, alignSelf: "flex-end" },
+  bolhaOther:    { backgroundColor: "#0B2046", borderBottomLeftRadius: 4, alignSelf: "flex-start" },
+  bolhaDigitando:{ paddingHorizontal: 16, paddingVertical: 14 },
 
-  nomeRemetente: { color: "#E91E63", fontSize: 12, fontWeight: "bold", marginBottom: 3 },
-  messageText:   { color: "white", fontSize: 15, flexShrink: 1, flexWrap: "wrap" },
+  nomeRemetente: { color: "#E91E63", fontSize: 11, fontWeight: "800", marginBottom: 3 },
+  messageText:   { color: "white", fontSize: 15, flexShrink: 1, flexWrap: "wrap", lineHeight: 21 },
   rodape:        { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", marginTop: 4 },
-  hora:          { color: "rgba(255,255,255,0.55)", fontSize: 10, textAlign: "right", marginTop: 2 },
-  editadaLabel:  { color: "rgba(255,255,255,0.45)", fontSize: 10 },
-  citacaoBox:    { borderLeftWidth: 3, paddingLeft: 8, marginBottom: 6, borderRadius: 4, paddingVertical: 3 },
-  citacaoMe:     { borderLeftColor: "rgba(255,255,255,0.6)", backgroundColor: "rgba(0,0,0,0.15)" },
-  citacaoOther:  { borderLeftColor: "#E91E63", backgroundColor: "rgba(233,30,99,0.1)" },
-  citacaoNome:   { color: "rgba(255,255,255,0.8)", fontSize: 11, fontWeight: "bold", marginBottom: 1 },
+  hora:          { color: "rgba(255,255,255,0.6)", fontSize: 10, textAlign: "right" },
+  editadaLabel:  { color: "rgba(255,255,255,0.5)", fontSize: 10 },
+
+  // ── CITAÇÃO ──
+  citacaoBox:    { borderLeftWidth: 3, paddingLeft: 8, marginBottom: 8, borderRadius: 4, paddingVertical: 4 },
+  citacaoMe:     { borderLeftColor: "rgba(255,255,255,0.7)", backgroundColor: "rgba(0,0,0,0.12)" },
+  citacaoOther:  { borderLeftColor: "#E91E63", backgroundColor: "rgba(233,30,99,0.12)" },
+  citacaoNome:   { color: "rgba(255,255,255,0.85)", fontSize: 11, fontWeight: "800", marginBottom: 1 },
   citacaoTexto:  { color: "rgba(255,255,255,0.65)", fontSize: 12 },
-  citandoBar:    { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c2e", paddingHorizontal: 14, paddingVertical: 8, borderTopWidth: 1, borderTopColor: "#E91E63" },
+
+  // ── BARRA CITANDO/EDITANDO ──
+  citandoBar:    { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 2, borderTopColor: "#E91E63" },
   citandoInfo:   { flex: 1 },
-  citandoNome:   { color: "#E91E63", fontSize: 12, fontWeight: "bold" },
-  citandoTexto:  { color: "#aaa", fontSize: 12 },
-  citandoFechar: { color: "white", fontSize: 18, paddingLeft: 10 },
-  inputArea:     { flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingTop: 10, paddingBottom: Platform.OS === "ios" ? 32 : 16, backgroundColor: "#1c1c2e", borderTopWidth: 1, borderTopColor: "#2a2a3e" },
-  imgButton:     { width: 44, height: 44, justifyContent: "center", alignItems: "center", marginRight: 6, backgroundColor: "#111", borderRadius: 22 },
-  imgIcon:       { fontSize: 22 },
-  input:         { flex: 1, backgroundColor: "#111", color: "white", borderRadius: 20, paddingHorizontal: 15, paddingTop: 10, paddingBottom: 10, maxHeight: 100, fontSize: 15 },
-  sendButton:    { marginLeft: 10, backgroundColor: "#E91E63", width: 44, height: 44, borderRadius: 22, justifyContent: "center", alignItems: "center" },
+  citandoNome:   { color: "#E91E63", fontSize: 12, fontWeight: "800" },
+  citandoTexto:  { color: "#64748B", fontSize: 12 },
+  citandoFechar: { color: "#64748B", fontSize: 18, paddingLeft: 10 },
+
+  // ── INPUT ──
+  inputArea:     { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingTop: 10, paddingBottom: Platform.OS === "ios" ? 32 : 14, backgroundColor: "#FFFFFF", borderTopWidth: 1, borderTopColor: "#EAEFF4", gap: 8 },
+  imgButton:     { width: 42, height: 42, justifyContent: "center", alignItems: "center", backgroundColor: "#F0F2F5", borderRadius: 21, borderWidth: 1, borderColor: "#EAEFF4" },
+  input:         { flex: 1, backgroundColor: "#F0F2F5", color: "#0B2046", borderRadius: 22, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, maxHeight: 100, fontSize: 15, borderWidth: 1, borderColor: "#EAEFF4" },
+  sendButton:    { width: 42, height: 42, borderRadius: 21, backgroundColor: "#E91E63", justifyContent: "center", alignItems: "center", elevation: 3, shadowColor: "#E91E63", shadowOpacity: 0.35, shadowRadius: 6 },
   sendButtonText:{ color: "white", fontWeight: "bold", fontSize: 18 },
-  overlayFull:     { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.85)", justifyContent: "center", alignItems: "center", zIndex: 999 },
+
+  // ── OVERLAYS ──
+  overlayFull:     { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", zIndex: 999 },
   overlayFullDark: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "#000", justifyContent: "center", alignItems: "center", zIndex: 999 },
-  menuCard:      { backgroundColor: "#1c1c2e", borderRadius: 20, padding: 20, width: 280 },
-  menuTitle:     { color: "white", fontSize: 16, fontWeight: "bold", marginBottom: 12, textAlign: "center" },
-  menuItem:      { flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#2a2a3e" },
+
+  // ── MENU ──
+  menuCard:      { backgroundColor: "#FFFFFF", borderRadius: 24, padding: 20, width: 290, elevation: 10 },
+  menuTitle:     { color: "#0B2046", fontSize: 16, fontWeight: "900", marginBottom: 12, textAlign: "center" },
+  menuItem:      { flexDirection: "row", alignItems: "center", paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#F0F2F5" },
   menuItemIcon:  { fontSize: 20, marginRight: 12 },
-  menuItemText:  { color: "white", fontSize: 15 },
-  previewCard:    { backgroundColor: "#1c1c2e", borderRadius: 20, padding: 24, width: 340, alignItems: "center" },
-  previewTitle:   { color: "white", fontSize: 18, fontWeight: "bold", marginBottom: 16 },
-  previewImage:   { width: 280, height: 280, borderRadius: 12, marginBottom: 20 },
+  menuItemText:  { color: "#0B2046", fontSize: 15, fontWeight: "600" },
+
+  // ── PREVIEW ──
+  previewCard:    { backgroundColor: "#FFFFFF", borderRadius: 24, padding: 24, width: 340, alignItems: "center", elevation: 10 },
+  previewTitle:   { color: "#0B2046", fontSize: 18, fontWeight: "900", marginBottom: 16 },
+  previewImage:   { width: 280, height: 280, borderRadius: 16, marginBottom: 20 },
   previewButtons: { flexDirection: "row", gap: 15 },
-  previewBtn:     { paddingHorizontal: 28, paddingVertical: 12, borderRadius: 25 },
-  cancelBtn:      { backgroundColor: "#444" },
+  previewBtn:     { paddingHorizontal: 28, paddingVertical: 13, borderRadius: 25 },
+  cancelBtn:      { backgroundColor: "#F0F2F5" },
   sendBtn:        { backgroundColor: "#E91E63" },
-  cancelBtnText:  { color: "white", fontWeight: "bold" },
-  sendBtnText:    { color: "white", fontWeight: "bold" },
-  closeBtn:      { position: "absolute", top: Platform.OS === "ios" ? 50 : 30, right: 20, zIndex: 10, backgroundColor: "rgba(255,255,255,0.2)", width: 40, height: 40, borderRadius: 20, justifyContent: "center", alignItems: "center" },
+  cancelBtnText:  { color: "#0B2046", fontWeight: "700" },
+  sendBtnText:    { color: "white", fontWeight: "700" },
+
+  // ── IMAGEM FULL ──
+  closeBtn:      { position: "absolute", top: Platform.OS === "ios" ? 50 : 30, right: 20, zIndex: 10, backgroundColor: "rgba(255,255,255,0.25)", width: 40, height: 40, borderRadius: 20, justifyContent: "center", alignItems: "center" },
   closeBtnText:  { color: "white", fontSize: 20, fontWeight: "bold" },
   fullImage:     { width: SCREEN_WIDTH, height: SCREEN_HEIGHT * 0.8 },
+
+  // ── SEPARADOR DE DATA ──
+  separadorDataWrap:  { flexDirection: "row", alignItems: "center", marginVertical: 16, paddingHorizontal: 16 },
+  separadorDataLinha: { flex: 1, height: 1, backgroundColor: "#DDEAEF" },
+  separadorDataTxt:   { color: "#94A3B8", fontSize: 11, fontWeight: "700", marginHorizontal: 10, letterSpacing: 0.5, backgroundColor: "#F0F2F5", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
 });

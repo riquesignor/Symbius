@@ -258,11 +258,10 @@ export default function Index({ navigation, route }: any) {
         <TabItem icon="home"                  label="Início"  ativo onPress={() => {}} />
         <TabItem icon="calendar-outline"      label="Agenda"        onPress={() => navigation.navigate('Calendario', { uid: userData?.uid, tipo: userData?.tipo, turma: userData?.turma })} />
         <View style={styles.centerTab}>
-          <TouchableOpacity style={styles.centerBtn} onPress={() => navigation.navigate('Match')}>
+          <TouchableOpacity style={styles.centerBtn} onPress={() => navigation.navigate('Match', { uid: userData?.uid })}>
             <Ionicons name="heart" size={22} color={CORES.rosa} />
           </TouchableOpacity>
         </View>
-        <TabItem icon="chatbubbles-outline"   label="Chat"          onPress={() => navigation.navigate('Hall', { uid: userData?.uid })} />
         <TabItem icon="search-outline"        label="Achados"       onPress={() => navigation.navigate('AchadosPerdidos', { uid: userData?.uid, tipo: userData?.tipo })} />
         <TabItem icon="ellipsis-horizontal"   label="Mais"          onPress={() => setMiniMenuAberto(true)} />
       </View>
