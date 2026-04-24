@@ -8,24 +8,24 @@ import { db, auth } from './src/config/firebaseConfig';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import Cadastro from './src/screens/Cadastro';
-import Login from './src/screens/Login';
-import Index from './src/screens/Index';
-import Perfil from './src/screens/Perfil';
-import PerfilPublico from './src/screens/PerfilPublico';
-import EditorPost from './src/screens/EditorPost';
+import Cadastro        from './src/screens/Cadastro';
+import Login           from './src/screens/Login';
+import Index           from './src/screens/Index';
+import Perfil          from './src/screens/Perfil';
+import PerfilPublico   from './src/screens/PerfilPublico';
+import EditorPost      from './src/screens/EditorPost';
 import AchadosPerdidos from './src/screens/AchadosPerdidos';
-import Chat from 'src/screens/Chat';
-import Homechat from 'src/screens/Homechat';
-import RedefinirSenha from 'src/screens/RecuperarSenha';
-import Calendario from 'src/screens/Calendario';
-import Admin from 'src/screens/Admin';
+import Chat            from './src/screens/Chat';
+import Homechat        from './src/screens/Homechat';
+import RedefinirSenha  from './src/screens/RecuperarSenha';
+import Calendario      from './src/screens/Calendario';
+import Admin           from './src/screens/Admin';
 
 const Stack = createStackNavigator();
 
 export default function App() {
   const [initialRoute, setInitialRoute] = useState<string | null>(null);
-  const [initialUid, setInitialUid] = useState<string | null>(null);
+  const [initialUid,   setInitialUid]   = useState<string | null>(null);
 
   useEffect(() => {
     // ✅ Verifica sessão salva no AsyncStorage
@@ -52,7 +52,7 @@ export default function App() {
         try {
           await user.reload();
           if (user.emailVerified) {
-            const docRef = doc(db, 'usuarios', user.uid);
+            const docRef  = doc(db, 'usuarios', user.uid);
             const docSnap = await getDoc(docRef);
             if (docSnap.exists() && docSnap.data().status === 0) {
               await updateDoc(docRef, { status: 1 });
@@ -84,22 +84,22 @@ export default function App() {
         initialRouteName={initialRoute}
         screenOptions={{ headerShown: false }}
       >
-        <Stack.Screen name="Login" component={Login} />
-        <Stack.Screen name="Cadastro" component={Cadastro} />
-        <Stack.Screen name="RedefinirSenha" component={RedefinirSenha} />
-        <Stack.Screen 
-          name="Index" 
-          component={Index} 
-          initialParams={initialUid ? { uid: initialUid } : undefined} 
+        <Stack.Screen name="Login"           component={Login} />
+        <Stack.Screen name="Cadastro"        component={Cadastro} />
+        <Stack.Screen name="RedefinirSenha"  component={RedefinirSenha} />
+        <Stack.Screen
+          name="Index"
+          component={Index}
+          initialParams={initialUid ? { uid: initialUid } : undefined}
         />
-        <Stack.Screen name="Perfil" component={Perfil} />
-        <Stack.Screen name="PerfilPublico" component={PerfilPublico} />
-        <Stack.Screen name="EditorPost" component={EditorPost} />
-        <Stack.Screen name="Chat" component={Chat} />
+        <Stack.Screen name="Perfil"          component={Perfil} />
+        <Stack.Screen name="PerfilPublico"   component={PerfilPublico} />
+        <Stack.Screen name="EditorPost"      component={EditorPost} />
+        <Stack.Screen name="Chat"            component={Chat} />
         <Stack.Screen name="AchadosPerdidos" component={AchadosPerdidos} />
-        <Stack.Screen name="Hall" component={Homechat} />
-        <Stack.Screen name="Calendario" component={Calendario} />
-        <Stack.Screen name="Admin" component={Admin} />
+        <Stack.Screen name="Hall"            component={Homechat} />
+        <Stack.Screen name="Calendario"      component={Calendario} />
+        <Stack.Screen name="Admin"           component={Admin} />
       </Stack.Navigator>
     </NavigationContainer>
   );
