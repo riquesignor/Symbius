@@ -20,6 +20,7 @@ import Homechat        from './src/screens/Homechat';
 import RedefinirSenha  from './src/screens/RecuperarSenha';
 import Calendario      from './src/screens/Calendario';
 import Admin           from './src/screens/Admin';
+import Match           from './src/screens/Match';
 
 const Stack = createStackNavigator();
 
@@ -100,6 +101,7 @@ export default function App() {
         <Stack.Screen name="Hall"            component={Homechat} />
         <Stack.Screen name="Calendario"      component={Calendario} />
         <Stack.Screen name="Admin"           component={Admin} />
+        <Stack.Screen name="Match" component={Match} />
       </Stack.Navigator>
     </NavigationContainer>
   );

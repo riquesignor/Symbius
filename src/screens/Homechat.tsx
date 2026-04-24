@@ -57,7 +57,7 @@ export default function Homechat({ navigation, route }: any) {
     carregar();
   }, [meuUid]);
 
-  // ✅ Busca foto atualizada do Firestore para cada membro das conversas
+  // ✅ Busca foto e valida se usuário ainda é ativo (tem RA + status 1)
   const atualizarFotos = async (lista: any[]) => {
     const uidsParaBuscar = new Set<string>();
     lista.forEach(c => {
@@ -71,9 +71,15 @@ export default function Homechat({ navigation, route }: any) {
         try {
           const snap = await getDoc(doc(db, 'usuarios', uid));
           if (snap.exists()) {
-            novoCache[uid] = snap.data().foto || '';
+            const data = snap.data();
+            // Considera deletado/inativo se: doc não existe, sem RA, ou status != 1
+            const ativo = data.ra && String(data.ra).trim() !== '' && data.status === 1;
+            if (ativo) {
+              novoCache[uid] = data.foto || '';
+            } else {
+              novoCache[uid] = '__deletado__';
+            }
           } else {
-            // ✅ Usuário deletado — marca com null para filtrar depois
             novoCache[uid] = '__deletado__';
           }
         } catch {}
@@ -203,9 +209,16 @@ export default function Homechat({ navigation, route }: any) {
 
         <View style={styles.cardBody}>
           <View style={styles.cardTop}>
-            <Text style={[styles.cardNome, naoLida && { color: CORES.rosa }]} numberOfLines={1}>
-              {outro?.nome || 'Usuário'}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginRight: 8 }}>
+              <Text style={[styles.cardNome, naoLida && { color: CORES.rosa }, { flex: 0, flexShrink: 1 }]} numberOfLines={1}>
+                {outro?.nome || 'Usuário'}
+              </Text>
+              {item.isMatch && (
+                <View style={styles.matchPill}>
+                  <Text style={styles.matchPillTxt}>🤝 Match</Text>
+                </View>
+              )}
+            </View>
             <Text style={styles.cardTempo}>{formatarTempo(item.data_postagem)}</Text>
           </View>
           <View style={styles.cardBottom}>
@@ -358,4 +371,6 @@ const styles = StyleSheet.create({
   cardMsg:      { fontSize: 13, color: CORES.textoSecundario, flex: 1, marginRight: 8 },
   badgeNaoLida: { width: 10, height: 10, backgroundColor: CORES.rosa, borderRadius: 5 },
   txtVazio:     { color: CORES.textoSecundario, fontSize: 15, fontWeight: '600', textAlign: 'center' },
+  matchPill:    { backgroundColor: '#FFF0F5', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2, borderWidth: 1, borderColor: CORES.rosa + '40' },
+  matchPillTxt: { fontSize: 10, fontWeight: '800', color: CORES.rosa },
 });
