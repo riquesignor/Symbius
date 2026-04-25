@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
+    "@expo-google-fonts/poppins": "^0.4.1",
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-masked-view/masked-view": "^0.3.2",
@@ -19,6 +20,7 @@
     "date-fns": "^4.1.0",
     "expo": "~55.0.8",
     "expo-constants": "^55.0.15",
+    "expo-font": "~55.0.6",
     "expo-image-picker": "~55.0.13",
     "expo-status-bar": "~55.0.4",
     "firebase": "^12.11.0",

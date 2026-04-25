@@ -8,6 +8,15 @@ import { db, auth } from './src/config/firebaseConfig';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import {
+  useFonts,
+  Poppins_400Regular,
+  Poppins_500Medium,
+  Poppins_600SemiBold,
+  Poppins_700Bold,
+  Poppins_800ExtraBold,
+} from '@expo-google-fonts/poppins';
+
 import Cadastro        from './src/screens/Cadastro';
 import Login           from './src/screens/Login';
 import Index           from './src/screens/Index';
@@ -27,6 +36,14 @@ const Stack = createStackNavigator();
 export default function App() {
   const [initialRoute, setInitialRoute] = useState<string | null>(null);
   const [initialUid,   setInitialUid]   = useState<string | null>(null);
+
+  const [fontsLoaded] = useFonts({
+  Poppins_400Regular,
+  Poppins_500Medium,
+  Poppins_600SemiBold,
+  Poppins_700Bold,
+  Poppins_800ExtraBold,
+});
 
   useEffect(() => {
     // ✅ Verifica se existe sessão salva no AsyncStorage ("lembrar login")
@@ -84,6 +101,14 @@ export default function App() {
       </View>
     );
   }
+
+  if (!fontsLoaded) {
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF' }}>
+      <ActivityIndicator size="large" color="#E91E63" />
+    </View>
+  );
+}
 
   return (
     <NavigationContainer>
