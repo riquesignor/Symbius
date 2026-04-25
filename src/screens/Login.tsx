@@ -63,7 +63,7 @@ export default function Login({ navigation }: any) {
       await AsyncStorage.setItem('uid', uid);
       navigation.reset({
         index: 0,
-        routes: [{ name: userData.tipo === 'Administrador' ? 'Admin' : 'Index', params: { uid } }],
+        routes: [{ name: 'Index', params: { uid } }],
       });
     } catch (err: any) {
       setMsgAviso('Erro ao conectar. Tente novamente.');

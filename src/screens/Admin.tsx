@@ -9,6 +9,7 @@ import {
   collection, query, orderBy, getDocs, updateDoc, doc
 } from 'firebase/firestore';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
 
@@ -70,7 +71,16 @@ export default function Admin({ navigation, route }: any) {
   const [cartaoStatus,    setCartaoStatus]    = useState(0);
   const [salvandoCartao,  setSalvandoCartao]  = useState(false);
 
-  useEffect(() => { carregar(); }, []);
+  useEffect(() => {
+    if (!uid) {
+      (async () => {
+        await AsyncStorage.removeItem('uid');
+        navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+      })();
+      return;
+    }
+    carregar();
+  }, [uid]);
 
   const carregar = async () => {
     setLoading(true);

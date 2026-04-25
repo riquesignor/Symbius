@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
   SafeAreaView, StatusBar, Modal, TextInput, Alert,
@@ -16,16 +16,17 @@ const MESES = [
   'Janeiro','Fevereiro','Março','Abril','Maio','Junho',
   'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'
 ];
+const MESES_ABREV = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
 const DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
 const TIPOS_EVENTO = ['Prova','Feriado','Aviso','Evento'];
 
-const TIPO_CONFIG: Record<string, { color: string; bg: string }> = {
-  lembrete: { color: '#2c3e50', bg: '#EBF0F5' },
-  Prova:    { color: '#e74c3c', bg: '#FDECEA' },
-  Feriado:  { color: '#27ae60', bg: '#E8F8EE' },
-  Aviso:    { color: '#e67e22', bg: '#FEF3E7' },
-  Evento:   { color: '#8e44ad', bg: '#F3E8FA' },
+const TIPO_CONFIG: Record<string, { color: string; bg: string; icon: any }> = {
+  lembrete: { color: '#2c3e50', bg: '#EBF0F5', icon: 'bookmark'         },
+  Prova:    { color: '#e74c3c', bg: '#FDECEA', icon: 'document-text'    },
+  Feriado:  { color: '#27ae60', bg: '#E8F8EE', icon: 'sunny'            },
+  Aviso:    { color: '#e67e22', bg: '#FEF3E7', icon: 'megaphone'        },
+  Evento:   { color: '#8e44ad', bg: '#F3E8FA', icon: 'sparkles'         },
 };
 
 const CORES = {
@@ -50,6 +51,22 @@ const extrairSerie = (turma: string) => {
 const capitalizarPrimeira = (s: string) =>
   s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 
+// ✅ Calcula diferença em dias
+const calcularDiasRestantes = (dataStr: string): { dias: number; texto: string; cor: string } => {
+  const [a, m, d] = dataStr.split('-').map(Number);
+  const alvo = new Date(a, m - 1, d);
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  alvo.setHours(0, 0, 0, 0);
+  const diff = Math.round((alvo.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diff === 0)  return { dias: 0,    texto: 'É HOJE',           cor: '#e74c3c' };
+  if (diff === 1)  return { dias: 1,    texto: 'É AMANHÃ',         cor: '#e67e22' };
+  if (diff === -1) return { dias: -1,   texto: 'FOI ONTEM',        cor: CORES.textoSec };
+  if (diff > 0)    return { dias: diff, texto: `FALTAM ${diff} DIAS`, cor: CORES.azulEscuro };
+  return { dias: diff, texto: `HÁ ${Math.abs(diff)} DIAS`, cor: CORES.textoSec };
+};
+
 // ── Componente principal ────────────────────────────────────────
 export default function Calendario({ navigation, route }: any) {
   const uid     = route?.params?.uid;
@@ -69,10 +86,15 @@ export default function Calendario({ navigation, route }: any) {
   const [loading,      setLoading]      = useState(true);
 
   // Modais
-  const [modalDia,       setModalDia]       = useState(false);
-  const [modalAdminForm, setModalAdminForm] = useState(false);
-  const [modalLegenda,   setModalLegenda]   = useState(false);
-  const [diaSelecionado, setDiaSelecionado] = useState('');
+  const [modalDia,        setModalDia]        = useState(false);
+  const [modalAdminForm,  setModalAdminForm]  = useState(false);
+  const [modalLegenda,    setModalLegenda]    = useState(false);
+  const [modalDetalhe,    setModalDetalhe]    = useState(false);
+  const [eventoDetalhe,   setEventoDetalhe]   = useState<any>(null);
+  const [diaSelecionado,  setDiaSelecionado]  = useState('');
+
+  // ✅ Filtro por tipo
+  const [filtroTipo, setFiltroTipo] = useState<string>('todos');
 
   // Form lembrete
   const [lembreTitulo, setLembreTitulo] = useState('');
@@ -89,7 +111,6 @@ export default function Calendario({ navigation, route }: any) {
   const [modalTipoEvt, setModalTipoEvt] = useState(false);
   const [modalDataEvt, setModalDataEvt] = useState(false);
 
-  // ── Carregar dados ─────────────────────────────────────────────
   useEffect(() => { carregar(); }, []);
 
   const carregar = async () => {
@@ -139,6 +160,12 @@ export default function Calendario({ navigation, route }: any) {
       setAdminTodos(todos);
     } catch (e) { console.error('Erro eventos_admin:', e); }
   };
+
+  // ✅ Lista filtrada com useMemo (otimizado)
+  const eventosFiltrados = useMemo(() => {
+    if (filtroTipo === 'todos') return adminTodos;
+    return adminTodos.filter(ev => ev.tipo === filtroTipo);
+  }, [adminTodos, filtroTipo]);
 
   // ── Ações lembrete ─────────────────────────────────────────────
   const salvarLembrete = async () => {
@@ -217,7 +244,7 @@ export default function Calendario({ navigation, route }: any) {
     finally  { setSalvandoAdm(false); }
   };
 
-  const excluirEventoAdmin = async (id: string, dataStr: string) => {
+  const excluirEventoAdmin = (id: string, dataStr: string) => {
     Alert.alert('Excluir', 'Excluir este evento para todos os alunos?', [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Excluir', style: 'destructive', onPress: async () => {
@@ -230,6 +257,7 @@ export default function Calendario({ navigation, route }: any) {
             return nova;
           });
           setAdminTodos(prev => prev.filter(e => e.id !== id));
+          setModalDetalhe(false);
         }
       }
     ]);
@@ -288,16 +316,59 @@ export default function Calendario({ navigation, route }: any) {
   const evsAdmDia: any[] = eventosAdmin.get(diaSelecionado) || [];
   const lembDia:   any[] = lembretes.get(diaSelecionado)    || [];
 
-  // ── Seletor de data (simples: ano/mes/dia) ─────────────────────
+  // Seletor de data
   const [selAno, setSelAno] = useState(ano);
   const [selMes, setSelMes] = useState(mes + 1);
   const [selDia, setSelDia] = useState(1);
-
   const totalDiasSelMes = new Date(selAno, selMes, 0).getDate();
-
   const confirmarData = () => {
     setAdminData(formatarDataStr(selAno, selMes, selDia));
     setModalDataEvt(false);
+  };
+
+  // ✅ Renderiza um card médio na lista
+  const renderEventoCard = ({ item }: any) => {
+    const config = TIPO_CONFIG[item.tipo] || TIPO_CONFIG.Evento;
+    const [a, m, d] = item.data.split('-').map(Number);
+    const contagem = calcularDiasRestantes(item.data);
+
+    return (
+      <TouchableOpacity
+        style={styles.evCard}
+        onPress={() => { setEventoDetalhe(item); setModalDetalhe(true); }}
+        activeOpacity={0.85}
+      >
+        {/* Bloco da data */}
+        <View style={[styles.evDataBox, { backgroundColor: config.bg }]}>
+          <Text style={[styles.evDataDia, { color: config.color }]}>{d}</Text>
+          <Text style={[styles.evDataMes, { color: config.color }]}>{MESES_ABREV[m - 1]}</Text>
+        </View>
+
+        {/* Conteúdo */}
+        <View style={styles.evConteudo}>
+          <View style={styles.evTopo}>
+            <View style={[styles.evIconWrap, { backgroundColor: config.bg }]}>
+              <Ionicons name={config.icon} size={13} color={config.color} />
+            </View>
+            <Text style={[styles.evTipoLabel, { color: config.color }]}>{item.tipo.toUpperCase()}</Text>
+            <View style={[styles.evChipMini, { backgroundColor: contagem.cor + '15' }]}>
+              <Text style={[styles.evChipMiniText, { color: contagem.cor }]}>
+                {contagem.texto}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.evTitulo} numberOfLines={1}>{item.titulo}</Text>
+
+          <View style={styles.evMetaRow}>
+            <Ionicons name="people-outline" size={11} color={CORES.textoSec} />
+            <Text style={styles.evMeta}>{(item.series || []).join(' · ')}</Text>
+          </View>
+        </View>
+
+        <Ionicons name="chevron-forward" size={18} color={CORES.cinzaClaro} />
+      </TouchableOpacity>
+    );
   };
 
   if (loading) return (
@@ -362,7 +433,6 @@ export default function Calendario({ navigation, route }: any) {
           </TouchableOpacity>
         </View>
 
-        {/* BOTÃO HOJE */}
         <TouchableOpacity
           style={styles.btnHoje}
           onPress={() => { setMes(hoje.getMonth()); setAno(hoje.getFullYear()); }}
@@ -382,30 +452,166 @@ export default function Calendario({ navigation, route }: any) {
           {celulas.map((dia, idx) => renderCelula(dia, idx))}
         </View>
 
-        {/* LISTA EVENTOS ADMIN (só admin vê todos) */}
-        {isAdmin && adminTodos.length > 0 && (
-          <View style={styles.secaoAdmin}>
-            <Text style={styles.secaoAdminTitulo}>EVENTOS CADASTRADOS</Text>
-            {adminTodos.map(ev => (
-              <View key={ev.id} style={styles.adminEvCard}>
-                <View style={styles.adminEvTop}>
-                  <View style={[styles.tipoBadge, { backgroundColor: TIPO_CONFIG[ev.tipo]?.bg }]}>
-                    <Text style={[styles.tipoBadgeText, { color: TIPO_CONFIG[ev.tipo]?.color }]}>{ev.tipo}</Text>
-                  </View>
-                  <Text style={styles.adminEvData}>
-                    {ev.data?.split('-').reverse().join('/')}
-                  </Text>
-                  <TouchableOpacity onPress={() => excluirEventoAdmin(ev.id, ev.data)} style={styles.btnDel}>
-                    <Ionicons name="close" size={14} color={CORES.textoSec} />
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.adminEvTitulo}>{ev.titulo}</Text>
-                <Text style={styles.adminEvSeries}>{(ev.series || []).join(' · ')}</Text>
+        {/* ✅ LISTA EVENTOS - REDESENHADA */}
+        {adminTodos.length > 0 && (
+          <View style={styles.secaoEventos}>
+            <View style={styles.secaoHeader}>
+              <View>
+                <Text style={styles.secaoEyebrow}>
+                  {isAdmin ? 'GERENCIAR' : 'PRÓXIMOS'}
+                </Text>
+                <Text style={styles.secaoTitulo}>
+                  {isAdmin ? 'Eventos Cadastrados' : 'Eventos da sua turma'}
+                </Text>
               </View>
-            ))}
+              <View style={styles.secaoCount}>
+                <Text style={styles.secaoCountText}>{eventosFiltrados.length}</Text>
+              </View>
+            </View>
+
+            {/* CHIPS DE FILTRO */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipsRow}
+            >
+              <TouchableOpacity
+                style={[styles.chip, filtroTipo === 'todos' && styles.chipAtivo]}
+                onPress={() => setFiltroTipo('todos')}
+              >
+                <Text style={[styles.chipText, filtroTipo === 'todos' && styles.chipTextAtivo]}>
+                  Todos
+                </Text>
+              </TouchableOpacity>
+              {TIPOS_EVENTO.map(t => {
+                const config = TIPO_CONFIG[t];
+                const ativo = filtroTipo === t;
+                return (
+                  <TouchableOpacity
+                    key={t}
+                    style={[
+                      styles.chip,
+                      ativo && { backgroundColor: config.color, borderColor: config.color }
+                    ]}
+                    onPress={() => setFiltroTipo(t)}
+                  >
+                    <Ionicons
+                      name={config.icon}
+                      size={12}
+                      color={ativo ? CORES.branco : config.color}
+                    />
+                    <Text style={[
+                      styles.chipText,
+                      ativo && styles.chipTextAtivo,
+                      !ativo && { color: config.color }
+                    ]}>
+                      {t}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* FlatList otimizada */}
+            <FlatList
+              data={eventosFiltrados}
+              keyExtractor={item => item.id}
+              renderItem={renderEventoCard}
+              scrollEnabled={false}
+              ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+              ListEmptyComponent={
+                <View style={styles.listaVazia}>
+                  <Ionicons name="calendar-outline" size={36} color={CORES.cinzaClaro} />
+                  <Text style={styles.listaVaziaText}>Nenhum evento {filtroTipo !== 'todos' ? `do tipo ${filtroTipo}` : ''}.</Text>
+                </View>
+              }
+              contentContainerStyle={{ paddingTop: 4 }}
+            />
           </View>
         )}
       </ScrollView>
+
+      {/* ══════════════════════════════════════════════════════════
+          MODAL DETALHE DO EVENTO
+      ══════════════════════════════════════════════════════════ */}
+      <Modal visible={modalDetalhe} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+
+            {eventoDetalhe && (() => {
+              const config   = TIPO_CONFIG[eventoDetalhe.tipo] || TIPO_CONFIG.Evento;
+              const [a,m,d]  = eventoDetalhe.data.split('-').map(Number);
+              const obj      = new Date(a, m - 1, d);
+              const diaSem   = DIAS_SEMANA[obj.getDay()];
+              const contagem = calcularDiasRestantes(eventoDetalhe.data);
+
+              return (
+                <ScrollView showsVerticalScrollIndicator={false}>
+
+                  {/* Hero card colorido */}
+                  <View style={[styles.detHero, { backgroundColor: config.bg }]}>
+                    <View style={[styles.detHeroIcon, { backgroundColor: config.color }]}>
+                      <Ionicons name={config.icon} size={28} color={CORES.branco} />
+                    </View>
+                    <Text style={[styles.detHeroTipo, { color: config.color }]}>
+                      {eventoDetalhe.tipo.toUpperCase()}
+                    </Text>
+                    <Text style={styles.detHeroTitulo}>{eventoDetalhe.titulo}</Text>
+
+                    <View style={[styles.detContagem, { backgroundColor: contagem.cor }]}>
+                      <Ionicons name="time" size={13} color={CORES.branco} />
+                      <Text style={styles.detContagemText}>{contagem.texto}</Text>
+                    </View>
+                  </View>
+
+                  {/* Cards de informação */}
+                  <View style={styles.detInfoRow}>
+                    <View style={styles.detInfoBox}>
+                      <Ionicons name="calendar" size={16} color={config.color} />
+                      <Text style={styles.detInfoLabel}>DATA</Text>
+                      <Text style={styles.detInfoValor}>{d} de {MESES[m-1]}</Text>
+                      <Text style={styles.detInfoSub}>{diaSem}, {a}</Text>
+                    </View>
+                    <View style={styles.detInfoBox}>
+                      <Ionicons name="people" size={16} color={config.color} />
+                      <Text style={styles.detInfoLabel}>SÉRIES</Text>
+                      <Text style={styles.detInfoValor}>{(eventoDetalhe.series || []).length}</Text>
+                      <Text style={styles.detInfoSub}>{(eventoDetalhe.series || []).join(' · ')}</Text>
+                    </View>
+                  </View>
+
+                  {/* Descrição */}
+                  {eventoDetalhe.descricao ? (
+                    <View style={styles.detDescBox}>
+                      <Text style={styles.detDescLabel}>DESCRIÇÃO</Text>
+                      <Text style={styles.detDescTexto}>{eventoDetalhe.descricao}</Text>
+                    </View>
+                  ) : null}
+
+                  {/* Ações Admin */}
+                  {isAdmin && (
+                    <TouchableOpacity
+                      style={styles.detBtnExcluir}
+                      onPress={() => excluirEventoAdmin(eventoDetalhe.id, eventoDetalhe.data)}
+                    >
+                      <Ionicons name="trash-outline" size={16} color="#e74c3c" />
+                      <Text style={styles.detBtnExcluirText}>Excluir evento</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.btnFecharModal}
+                    onPress={() => setModalDetalhe(false)}
+                  >
+                    <Text style={styles.btnFecharModalText}>Fechar</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              );
+            })()}
+          </View>
+        </View>
+      </Modal>
 
       {/* ══════════════════════════════════════════════════════════
           MODAL DIA
@@ -415,7 +621,6 @@ export default function Calendario({ navigation, route }: any) {
           <View style={styles.modalSheet}>
             <View style={styles.modalHandle} />
 
-            {/* Cabeçalho dia */}
             <View style={styles.diaHeader}>
               <Text style={styles.diaSemLabel}>{diaSemNome}</Text>
               <Text style={styles.diaTituloData}>{diaNum} de {mesNomeDia}, {anoN}</Text>
@@ -423,14 +628,17 @@ export default function Calendario({ navigation, route }: any) {
 
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: '80%' }}>
 
-              {/* Eventos admin */}
               {evsAdmDia.length > 0 && (
                 <View style={styles.diaBloco}>
                   <Text style={styles.diaBlocoTitulo}>
                     <Ionicons name="school-outline" size={12} /> AGENDA ESCOLAR
                   </Text>
                   {evsAdmDia.map(ev => (
-                    <View key={ev.id} style={[styles.eventoItem, { borderLeftColor: TIPO_CONFIG[ev.tipo]?.color }]}>
+                    <TouchableOpacity
+                      key={ev.id}
+                      style={[styles.eventoItem, { borderLeftColor: TIPO_CONFIG[ev.tipo]?.color }]}
+                      onPress={() => { setEventoDetalhe(ev); setModalDia(false); setTimeout(() => setModalDetalhe(true), 250); }}
+                    >
                       <View style={styles.eventoTop}>
                         <View style={[styles.tipoBadge, { backgroundColor: TIPO_CONFIG[ev.tipo]?.bg }]}>
                           <Text style={[styles.tipoBadgeText, { color: TIPO_CONFIG[ev.tipo]?.color }]}>{ev.tipo}</Text>
@@ -441,12 +649,11 @@ export default function Calendario({ navigation, route }: any) {
                       <Text style={styles.eventoMeta}>
                         Séries: {(ev.series || []).join(', ')}
                       </Text>
-                    </View>
+                    </TouchableOpacity>
                   ))}
                 </View>
               )}
 
-              {/* Lembretes */}
               <View style={styles.diaBloco}>
                 <Text style={styles.diaBlocoTitulo}>
                   <Ionicons name="bookmark-outline" size={12} /> MEUS LEMBRETES
@@ -470,7 +677,6 @@ export default function Calendario({ navigation, route }: any) {
                 }
               </View>
 
-              {/* Form lembrete */}
               <View style={[styles.diaBloco, { borderTopWidth: 1, borderTopColor: CORES.cinzaClaro, paddingTop: 16 }]}>
                 <Text style={styles.diaBlocoTitulo}>
                   <Ionicons name="add-circle-outline" size={12} /> ADICIONAR LEMBRETE
@@ -506,9 +712,7 @@ export default function Calendario({ navigation, route }: any) {
         </View>
       </Modal>
 
-      {/* ══════════════════════════════════════════════════════════
-          MODAL ADMIN — NOVO EVENTO
-      ══════════════════════════════════════════════════════════ */}
+      {/* MODAL ADMIN FORM (igual ao original) */}
       <Modal visible={modalAdminForm} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end' }}>
@@ -601,7 +805,6 @@ export default function Calendario({ navigation, route }: any) {
         </View>
       </Modal>
 
-      {/* ── SELETOR TIPO EVENTO ── */}
       <Modal visible={modalTipoEvt} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
@@ -622,14 +825,12 @@ export default function Calendario({ navigation, route }: any) {
         </View>
       </Modal>
 
-      {/* ── SELETOR DATA ── */}
       <Modal visible={modalDataEvt} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitulo}>Selecionar Data</Text>
 
-            {/* Ano */}
             <View style={styles.dataPickerRow}>
               <TouchableOpacity onPress={() => setSelAno(a => a - 1)} style={styles.btnNavMes}>
                 <Ionicons name="chevron-back" size={16} color={CORES.preto} />
@@ -640,7 +841,6 @@ export default function Calendario({ navigation, route }: any) {
               </TouchableOpacity>
             </View>
 
-            {/* Mês */}
             <View style={styles.dataPickerRow}>
               <TouchableOpacity onPress={() => setSelMes(m => m === 1 ? 12 : m - 1)} style={styles.btnNavMes}>
                 <Ionicons name="chevron-back" size={16} color={CORES.preto} />
@@ -651,7 +851,6 @@ export default function Calendario({ navigation, route }: any) {
               </TouchableOpacity>
             </View>
 
-            {/* Dia */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 12 }}>
               {Array.from({ length: totalDiasSelMes }, (_, i) => i + 1).map(d => (
                 <TouchableOpacity
@@ -671,7 +870,6 @@ export default function Calendario({ navigation, route }: any) {
         </View>
       </Modal>
 
-      {/* ── MODAL LEGENDA ── */}
       <Modal visible={modalLegenda} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
@@ -736,17 +934,58 @@ const styles = StyleSheet.create({
   dotsRow:           { flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginTop: 2 },
   dot:               { width: 6, height: 6, borderRadius: 3 },
 
-  // SEÇÃO ADMIN
-  secaoAdmin:        { margin: 16, backgroundColor: CORES.branco, borderRadius: 16, padding: 16, elevation: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4 },
-  secaoAdminTitulo:  { fontSize: 11, fontWeight: '800', color: CORES.textoSec, letterSpacing: 1, marginBottom: 12 },
-  adminEvCard:       { marginBottom: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
-  adminEvTop:        { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  adminEvData:       { fontSize: 11, color: CORES.textoSec, marginLeft: 'auto' as any },
-  btnDel:            { padding: 4 },
-  adminEvTitulo:     { fontSize: 14, fontWeight: '700', color: CORES.preto },
-  adminEvSeries:     { fontSize: 11, color: CORES.textoSec, marginTop: 2 },
+  // ✅ SEÇÃO EVENTOS REDESENHADA
+  secaoEventos:      { marginHorizontal: 16, marginTop: 20, backgroundColor: CORES.branco, borderRadius: 20, padding: 18, elevation: 3, shadowColor: CORES.azulEscuro, shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
+  secaoHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  secaoEyebrow:      { fontSize: 10, fontWeight: '800', color: CORES.rosa, letterSpacing: 1.2, marginBottom: 2 },
+  secaoTitulo:       { fontSize: 18, fontWeight: '900', color: CORES.preto, letterSpacing: -0.3 },
+  secaoCount:        { backgroundColor: CORES.azulEscuro, minWidth: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 10 },
+  secaoCountText:    { color: CORES.branco, fontSize: 13, fontWeight: '900' },
 
-  // MODAIS
+  // CHIPS
+  chipsRow:          { gap: 8, paddingVertical: 10, paddingHorizontal: 2, flexDirection: 'row' },
+  chip:              { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: CORES.fundo, borderWidth: 1, borderColor: CORES.cinzaClaro },
+  chipAtivo:         { backgroundColor: CORES.azulEscuro, borderColor: CORES.azulEscuro },
+  chipText:          { fontSize: 12, fontWeight: '700', color: CORES.textoSec },
+  chipTextAtivo:     { color: CORES.branco },
+
+  // ✅ CARD MÉDIO COM ÍCONE
+  evCard:            { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: CORES.branco, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: CORES.cinzaClaro },
+  evDataBox:         { width: 54, height: 60, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  evDataDia:         { fontSize: 22, fontWeight: '900', lineHeight: 26 },
+  evDataMes:         { fontSize: 10, fontWeight: '800', letterSpacing: 1, marginTop: 2 },
+  evConteudo:        { flex: 1, gap: 4 },
+  evTopo:            { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  evIconWrap:        { width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
+  evTipoLabel:       { fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
+  evChipMini:        { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8, marginLeft: 'auto' as any },
+  evChipMiniText:    { fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
+  evTitulo:          { fontSize: 14, fontWeight: '800', color: CORES.preto },
+  evMetaRow:         { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  evMeta:            { fontSize: 11, color: CORES.textoSec, fontWeight: '600' },
+
+  listaVazia:        { alignItems: 'center', paddingVertical: 30, gap: 8 },
+  listaVaziaText:    { fontSize: 13, color: CORES.textoSec, fontStyle: 'italic' },
+
+  // ✅ MODAL DETALHE
+  detHero:           { borderRadius: 20, padding: 24, alignItems: 'center', marginBottom: 16 },
+  detHeroIcon:       { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  detHeroTipo:       { fontSize: 11, fontWeight: '900', letterSpacing: 1.5, marginBottom: 6 },
+  detHeroTitulo:     { fontSize: 22, fontWeight: '900', color: CORES.preto, textAlign: 'center', letterSpacing: -0.3, lineHeight: 28 },
+  detContagem:       { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 14, marginTop: 14 },
+  detContagemText:   { color: CORES.branco, fontSize: 12, fontWeight: '900', letterSpacing: 0.8 },
+  detInfoRow:        { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  detInfoBox:        { flex: 1, backgroundColor: CORES.fundo, borderRadius: 16, padding: 14, gap: 4 },
+  detInfoLabel:      { fontSize: 9, fontWeight: '900', color: CORES.textoSec, letterSpacing: 1.2, marginTop: 4 },
+  detInfoValor:      { fontSize: 16, fontWeight: '900', color: CORES.preto },
+  detInfoSub:        { fontSize: 11, color: CORES.textoSec, fontWeight: '600' },
+  detDescBox:        { backgroundColor: CORES.fundo, borderRadius: 16, padding: 14, marginBottom: 12 },
+  detDescLabel:      { fontSize: 9, fontWeight: '900', color: CORES.textoSec, letterSpacing: 1.2, marginBottom: 6 },
+  detDescTexto:      { fontSize: 14, color: CORES.preto, lineHeight: 21, fontWeight: '500' },
+  detBtnExcluir:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, borderColor: '#FDECEA', backgroundColor: '#FFF5F5', marginBottom: 8 },
+  detBtnExcluirText: { color: '#e74c3c', fontWeight: '800', fontSize: 13 },
+
+  // MODAIS GERAL
   modalOverlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalSheet:        { backgroundColor: CORES.branco, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 36, maxHeight: '92%' },
   modalHandle:       { width: 40, height: 4, backgroundColor: CORES.cinzaClaro, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
@@ -765,6 +1004,7 @@ const styles = StyleSheet.create({
   eventoTitulo:      { fontSize: 13, fontWeight: '700', color: CORES.preto, flex: 1 },
   eventoDesc:        { fontSize: 12, color: CORES.textoSec, lineHeight: 18 },
   eventoMeta:        { fontSize: 11, color: CORES.textoSec, marginTop: 4 },
+  btnDel:            { padding: 4 },
 
   tipoBadge:         { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
   tipoBadgeText:     { fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
@@ -794,11 +1034,9 @@ const styles = StyleSheet.create({
   diaPickerBtnAtivo: { backgroundColor: CORES.azulEscuro, borderColor: CORES.azulEscuro },
   diaPickerText:     { fontSize: 13, fontWeight: '700', color: CORES.preto },
 
-  // SELETOR GENÉRICO
   seletorItem:       { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
   seletorItemText:   { flex: 1, fontSize: 15, fontWeight: '700', color: CORES.preto },
 
-  // LEGENDA
   legendaItem:       { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
   legendaText:       { fontSize: 14, fontWeight: '600', color: CORES.preto },
 
