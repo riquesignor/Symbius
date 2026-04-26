@@ -13,6 +13,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const IMG_MAX = 220;
@@ -199,6 +200,7 @@ const getDataChave = (data: any): string => {
 };
 
 export default function Chat({ route, navigation }: any) {
+  const insets = useSafeAreaInsets();
   const { outroUid, outroNome } = route.params || {};
 
   const socketRef    = useRef<WebSocket | null>(null);

@@ -11,6 +11,7 @@ import {
   deleteDoc, doc, serverTimestamp
 } from 'firebase/firestore';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ── Fonte Poppins (igual Index) ──
 const F = {
@@ -101,6 +102,7 @@ const FadeInView = ({ children, delay = 0, style }: any) => {
 
 // ── Componente principal ───────────────────────────────
 export default function Calendario({ navigation, route }: any) {
+  const insets = useSafeAreaInsets();
   const { width: winW, height: winH } = useWindowDimensions();
   const CEL_SIZE = Math.floor((winW - 32) / 7);
 
@@ -548,7 +550,7 @@ export default function Calendario({ navigation, route }: any) {
       )}
 
       {/* HEADER */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.btnVoltar}>
           <Ionicons name="arrow-back" size={20} color={CORES.branco} />
         </TouchableOpacity>
@@ -675,7 +677,8 @@ export default function Calendario({ navigation, route }: any) {
 
           {/* LISTA com scroll interno */}
           {eventosFiltrados.length === 0 ? (
-            <View style={styles.listaVazia}>
+            //<View style={[styles.header, { paddingTop: insets.top }]}>
+            <View style={[styles.listaVazia, { paddingTop: insets.top}]}>
               <Ionicons name="calendar-outline" size={32} color={CORES.cinzaClaro} />
               <Text style={styles.listaVaziaText}>
                 Nenhum evento{filtroTipo !== 'todos' ? ` do tipo ${filtroTipo}` : ''} em {MESES[mes]}.

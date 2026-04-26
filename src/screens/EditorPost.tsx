@@ -8,6 +8,7 @@ import { db } from '../config/firebaseConfig';
 import { doc, collection, addDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const CORES = {
   azulEscuro: '#0B2046',
@@ -29,6 +30,7 @@ const CATEGORIAS_OPCOES = [
 ];
 
 export default function EditorPost({ route, navigation }: any) {
+  const insets = useSafeAreaInsets();
   const { postId, categoria: categoriaParam, current } = route.params;
 
   const [titulo,     setTitulo]     = useState(current?.titulo    || '');
@@ -127,7 +129,7 @@ export default function EditorPost({ route, navigation }: any) {
     <SafeAreaView style={styles.container}>
 
       {/* HEADER */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingBottom: insets.bottom }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={CORES.azulEscuro} />
         </TouchableOpacity>

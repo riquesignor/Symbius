@@ -9,6 +9,9 @@ import { db } from '../config/firebaseConfig';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+
 
 const CORES = {
   azulEscuro: '#0B2046',
@@ -107,6 +110,7 @@ const ModalMaterias = ({ visible, titulo, cor, selecionadas, onToggle, onClose }
 
 // ─── Tela principal ───────────────────────────────────────
 export default function Perfil({ navigation, route }: any) {
+  const insets = useSafeAreaInsets();
   const [loading,      setLoading]      = useState(true);
   const [updating,     setUpdating]     = useState(false);
   const [userData,     setUserData]     = useState<any>(null);
@@ -207,8 +211,8 @@ export default function Perfil({ navigation, route }: any) {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 50 }}>
+    <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 50 }}>
 
         {/* BANNER */}
         <ImageBackground source={{ uri: banner }} style={styles.banner}>

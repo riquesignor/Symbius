@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { cadastrarNoJumo } from '../services/authService'; 
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Paleta JUMO
 const CORES = {
@@ -21,6 +22,7 @@ const CORES = {
 };
 
 export default function Cadastro({ navigation }: any) {
+  const insets = useSafeAreaInsets();
   const [nome,          setNome]          = useState('');
   const [email,         setEmail]         = useState('');
   const [senha,         setSenha]         = useState('');

@@ -21,7 +21,6 @@ import Cadastro        from './src/screens/Cadastro';
 import Login           from './src/screens/Login';
 import Index           from './src/screens/Index';
 import Perfil          from './src/screens/Perfil';
-import PerfilPublico   from './src/screens/PerfilPublico';
 import EditorPost      from './src/screens/EditorPost';
 import AchadosPerdidos from './src/screens/AchadosPerdidos';
 import Chat            from './src/screens/Chat';
@@ -30,7 +29,7 @@ import RedefinirSenha  from './src/screens/RecuperarSenha';
 import Calendario      from './src/screens/Calendario';
 import Admin           from './src/screens/Admin';
 import Match           from './src/screens/Match';
-
+import Configuracoes from './src/screens/Configuracoes';
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -125,7 +124,6 @@ export default function App() {
           initialParams={initialUid ? { uid: initialUid } : undefined}
         />
         <Stack.Screen name="Perfil"          component={Perfil} />
-        <Stack.Screen name="PerfilPublico"   component={PerfilPublico} />
         <Stack.Screen name="EditorPost"      component={EditorPost} />
         <Stack.Screen name="Chat"            component={Chat} />
         <Stack.Screen name="AchadosPerdidos" component={AchadosPerdidos} />
@@ -133,6 +131,8 @@ export default function App() {
         <Stack.Screen name="Calendario"      component={Calendario} />
         <Stack.Screen name="Admin"           component={Admin} />
         <Stack.Screen name="Match"           component={Match} />
+        <Stack.Screen name="Configuracoes" component={Configuracoes} />
+
       </Stack.Navigator>
     </NavigationContainer>
   );

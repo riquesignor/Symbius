@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 const DESTAQUE_W = (width - 18 * 2 - 10) / 2;
@@ -98,6 +99,7 @@ const extrairSerie = (turma: string) => {
 };
 
 export default function Index({ navigation, route }: any) {
+  const insets = useSafeAreaInsets();
   const [userData, setUserData]                 = useState<any>(null);
   const [posts, setPosts]                       = useState<any[]>([]);
   const [agendaItens, setAgendaItens]           = useState<any[]>([]);
@@ -346,43 +348,43 @@ export default function Index({ navigation, route }: any) {
       <StatusBar barStyle="dark-content" backgroundColor={CORES.branco} />
 
       {/* ═══ NAVBAR ═══ */}
-      <View style={styles.navbar}>
-        <View style={styles.logoWrap}>
-          <View style={styles.dotAmarelo} />
-          <Text style={styles.logoText}>
-            <Text style={{ color: CORES.azulEscuro }}>JU</Text>
-            <Text style={{ color: CORES.rosa }}>MO</Text>
-          </Text>
-        </View>
+        <View style={[styles.navbar, { paddingTop: insets.top }]}>
+          <View style={styles.logoWrap}>
+            <View style={styles.dotAmarelo} />
+            <Text style={styles.logoText}>
+              <Text style={{ color: CORES.azulEscuro }}>JU</Text>
+              <Text style={{ color: CORES.rosa }}>MO</Text>
+            </Text>
+          </View>
 
-        <View style={styles.navRight}>
-          {temPermissaoDeStaff && (
-            <TouchableOpacity
-              onPress={() => setModoEdicao(!modoEdicao)}
-              style={[styles.btnEdit, modoEdicao && { backgroundColor: CORES.azulEscuro, borderColor: CORES.azulEscuro }]}
-            >
-              <FontAwesome5 name="pen" size={11} color={modoEdicao ? '#FFF' : CORES.azulEscuro} />
+          <View style={styles.navRight}>
+            {temPermissaoDeStaff && (
+              <TouchableOpacity
+                onPress={() => setModoEdicao(!modoEdicao)}
+                style={[styles.btnEdit, modoEdicao && { backgroundColor: CORES.azulEscuro, borderColor: CORES.azulEscuro }]}
+              >
+                <FontAwesome5 name="pen" size={11} color={modoEdicao ? '#FFF' : CORES.azulEscuro} />
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity style={styles.btnSino}>
+              <Ionicons name="notifications-outline" size={18} color={CORES.azulEscuro} />
+              <View style={styles.dotNotif} />
             </TouchableOpacity>
-          )}
 
-          <TouchableOpacity style={styles.btnSino}>
-            <Ionicons name="notifications-outline" size={18} color={CORES.azulEscuro} />
-            <View style={styles.dotNotif} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.avatarBtn}
-            onPress={() => navigation.navigate('Perfil', { uid: userData?.uid })}
-          >
-            {userData?.foto
-              ? <Image source={{ uri: userData.foto }} style={styles.avatarImg} />
-              : <View style={styles.avatarPlaceholder}>
-                  <MaterialIcons name="person" size={20} color={CORES.azulEscuro} />
-                </View>
-            }
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.avatarBtn}
+              onPress={() => navigation.navigate('Perfil', { uid: userData?.uid })}
+            >
+              {userData?.foto
+                ? <Image source={{ uri: userData.foto }} style={styles.avatarImg} />
+                : <View style={styles.avatarPlaceholder}>
+                    <MaterialIcons name="person" size={20} color={CORES.azulEscuro} />
+                  </View>
+              }
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
 
       <ScrollView
         style={{ flex: 1 }}
@@ -559,7 +561,7 @@ export default function Index({ navigation, route }: any) {
       </ScrollView>
 
       {/* ═══ TAB BAR ═══ */}
-      <View style={styles.tabBar}>
+      <View style={[styles.tabBar, { paddingBottom: insets.bottom }]}>
         <TabItem icon="home"             label="Início"  ativo onPress={() => {}} />
         <TabItem icon="calendar-outline" label="Agenda"        onPress={() => navigation.navigate('Calendario', { uid: userData?.uid, tipo: userData?.tipo, turma: userData?.turma })} />
 
@@ -577,40 +579,46 @@ export default function Index({ navigation, route }: any) {
       </View>
 
       {/* MENU MAIS */}
-      <Modal visible={miniMenuAberto} transparent animationType="fade">
-        <TouchableWithoutFeedback onPress={() => setMiniMenuAberto(false)}>
-          <View style={styles.menuOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.menuPopup}>
-                <TouchableOpacity style={styles.menuItem} onPress={() => { setMiniMenuAberto(false); navigation.navigate('Contatos'); }}>
-                  <Ionicons name="call" size={17} color={CORES.azulEscuro} />
-                  <Text style={styles.menuItemText}>Contatos</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.menuItem} onPress={() => { setMiniMenuAberto(false); navigation.navigate('Ajuda'); }}>
-                  <Ionicons name="help-circle" size={17} color={CORES.azulEscuro} />
-                  <Text style={styles.menuItemText}>Ajuda</Text>
-                </TouchableOpacity>
+<Modal visible={miniMenuAberto} transparent animationType="fade">
+  <TouchableWithoutFeedback onPress={() => setMiniMenuAberto(false)}>
+    <View style={styles.menuOverlay}>
+      <TouchableWithoutFeedback>
+        <View style={styles.menuPopup}>
+          <TouchableOpacity style={styles.menuItem} onPress={() => { setMiniMenuAberto(false); navigation.navigate('Contatos'); }}>
+            <Ionicons name="call" size={17} color={CORES.azulEscuro} />
+            <Text style={styles.menuItemText}>Contatos</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.menuItem} onPress={() => { setMiniMenuAberto(false); navigation.navigate('Ajuda'); }}>
+            <Ionicons name="help-circle" size={17} color={CORES.azulEscuro} />
+            <Text style={styles.menuItemText}>Ajuda</Text>
+          </TouchableOpacity>
 
-                {isAdmin && (
-                  <>
-                    <View style={styles.menuDivider} />
-                    <TouchableOpacity style={styles.menuItem} onPress={() => { setMiniMenuAberto(false); navigation.navigate('Admin', { uid: userData?.uid }); }}>
-                      <Ionicons name="shield-checkmark" size={17} color={CORES.azulEscuro} />
-                      <Text style={styles.menuItemText}>Painel Admin</Text>
-                    </TouchableOpacity>
-                  </>
-                )}
+          <TouchableOpacity style={styles.menuItem} onPress={() => { setMiniMenuAberto(false); navigation.navigate('Configuracoes', { uid: userData?.uid }); }}>
+            <Ionicons name="settings" size={17} color={CORES.azulEscuro} />
+            <Text style={styles.menuItemText}>Configurações</Text>
+          </TouchableOpacity>
 
-                <View style={styles.menuDivider} />
-                <TouchableOpacity style={styles.menuItem} onPress={handleSair}>
-                  <Ionicons name="log-out" size={17} color="#FF5252" />
-                  <Text style={[styles.menuItemText, { color: '#FF5252' }]}>Sair</Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+          {isAdmin && (
+            <>
+              <View style={styles.menuDivider} />
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setMiniMenuAberto(false); navigation.navigate('Admin', { uid: userData?.uid }); }}>
+                <Ionicons name="shield-checkmark" size={17} color={CORES.azulEscuro} />
+                <Text style={styles.menuItemText}>Painel Admin</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          <View style={styles.menuDivider} />
+          <TouchableOpacity style={styles.menuItem} onPress={handleSair}>
+            <Ionicons name="log-out" size={17} color="#FF5252" />
+            <Text style={[styles.menuItemText, { color: '#FF5252' }]}>Sair</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableWithoutFeedback>
+    </View>
+  </TouchableWithoutFeedback>
+</Modal>
 
       {/* ═══ MINI MODAL EVENTO (NOVO) ═══ */}
       <Modal visible={modalEvento} transparent animationType="slide">

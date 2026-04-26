@@ -10,6 +10,7 @@ import {
   addDoc, updateDoc, deleteDoc, doc, serverTimestamp
 } from 'firebase/firestore';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const CORES = {
   azulEscuro: '#0B2046',
@@ -112,6 +113,7 @@ const ModalSelecao = ({ visible, titulo, opcoes, selecionado, onSelect, onClose 
 );
 
 export default function AchadosPerdidos({ navigation, route }: any) {
+  const insets = useSafeAreaInsets();
   const meuTipo = route?.params?.tipo;
 const isAdmin = meuTipo?.toLowerCase() === 'administrador';
   // ── Estado principal ─────────────────────────────────────────
