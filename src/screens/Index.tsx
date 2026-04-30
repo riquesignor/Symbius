@@ -58,6 +58,13 @@ const TIPO_CONFIG: Record<string, { color: string; bg: string; label: string; ic
   Evento:   { color: '#8e44ad', bg: '#F3E8FA', label: 'EVENTO',   icon: 'sparkles'      },
 };
 
+const TIPO_COLLECTION: Record<string, string> = {
+  Prova:   'provas',
+  Feriado: 'feriados',
+  Aviso:   'avisos',
+  Evento:  'eventos',
+};
+
 const MESES_ABREV = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
@@ -150,60 +157,81 @@ export default function Index({ navigation, route }: any) {
     carregarAgenda();
   }, [userData?.uid, serieFiltroAdm, isAdmin]);
 
-  const carregarAgenda = async () => {
-    try {
-      const hoje = new Date();
-      hoje.setHours(0, 0, 0, 0);
-      const limite = new Date(hoje);
-      limite.setDate(limite.getDate() + 7);
+ const carregarAgenda = async () => {
+  try {
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const limite = new Date(hoje);
+    limite.setDate(limite.getDate() + 7);
 
-      const itens: any[] = [];
+    const itens: any[] = [];
 
-      if (userData?.uid) {
-        const snapL = await getDocs(query(
-          collection(db, 'lembretes'), where('uid', '==', userData.uid)
-        ));
+    // ✅ LEMBRETES — agora buscamos da subcollection do RA
+    if (userData?.uid) {
+      // ✅ Não usa RA se for inválido (admin com "N/A", etc)
+      const raLimpo = userData.ra?.replace(/[\/\\]/g, '');
+      const raValido = raLimpo && raLimpo !== 'N/A' && raLimpo.length > 0;
+      const userIdentifier = raValido ? raLimpo : userData.uid;
+      try {
+        const snapL = await getDocs(collection(db, 'lembretes', userIdentifier, 'lembretes'));
         snapL.forEach(d => {
           itens.push({ id: d.id, fonte: 'lembrete', tipo: 'lembrete', ...d.data() });
         });
-      }
+      } catch (e) { console.error('Erro lembretes:', e); }
+    }
 
-      let snapE: any;
+    // ✅ EVENTOS ADMIN — busca de todas as 4 collections
+  for (const tipo of Object.keys(TIPO_COLLECTION)) {
+  const subName = TIPO_COLLECTION[tipo];
+  const subRef = collection(db, 'eventos_admin', 'tipos', subName);
+
+  try {
+    const snapE = await getDocs(subRef);
+
+    snapE.forEach((d: any) => {
+      const ev = { id: d.id, fonte: 'admin', ...d.data() };
+      const series: string[] = ev.series || [];
+
+      // ✅ Normaliza: pega só o primeiro dígito de cada série
+      const seriesNumeros = series.map(s => String(s).match(/\d/)?.[0] || '');
+
+      let incluir = false;
+
       if (isAdmin) {
         if (serieFiltroAdm === 'todas') {
-          snapE = await getDocs(collection(db, 'eventos_admin'));
+          incluir = true;
         } else {
-          snapE = await getDocs(query(
-            collection(db, 'eventos_admin'),
-            where('series', 'array-contains', serieFiltroAdm)
-          ));
+          // Pega só o número do filtro (ex: '1º' → '1')
+          const filtroNumero = serieFiltroAdm.match(/\d/)?.[0] || '';
+          incluir = seriesNumeros.includes(filtroNumero);
         }
       } else {
         const serie = extrairSerie(userData?.turma || '');
         if (serie) {
-          snapE = await getDocs(query(
-            collection(db, 'eventos_admin'),
-            where('series', 'array-contains', serie)
-          ));
+          const serieNumero = serie.match(/\d/)?.[0] || '';
+          incluir = seriesNumeros.includes(serieNumero);
         }
       }
-      snapE?.forEach((d: any) => {
-        itens.push({ id: d.id, fonte: 'admin', ...d.data() });
-      });
 
-      const proximos = itens.filter(ev => {
-        if (!ev.data) return false;
-        const [a, m, dd] = ev.data.split('-').map(Number);
-        const dt = new Date(a, m - 1, dd);
-        dt.setHours(0, 0, 0, 0);
-        return dt >= hoje && dt <= limite;
-      }).sort((a, b) => a.data.localeCompare(b.data));
+      if (incluir) itens.push(ev);
+    });
+  } catch (e) { console.error(`Erro ${subName}:`, e); }
+}
 
-      setAgendaItens(proximos);
-    } catch (e) {
-      console.error('Erro ao carregar agenda:', e);
-    }
-  };
+    // Filtra próximos 7 dias e ordena
+    const proximos = itens.filter(ev => {
+      if (!ev.data) return false;
+      const [a, m, dd] = ev.data.split('-').map(Number);
+      const dt = new Date(a, m - 1, dd);
+      dt.setHours(0, 0, 0, 0);
+      return dt >= hoje && dt <= limite;
+    }).sort((a, b) => a.data.localeCompare(b.data));
+
+    setAgendaItens(proximos);
+  } catch (e) {
+    console.error('Erro ao carregar agenda:', e);
+  }
+};
 
   // ✅ Posts válidos (todas categorias, dentro da validade)
   const postsValidos = useMemo(

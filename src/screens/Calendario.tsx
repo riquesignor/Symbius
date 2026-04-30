@@ -8,7 +8,7 @@ import {
 import { db } from '../config/firebaseConfig';
 import {
   collection, query, where, getDocs, addDoc, updateDoc,
-  deleteDoc, doc, serverTimestamp
+  deleteDoc, doc, setDoc, getDoc, serverTimestamp
 } from 'firebase/firestore';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,6 +39,15 @@ const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Ag
 const MESES_ABREV = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
 const DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
+const gerarIdAleatorio = (prefix: string) => {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let id = prefix + '_';
+  for (let i = 0; i < 8; i++) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return id;
+};
+
 const TIPOS_EVENTO = ['Prova','Feriado','Aviso','Evento'];
 
 const TIPO_CONFIG: Record<string, { color: string; bg: string; icon: any }> = {
@@ -48,6 +57,16 @@ const TIPO_CONFIG: Record<string, { color: string; bg: string; icon: any }> = {
   Aviso:    { color: '#e67e22', bg: '#FEF3E7', icon: 'megaphone'     },
   Evento:   { color: '#8e44ad', bg: '#F3E8FA', icon: 'sparkles'      },
 };
+
+const TIPO_COLLECTION: Record<string, { sub: string; prefix: string }> = {
+  Prova:   { sub: 'provas',   prefix: 'prv' },
+  Feriado: { sub: 'feriados', prefix: 'fer' },
+  Aviso:   { sub: 'avisos',   prefix: 'avs' },
+  Evento:  { sub: 'eventos',  prefix: 'evt' },
+};
+
+// Path completo: eventos_admin/tipos/{sub}/{id}
+const PARENT_DOC = 'tipos';
 
 // ── Utils ──
 const formatarDataStr = (ano: number, mes: number, dia: number) =>
@@ -107,6 +126,27 @@ export default function Calendario({ navigation, route }: any) {
   const CEL_SIZE = Math.floor((winW - 32) / 7);
 
   const uid     = route?.params?.uid;
+
+  const [userRA, setUserRA] = useState<string | null>(null);
+
+// Fetch do RA do usuário ao montar
+useEffect(() => {
+  const buscarRA = async () => {
+  if (!uid) return;
+  try {
+    const snap = await getDoc(doc(db, 'usuarios', uid));
+    if (snap.exists()) {
+      const dados = snap.data();
+      // ✅ Limpa RA inválido (admin com "N/A", barras, etc)
+      const raLimpo = dados.ra?.replace(/[\/\\]/g, '');
+      const raValido = raLimpo && raLimpo !== 'N/A' && raLimpo.length > 0;
+      setUserRA(raValido ? raLimpo : uid);
+    }
+  } catch (e) { console.error('Erro buscar RA:', e); }
+};
+  buscarRA();
+}, [uid]);
+
   const tipo    = route?.params?.tipo;
   const turma   = route?.params?.turma;
   const isAdmin = tipo?.toLowerCase() === 'administrador';
@@ -172,7 +212,9 @@ export default function Calendario({ navigation, route }: any) {
   const [selDia, setSelDia] = useState(1);
   const totalDiasSelMes = new Date(selAno, selMes, 0).getDate();
 
-  useEffect(() => { carregar(); }, []);
+  useEffect(() => {
+  if (userRA) carregar();
+}, [userRA]);
 
   const carregar = async () => {
     setLoading(true);
@@ -181,49 +223,60 @@ export default function Calendario({ navigation, route }: any) {
   };
 
   const carregarLembretes = async () => {
-    if (!uid) return;
-    try {
-      const snap = await getDocs(query(
-        collection(db, 'lembretes'), where('uid', '==', uid)
-      ));
-      const mapa = new Map<string, any[]>();
-      const todos: any[] = [];
-      snap.forEach(d => {
-        const ev: any = { id: d.id, ...d.data() };
-        todos.push(ev);
-        if (!mapa.has(ev.data)) mapa.set(ev.data, []);
-        mapa.get(ev.data)!.push(ev);
-      });
-      setLembretes(mapa);
-      setLembretesTodos(todos);
-    } catch (e) { console.error('Erro lembretes:', e); }
-  };
+  if (!userRA) return;
+  try {
+    const snap = await getDocs(collection(db, 'lembretes', userRA, 'lembretes'));
+    const mapa = new Map<string, any[]>();
+    const todos: any[] = [];
+    snap.forEach(d => {
+      const ev: any = { id: d.id, ...d.data() };
+      todos.push(ev);
+      if (!mapa.has(ev.data)) mapa.set(ev.data, []);
+      mapa.get(ev.data)!.push(ev);
+    });
+    setLembretes(mapa);
+    setLembretesTodos(todos);
+  } catch (e) { console.error('Erro lembretes:', e); }
+};
 
   const carregarEventosAdmin = async () => {
-    try {
+  try {
+    const mapa = new Map<string, any[]>();
+    const todos: any[] = [];
+
+    for (const tipo of Object.keys(TIPO_COLLECTION)) {
+      const config = TIPO_COLLECTION[tipo];
       let snap;
+      
+      // Path: eventos_admin/tipos/{eventos|avisos|provas|feriados}
+      const subRef = collection(db, 'eventos_admin', PARENT_DOC, config.sub);
+
       if (isAdmin) {
-        snap = await getDocs(collection(db, 'eventos_admin'));
+        snap = await getDocs(subRef);
       } else if (serie) {
         snap = await getDocs(query(
-          collection(db, 'eventos_admin'),
+          subRef,
           where('series', 'array-contains', serie)
         ));
-      } else return;
+      } else continue;
 
-      const mapa = new Map<string, any[]>();
-      const todos: any[] = [];
       snap.forEach(d => {
-        const ev: any = { id: d.id, ...d.data() };
+        const ev: any = { 
+          id: d.id, 
+          _sub: config.sub,  // ← guarda de qual subcollection veio
+          ...d.data() 
+        };
         todos.push(ev);
         if (!mapa.has(ev.data)) mapa.set(ev.data, []);
         mapa.get(ev.data)!.push(ev);
       });
-      todos.sort((a, b) => a.data.localeCompare(b.data));
-      setEventosAdmin(mapa);
-      setAdminTodos(todos);
-    } catch (e) { console.error('Erro eventos_admin:', e); }
-  };
+    }
+
+    todos.sort((a, b) => a.data.localeCompare(b.data));
+    setEventosAdmin(mapa);
+    setAdminTodos(todos);
+  } catch (e) { console.error('Erro eventos admin:', e); }
+};
 
   // ✅ Filtro: mês selecionado + tipo
   const eventosFiltrados = useMemo(() => {
@@ -237,51 +290,54 @@ export default function Calendario({ navigation, route }: any) {
 
   // ── Lembrete: salvar OU atualizar ──
   const salvarLembrete = async () => {
-    if (!lembreTitulo.trim()) {
-      setToast('Título obrigatório');
-      return;
+  if (!lembreTitulo.trim()) {
+    setToast('Título obrigatório');
+    return;
+  }
+  if (!userRA) {
+    setToast('Aguarde carregar...');
+    return;
+  }
+  setSalvandoLemb(true);
+  try {
+    const dados = {
+      uid,
+      data:      diaSelecionado,
+      titulo:    capitalizarPrimeira(lembreTitulo.trim()),
+      descricao: capitalizarPrimeira(lembreDesc.trim()),
+    };
+    if (lembEditandoId) {
+      // ✅ Edição
+      await updateDoc(doc(db, 'lembretes', userRA, 'lembretes', lembEditandoId), dados);
+      setLembretes(prev => {
+        const nova = new Map(prev);
+        const lista = (nova.get(diaSelecionado) || []).map(e =>
+          e.id === lembEditandoId ? { ...e, ...dados } : e
+        );
+        nova.set(diaSelecionado, lista);
+        return nova;
+      });
+      setToast('Lembrete atualizado');
+    } else {
+      const ref = await addDoc(collection(db, 'lembretes', userRA, 'lembretes'), {
+        ...dados, criado_em: serverTimestamp(),
+      });
+      const novo = { id: ref.id, ...dados };
+      setLembretes(prev => {
+        const nova = new Map(prev);
+        if (!nova.has(diaSelecionado)) nova.set(diaSelecionado, []);
+        nova.get(diaSelecionado)!.push(novo);
+        return nova;
+      });
+      setToast('Lembrete salvo');
     }
-    setSalvandoLemb(true);
-    try {
-      const dados = {
-        uid,
-        data:      diaSelecionado,
-        titulo:    capitalizarPrimeira(lembreTitulo.trim()),
-        descricao: capitalizarPrimeira(lembreDesc.trim()),
-      };
-      if (lembEditandoId) {
-        // ✅ Edição
-        await updateDoc(doc(db, 'lembretes', lembEditandoId), dados);
-        setLembretes(prev => {
-          const nova = new Map(prev);
-          const lista = (nova.get(diaSelecionado) || []).map(e =>
-            e.id === lembEditandoId ? { ...e, ...dados } : e
-          );
-          nova.set(diaSelecionado, lista);
-          return nova;
-        });
-        setToast('Lembrete atualizado');
-      } else {
-        const ref = await addDoc(collection(db, 'lembretes'), {
-          ...dados, criado_em: serverTimestamp(),
-        });
-        const novo = { id: ref.id, ...dados };
-        setLembretes(prev => {
-          const nova = new Map(prev);
-          if (!nova.has(diaSelecionado)) nova.set(diaSelecionado, []);
-          nova.get(diaSelecionado)!.push(novo);
-          return nova;
-        });
-        setToast('Lembrete salvo');
-      }
-      setLembreTitulo(''); setLembreDesc(''); setLembEditandoId(null);
-    } catch {
-      setToast('Falha ao salvar');
-    } finally {
-      setSalvandoLemb(false);
-    }
-  };
-
+    setLembreTitulo(''); setLembreDesc(''); setLembEditandoId(null);
+  } catch {
+    setToast('Falha ao salvar');
+  } finally {
+    setSalvandoLemb(false);
+  }
+};
   const editarLembrete = (lemb: any) => {
     setLembEditandoId(lemb.id);
     setLembreTitulo(lemb.titulo);
@@ -295,27 +351,28 @@ export default function Calendario({ navigation, route }: any) {
 
   // ✅ Excluir com modal customizado
   const pedirConfirmacaoExcluirLembrete = (id: string) => {
-    setConfirm({
-      titulo: 'Excluir lembrete?',
-      msg:    'Essa ação não pode ser desfeita.',
-      btn:    'Excluir',
-      onOk:   async () => {
-        try {
-          await deleteDoc(doc(db, 'lembretes', id));
-          setLembretes(prev => {
-            const nova = new Map(prev);
-            const lista = (nova.get(diaSelecionado) || []).filter(e => e.id !== id);
-            if (lista.length) nova.set(diaSelecionado, lista);
-            else nova.delete(diaSelecionado);
-            return nova;
-          });
-          setToast('Lembrete excluído');
-        } catch {
-          setToast('Erro ao excluir');
-        }
+  setConfirm({
+    titulo: 'Excluir lembrete?',
+    msg:    'Essa ação não pode ser desfeita.',
+    btn:    'Excluir',
+    onOk:   async () => {
+      if (!userRA) return;
+      try {
+        await deleteDoc(doc(db, 'lembretes', userRA, 'lembretes', id));
+        setLembretes(prev => {
+          const nova = new Map(prev);
+          const lista = (nova.get(diaSelecionado) || []).filter(e => e.id !== id);
+          if (lista.length) nova.set(diaSelecionado, lista);
+          else nova.delete(diaSelecionado);
+          return nova;
+        });
+        setToast('Lembrete excluído');
+      } catch {
+        setToast('Erro ao excluir');
       }
-    });
-  };
+    }
+  });
+};
 
   // ── Admin: salvar OU atualizar ──
   const toggleSerie = (s: string) =>
@@ -341,76 +398,101 @@ export default function Calendario({ navigation, route }: any) {
   };
 
   const salvarEventoAdmin = async () => {
-    if (!adminTitulo.trim() || !adminData || !adminTipo || adminSeries.length === 0) {
-      setToast('Preencha tudo + ao menos uma série');
-      return;
+  if (!adminTitulo.trim() || !adminData || !adminTipo || adminSeries.length === 0) {
+    setToast('Preencha tudo + ao menos uma série');
+    return;
+  }
+  setSalvandoAdm(true);
+  try {
+    const dados = {
+      titulo:    capitalizarPrimeira(adminTitulo.trim()),
+      descricao: capitalizarPrimeira(adminDesc.trim()),
+      data:      adminData,
+      tipo:      adminTipo,
+      series:    adminSeries,
+    };
+
+    // ✅ Pega a collection correta baseada no tipo
+    const config = TIPO_COLLECTION[adminTipo];
+    if (!config) {
+    setToast('Tipo inválido');
+    setSalvandoAdm(false);
+    return;
+  }
+
+    if (admEditandoId) {
+      // Edição: usa a sub original
+      const eventoOriginal = adminTodos.find(e => e.id === admEditandoId);
+      const subOriginal = eventoOriginal?._sub || config.sub;
+      
+      await updateDoc(
+        doc(db, 'eventos_admin', PARENT_DOC, subOriginal, admEditandoId),
+        dados
+      );
+      await carregarEventosAdmin();
+      setToast('Evento atualizado');
+    } else {
+      // ✅ PRIMEIRO garante que o doc pai 'tipos' existe
+      await setDoc(doc(db, 'eventos_admin', PARENT_DOC), 
+        { _placeholder: true }, 
+        { merge: true }
+      );
+      const novoId = gerarIdAleatorio(config.prefix);
+      await setDoc(
+        doc(db, 'eventos_admin', PARENT_DOC, config.sub, novoId),
+        { ...dados, criado_em: serverTimestamp() }
+      );
+
+      const novo = { id: novoId, _sub: config.sub, ...dados };
+      setAdminTodos(prev => [...prev, novo].sort((a,b) => a.data.localeCompare(b.data)));
+      setEventosAdmin(prev => {
+        const nova = new Map(prev);
+        if (!nova.has(adminData)) nova.set(adminData, []);
+        nova.get(adminData)!.push(novo);
+        return nova;
+      });
+      setToast('Evento publicado');
     }
-    setSalvandoAdm(true);
-    try {
-      const dados = {
-        titulo:    capitalizarPrimeira(adminTitulo.trim()),
-        descricao: capitalizarPrimeira(adminDesc.trim()),
-        data:      adminData,
-        tipo:      adminTipo,
-        series:    adminSeries,
-      };
-      if (admEditandoId) {
-        await updateDoc(doc(db, 'eventos_admin', admEditandoId), dados);
-        setAdminTodos(prev => prev.map(e =>
-          e.id === admEditandoId ? { ...e, ...dados } : e
-        ).sort((a,b) => a.data.localeCompare(b.data)));
-        // Também atualiza o mapa
-        await carregarEventosAdmin();
-        setToast('Evento atualizado');
-      } else {
-        const ref = await addDoc(collection(db, 'eventos_admin'), {
-          ...dados, criado_em: serverTimestamp(),
-        });
-        const novo = { id: ref.id, ...dados };
-        setAdminTodos(prev => [...prev, novo].sort((a,b) => a.data.localeCompare(b.data)));
-        setEventosAdmin(prev => {
-          const nova = new Map(prev);
-          if (!nova.has(adminData)) nova.set(adminData, []);
-          nova.get(adminData)!.push(novo);
-          return nova;
-        });
-        setToast('Evento publicado');
-      }
-      setModalAdminForm(false);
-      setAdminTitulo(''); setAdminDesc(''); setAdminData('');
-      setAdminTipo(''); setAdminSeries([]); setAdmEditandoId(null);
-    } catch {
-      setToast('Falha ao salvar');
-    } finally {
-      setSalvandoAdm(false);
-    }
-  };
+
+    setModalAdminForm(false);
+    setAdminTitulo(''); setAdminDesc(''); setAdminData('');
+    setAdminTipo(''); setAdminSeries([]); setAdmEditandoId(null);
+  } catch (e) {
+    console.error('Erro salvar admin:', e);
+    setToast('Falha ao salvar');
+  } finally {
+    setSalvandoAdm(false);
+  }
+};
 
   const pedirConfirmacaoExcluirEvento = (id: string, dataStr: string) => {
-    setConfirm({
-      titulo: 'Excluir evento?',
-      msg:    'Será removido para todos os alunos das séries selecionadas.',
-      btn:    'Excluir',
-      onOk:   async () => {
-        try {
-          await deleteDoc(doc(db, 'eventos_admin', id));
-          setEventosAdmin(prev => {
-            const nova = new Map(prev);
-            const lista = (nova.get(dataStr) || []).filter(e => e.id !== id);
-            if (lista.length) nova.set(dataStr, lista);
-            else nova.delete(dataStr);
-            return nova;
-          });
-          setAdminTodos(prev => prev.filter(e => e.id !== id));
-          setModalDetalhe(false);
-          setToast('Evento excluído');
-        } catch {
-          setToast('Erro ao excluir');
-        }
-      }
-    });
-  };
+  setConfirm({
+    titulo: 'Excluir evento?',
+    msg:    'Será removido para todos os alunos das séries selecionadas.',
+    btn:    'Excluir',
+    onOk:   async () => {
+      try {
+        const evento = adminTodos.find(e => e.id === id);
+        const subOrigem = evento?._sub || 'eventos';
 
+        await deleteDoc(doc(db, 'eventos_admin', PARENT_DOC, subOrigem, id));
+        
+        setEventosAdmin(prev => {
+          const nova = new Map(prev);
+          const lista = (nova.get(dataStr) || []).filter(e => e.id !== id);
+          if (lista.length) nova.set(dataStr, lista);
+          else nova.delete(dataStr);
+          return nova;
+        });
+        setAdminTodos(prev => prev.filter(e => e.id !== id));
+        setModalDetalhe(false);
+        setToast('Evento excluído');
+      } catch {
+        setToast('Erro ao excluir');
+      }
+    }
+  });
+};
   // ── Grade ──
   const primeiroDia = new Date(ano, mes, 1).getDay();
   const totalDias   = new Date(ano, mes + 1, 0).getDate();
