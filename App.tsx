@@ -7,6 +7,8 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from './src/config/firebaseConfig';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppSettingsProvider } from './src/contexts/AppSettingsContext'; // ajusta o caminho
+
 
 import {
   useFonts,
@@ -110,6 +112,7 @@ export default function App() {
 }
 
   return (
+  <AppSettingsProvider>
     <NavigationContainer>
       <Stack.Navigator
         initialRouteName={initialRoute}
@@ -135,5 +138,6 @@ export default function App() {
 
       </Stack.Navigator>
     </NavigationContainer>
+    </AppSettingsProvider>
   );
 }

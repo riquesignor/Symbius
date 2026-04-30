@@ -8,6 +8,7 @@ import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db, auth } from '../config/firebaseConfig';
+import { useAppSettings } from '../contexts/AppSettingsContext';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 
@@ -77,22 +78,19 @@ export default function Configuracoes({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const uid = route?.params?.uid;
 
-  // ════ STATES — APARÊNCIA ════
-  const [modoEscuro,    setModoEscuro]    = useState(false);
-  const [tamanhoFonte,  setTamanhoFonte]  = useState('Normal');
-
-  // ════ STATES — NOTIFICAÇÕES ════
-  const [notifGeral,    setNotifGeral]    = useState(true);
-  const [notifAvisos,   setNotifAvisos]   = useState(true);
-  const [notifEventos,  setNotifEventos]  = useState(true);
-  const [notifMatch,    setNotifMatch]    = useState(true);
-  const [somNotif,      setSomNotif]      = useState('Normal');
-  const [vibracao,      setVibracao]      = useState(true);
-
-  // ════ STATES — PRIVACIDADE ════
-  const [visibilidade,  setVisibilidade]  = useState('Público');
-  const [statusOnline,  setStatusOnline]  = useState(true);
-  const [serieFiltro,   setSerieFiltro]   = useState('Não definir');
+ const {
+  modoEscuro,    setModoEscuro,
+  tamanhoFonte,  setTamanhoFonte,
+  notifGeral,    setNotifGeral,
+  notifAvisos,   setNotifAvisos,
+  notifEventos,  setNotifEventos,
+  notifMatch,    setNotifMatch,
+  somNotif,      setSomNotif,
+  vibracao,      setVibracao,
+  visibilidade,  setVisibilidade,
+  statusOnline,  setStatusOnline,
+  serieFiltro,   setSerieFiltro,
+} = useAppSettings();
 
   // ════ STATES — CONTA ════
   const [userData, setUserData] = useState<any>(null);
@@ -134,39 +132,16 @@ export default function Configuracoes({ navigation, route }: any) {
   }, [toast]);
 
   const carregar = async () => {
-    try {
-      // Carrega config local
-      const configs = await AsyncStorage.multiGet([
-        'cfg_modoEscuro', 'cfg_tamanhoFonte', 'cfg_notifGeral',
-        'cfg_notifAvisos', 'cfg_notifEventos', 'cfg_notifMatch',
-        'cfg_somNotif', 'cfg_vibracao', 'cfg_serieFiltro',
-      ]);
-      const map: Record<string, string | null> = {};
-      configs.forEach(([k, v]) => map[k] = v);
-
-      if (map.cfg_modoEscuro    !== null) setModoEscuro(map.cfg_modoEscuro === '1');
-      if (map.cfg_tamanhoFonte  !== null) setTamanhoFonte(map.cfg_tamanhoFonte || 'Normal');
-      if (map.cfg_notifGeral    !== null) setNotifGeral(map.cfg_notifGeral !== '0');
-      if (map.cfg_notifAvisos   !== null) setNotifAvisos(map.cfg_notifAvisos !== '0');
-      if (map.cfg_notifEventos  !== null) setNotifEventos(map.cfg_notifEventos !== '0');
-      if (map.cfg_notifMatch    !== null) setNotifMatch(map.cfg_notifMatch !== '0');
-      if (map.cfg_somNotif      !== null) setSomNotif(map.cfg_somNotif || 'Normal');
-      if (map.cfg_vibracao      !== null) setVibracao(map.cfg_vibracao !== '0');
-      if (map.cfg_serieFiltro   !== null) setSerieFiltro(map.cfg_serieFiltro || 'Não definir');
-
-      // Carrega dados do Firestore
-      if (uid) {
-        const snap = await getDoc(doc(db, 'usuarios', uid));
-        if (snap.exists()) {
-          const d = snap.data();
-          setUserData(d);
-          setVisibilidade(d.visibilidade || 'Público');
-          setStatusOnline(d.statusOnline !== false);
-        }
+  try {
+    if (uid) {
+      const snap = await getDoc(doc(db, 'usuarios', uid));
+      if (snap.exists()) {
+        setUserData(snap.data());
       }
-    } catch (e) { console.error(e); }
-    finally { setCarregando(false); }
-  };
+    }
+  } catch (e) { console.error(e); }
+  finally { setCarregando(false); }
+};
 
   // ════ SALVAR LOCAL ════
   const salvarLocal = async (chave: string, valor: any) => {

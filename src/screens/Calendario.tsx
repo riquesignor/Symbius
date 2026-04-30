@@ -5,6 +5,7 @@ import {
   ActivityIndicator, Platform, FlatList,
   useWindowDimensions, Animated
 } from 'react-native';
+import { useAppSettings } from '../contexts/AppSettingsContext';
 import { db } from '../config/firebaseConfig';
 import {
   collection, query, where, getDocs, addDoc, updateDoc,
@@ -12,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 
 // ── Fonte Poppins (igual Index) ──
 const F = {
@@ -124,6 +126,12 @@ export default function Calendario({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const { width: winW, height: winH } = useWindowDimensions();
   const CEL_SIZE = Math.floor((winW - 32) / 7);
+
+  // ✅ NOVO — Pega configs globais do contexto
+  const { cores: C, fonteScale, modoEscuro } = useAppSettings();
+
+  // ✅ NOVO — Helper de fonte escalada (deixa o JSX mais limpo)
+  const fs = (size: number) => size * fonteScale;
 
   const uid     = route?.params?.uid;
 
@@ -507,7 +515,15 @@ useEffect(() => {
     if (!dia) return (
       <View
         key={`v${idx}`}
-        style={[styles.celulaVazia, { width: CEL_SIZE, height: CEL_SIZE * 0.95 }]}
+        style={[
+          styles.celulaVazia,
+          {
+            width: CEL_SIZE,
+            height: CEL_SIZE * 0.95,
+            backgroundColor: modoEscuro ? C.fundo : '#FBFBFD',
+            borderColor: C.cinzaClaro,
+          }
+        ]}
       />
     );
 
@@ -524,18 +540,27 @@ useEffect(() => {
         key={dataStr}
         style={[
           styles.celula,
-          { width: CEL_SIZE, height: CEL_SIZE * 0.95 },
-          eFimSem && styles.celulaFimSem,
-          (temLemb || temAdmin) && styles.celulaComEvento,
+          {
+            width: CEL_SIZE,
+            height: CEL_SIZE * 0.95,
+            backgroundColor: C.branco,
+            borderColor: C.cinzaClaro,
+          },
+          eFimSem && { backgroundColor: modoEscuro ? C.fundo : '#FAFAF8' },
+          (temLemb || temAdmin) && { backgroundColor: modoEscuro ? C.cinzaClaro : '#FAFFF9' },
         ]}
         onPress={() => { setDiaSelecionado(dataStr); setModalDia(true); }}
         activeOpacity={0.7}
       >
-        <View style={[styles.numWrap, eHoje && styles.numHoje]}>
+        <View style={[
+          styles.numWrap,
+          eHoje && { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
+        ]}>
           <Text style={[
             styles.numDia,
-            eFimSem && { color: CORES.textoSec },
-            eHoje && { color: CORES.branco }
+            { color: C.azulEscuro, fontSize: fs(11) },
+            eFimSem && { color: C.textoSec },
+            eHoje && { color: modoEscuro ? CORES.azulEscuro : CORES.branco }
           ]}>
             {dia}
           </Text>
@@ -567,6 +592,8 @@ useEffect(() => {
     setModalDataEvt(false);
   };
 
+  
+
   // ── Card de evento (com fade in) ──
   const renderEventoCard = ({ item, index }: any) => {
     const config   = TIPO_CONFIG[item.tipo] || TIPO_CONFIG.Evento;
@@ -576,13 +603,13 @@ useEffect(() => {
     return (
       <FadeInView delay={index * 60}>
         <TouchableOpacity
-          style={styles.evCard}
+          style={[styles.evCard, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
           onPress={() => { setEventoDetalhe(item); setModalDetalhe(true); }}
           activeOpacity={0.85}
         >
           <View style={[styles.evDataBox, { backgroundColor: config.bg }]}>
-            <Text style={[styles.evDataDia, { color: config.color }]}>{d}</Text>
-            <Text style={[styles.evDataMes, { color: config.color }]}>{MESES_ABREV[m - 1]}</Text>
+            <Text style={[styles.evDataDia, { color: config.color, fontSize: fs(19) }]}>{d}</Text>
+            <Text style={[styles.evDataMes, { color: config.color, fontSize: fs(9) }]}>{MESES_ABREV[m - 1]}</Text>
           </View>
 
           <View style={styles.evConteudo}>
@@ -590,55 +617,60 @@ useEffect(() => {
               <View style={[styles.evIconWrap, { backgroundColor: config.bg }]}>
                 <Ionicons name={config.icon} size={11} color={config.color} />
               </View>
-              <Text style={[styles.evTipoLabel, { color: config.color }]}>
+              <Text style={[styles.evTipoLabel, { color: config.color, fontSize: fs(9) }]}>
                 {item.tipo.toUpperCase()}
               </Text>
               <View style={[styles.evChipMini, { backgroundColor: contagem.cor + '18' }]}>
-                <Text style={[styles.evChipMiniText, { color: contagem.cor }]}>
+                <Text style={[styles.evChipMiniText, { color: contagem.cor, fontSize: fs(8) }]}>
                   {contagem.texto}
                 </Text>
               </View>
             </View>
 
-            <Text style={styles.evTitulo} numberOfLines={1}>{item.titulo}</Text>
+            <Text style={[styles.evTitulo, { color: C.azulEscuro, fontSize: fs(13) }]} numberOfLines={1}>
+              {item.titulo}
+            </Text>
 
             <View style={styles.evMetaRow}>
-              <Ionicons name="people-outline" size={10} color={CORES.textoSec} />
-              <Text style={styles.evMeta}>{(item.series || []).join(' · ')}</Text>
+              <Ionicons name="people-outline" size={10} color={C.textoSec} />
+              <Text style={[styles.evMeta, { color: C.textoSec, fontSize: fs(10) }]}>
+                {(item.series || []).join(' · ')}
+              </Text>
             </View>
           </View>
 
-          <Ionicons name="chevron-forward" size={16} color={CORES.cinzaClaro} />
+          <Ionicons name="chevron-forward" size={16} color={C.cinzaClaro} />
         </TouchableOpacity>
       </FadeInView>
     );
   };
 
-  if (loading) return (
-    <View style={styles.centro}>
-      <ActivityIndicator size="large" color={CORES.azulEscuro} />
+   if (loading) return (
+    <View style={[styles.centro, { backgroundColor: C.fundo }]}>
+      <ActivityIndicator size="large" color={modoEscuro ? C.amarelo : CORES.azulEscuro} />
     </View>
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: C.fundo }]}>
+      {/* StatusBar continua azul fixo (identidade visual do header) */}
       <StatusBar barStyle="light-content" backgroundColor={CORES.azulEscuro} />
 
-      {/* TOAST */}
+      {/* TOAST — mantém azul escuro fixo (overlay) */}
       {toast !== '' && (
         <View style={styles.toast}>
-          <Text style={styles.toastText}>{toast}</Text>
+          <Text style={[styles.toastText, { fontSize: fs(13) }]}>{toast}</Text>
         </View>
       )}
 
-      {/* HEADER */}
+      {/* HEADER — mantém azul escuro fixo (identidade visual) */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.btnVoltar}>
           <Ionicons name="arrow-back" size={20} color={CORES.branco} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerEyebrow}>AGENDA ESCOLAR</Text>
-          <Text style={styles.headerTitulo}>Calendário</Text>
+          <Text style={[styles.headerEyebrow, { fontSize: fs(9) }]}>AGENDA ESCOLAR</Text>
+          <Text style={[styles.headerTitulo, { fontSize: fs(18) }]}>Calendário</Text>
         </View>
         <TouchableOpacity onPress={() => setModalLegenda(true)} style={styles.btnIcone}>
           <Ionicons name="information-circle-outline" size={22} color={CORES.branco} />
@@ -646,7 +678,7 @@ useEffect(() => {
         {isAdmin && (
           <TouchableOpacity onPress={abrirFormNovoEvento} style={styles.btnAdd}>
             <Ionicons name="add" size={18} color={CORES.branco} />
-            <Text style={styles.btnAddText}>Evento</Text>
+            <Text style={[styles.btnAddText, { fontSize: fs(12) }]}>Evento</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -656,61 +688,73 @@ useEffect(() => {
         contentContainerStyle={{ paddingBottom: 40 }}
       >
         {/* NAV MÊS */}
-        <View style={styles.navMes}>
+        <View style={[styles.navMes, { backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
           <TouchableOpacity
-            style={styles.btnNavMes}
+            style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
             onPress={() => { if (mes === 0) { setMes(11); setAno(a => a - 1); } else setMes(m => m - 1); }}
           >
-            <Ionicons name="chevron-back" size={16} color={CORES.azulEscuro} />
+            <Ionicons name="chevron-back" size={16} color={C.azulEscuro} />
           </TouchableOpacity>
 
           <View style={{ alignItems: 'center' }}>
-            <Text style={styles.navMesNome}>{MESES[mes]}</Text>
-            <Text style={styles.navAno}>{ano}</Text>
+            <Text style={[styles.navMesNome, { color: C.azulEscuro, fontSize: fs(16) }]}>{MESES[mes]}</Text>
+            <Text style={[styles.navAno, { color: C.textoSec, fontSize: fs(11) }]}>{ano}</Text>
           </View>
 
           <TouchableOpacity
-            style={styles.btnNavMes}
+            style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
             onPress={() => { if (mes === 11) { setMes(0); setAno(a => a + 1); } else setMes(m => m + 1); }}
           >
-            <Ionicons name="chevron-forward" size={16} color={CORES.azulEscuro} />
+            <Ionicons name="chevron-forward" size={16} color={C.azulEscuro} />
           </TouchableOpacity>
         </View>
 
-        {/* BOTÃO IR PRA HOJE — só aparece se não está no mês atual */}
+        {/* BOTÃO IR PRA HOJE */}
         {!noMesAtual && (
           <TouchableOpacity
-            style={styles.btnHoje}
+            style={[styles.btnHoje, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
             onPress={() => { setMes(hoje.getMonth()); setAno(hoje.getFullYear()); }}
           >
-            <Ionicons name="locate" size={12} color={CORES.azulEscuro} />
-            <Text style={styles.btnHojeText}>Ir para hoje</Text>
+            <Ionicons name="locate" size={12} color={C.azulEscuro} />
+            <Text style={[styles.btnHojeText, { color: C.azulEscuro, fontSize: fs(11) }]}>Ir para hoje</Text>
           </TouchableOpacity>
         )}
 
         {/* DIAS DA SEMANA */}
-        <View style={styles.semanaRow}>
+        <View style={[styles.semanaRow, { backgroundColor: C.branco, borderTopColor: C.cinzaClaro }]}>
           {DIAS_SEMANA.map(d => (
-            <Text key={d} style={[styles.semanaLabel, { width: CEL_SIZE }]}>{d}</Text>
+            <Text
+              key={d}
+              style={[styles.semanaLabel, { width: CEL_SIZE, color: C.textoSec, fontSize: fs(10) }]}
+            >
+              {d}
+            </Text>
           ))}
         </View>
 
         {/* GRADE */}
-        <View style={styles.grade}>
+        <View style={[styles.grade, { backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
           {celulas.map((dia, idx) => renderCelula(dia, idx))}
         </View>
 
         {/* SEÇÃO EVENTOS */}
-        <View style={styles.secaoEventos}>
+        <View style={[styles.secaoEventos, { backgroundColor: C.branco }]}>
           <View style={styles.secaoHeader}>
             <View>
-              <Text style={styles.secaoEyebrow}>{MESES[mes].toUpperCase()} · {ano}</Text>
-              <Text style={styles.secaoTitulo}>
+              <Text style={[styles.secaoEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
+                {MESES[mes].toUpperCase()} · {ano}
+              </Text>
+              <Text style={[styles.secaoTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>
                 {isAdmin ? 'Eventos cadastrados' : 'Eventos da sua turma'}
               </Text>
             </View>
-            <View style={styles.secaoCount}>
-              <Text style={styles.secaoCountText}>{eventosFiltrados.length}</Text>
+            <View style={[styles.secaoCount, { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }]}>
+              <Text style={[
+                styles.secaoCountText,
+                { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(12) }
+              ]}>
+                {eventosFiltrados.length}
+              </Text>
             </View>
           </View>
 
@@ -721,10 +765,18 @@ useEffect(() => {
             contentContainerStyle={styles.chipsRow}
           >
             <TouchableOpacity
-              style={[styles.chip, filtroTipo === 'todos' && styles.chipAtivo]}
+              style={[
+                styles.chip,
+                { backgroundColor: C.fundo, borderColor: C.cinzaClaro },
+                filtroTipo === 'todos' && { backgroundColor: C.azulEscuro, borderColor: C.azulEscuro }
+              ]}
               onPress={() => setFiltroTipo('todos')}
             >
-              <Text style={[styles.chipText, filtroTipo === 'todos' && styles.chipTextAtivo]}>
+              <Text style={[
+                styles.chipText,
+                { color: C.textoSec, fontSize: fs(11) },
+                filtroTipo === 'todos' && { color: modoEscuro ? CORES.azulEscuro : CORES.branco }
+              ]}>
                 Todos
               </Text>
             </TouchableOpacity>
@@ -736,6 +788,7 @@ useEffect(() => {
                   key={t}
                   style={[
                     styles.chip,
+                    { backgroundColor: C.fundo, borderColor: C.cinzaClaro },
                     ativo && { backgroundColor: config.color, borderColor: config.color }
                   ]}
                   onPress={() => setFiltroTipo(t)}
@@ -747,7 +800,8 @@ useEffect(() => {
                   />
                   <Text style={[
                     styles.chipText,
-                    ativo && styles.chipTextAtivo,
+                    { fontSize: fs(11) },
+                    ativo && { color: CORES.branco },
                     !ativo && { color: config.color }
                   ]}>
                     {t}
@@ -757,12 +811,11 @@ useEffect(() => {
             })}
           </ScrollView>
 
-          {/* LISTA com scroll interno */}
+          {/* LISTA */}
           {eventosFiltrados.length === 0 ? (
-            //<View style={[styles.header, { paddingTop: insets.top }]}>
-            <View style={[styles.listaVazia, { paddingTop: insets.top}]}>
-              <Ionicons name="calendar-outline" size={32} color={CORES.cinzaClaro} />
-              <Text style={styles.listaVaziaText}>
+            <View style={[styles.listaVazia, { paddingTop: insets.top }]}>
+              <Ionicons name="calendar-outline" size={32} color={C.cinzaClaro} />
+              <Text style={[styles.listaVaziaText, { color: C.textoSec, fontSize: fs(12) }]}>
                 Nenhum evento{filtroTipo !== 'todos' ? ` do tipo ${filtroTipo}` : ''} em {MESES[mes]}.
               </Text>
             </View>
@@ -782,13 +835,14 @@ useEffect(() => {
         </View>
       </ScrollView>
 
+
       {/* ════════════════════════════════════════════════
           MODAL DETALHE
       ════════════════════════════════════════════════ */}
       <Modal visible={modalDetalhe} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
+          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+            <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
 
             {eventoDetalhe && (() => {
               const config   = TIPO_CONFIG[eventoDetalhe.tipo] || TIPO_CONFIG.Evento;
@@ -803,63 +857,78 @@ useEffect(() => {
                     <View style={[styles.detHeroIcon, { backgroundColor: config.color }]}>
                       <Ionicons name={config.icon} size={26} color={CORES.branco} />
                     </View>
-                    <Text style={[styles.detHeroTipo, { color: config.color }]}>
+                    <Text style={[styles.detHeroTipo, { color: config.color, fontSize: fs(11) }]}>
                       {eventoDetalhe.tipo.toUpperCase()}
                     </Text>
-                    <Text style={styles.detHeroTitulo}>{eventoDetalhe.titulo}</Text>
+                    <Text style={[styles.detHeroTitulo, { color: CORES.azulEscuro, fontSize: fs(20) }]}>
+                      {eventoDetalhe.titulo}
+                    </Text>
                     <View style={[styles.detContagem, { backgroundColor: contagem.cor }]}>
                       <Ionicons name="time" size={12} color={CORES.branco} />
-                      <Text style={styles.detContagemText}>{contagem.texto}</Text>
+                      <Text style={[styles.detContagemText, { fontSize: fs(11) }]}>{contagem.texto}</Text>
                     </View>
                   </View>
 
                   <View style={styles.detInfoRow}>
-                    <View style={styles.detInfoBox}>
+                    <View style={[styles.detInfoBox, { backgroundColor: C.fundo }]}>
                       <Ionicons name="calendar" size={14} color={config.color} />
-                      <Text style={styles.detInfoLabel}>DATA</Text>
-                      <Text style={styles.detInfoValor}>{d} de {MESES[m-1]}</Text>
-                      <Text style={styles.detInfoSub}>{diaSem}, {a}</Text>
+                      <Text style={[styles.detInfoLabel, { color: C.textoSec, fontSize: fs(9) }]}>DATA</Text>
+                      <Text style={[styles.detInfoValor, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                        {d} de {MESES[m-1]}
+                      </Text>
+                      <Text style={[styles.detInfoSub, { color: C.textoSec, fontSize: fs(11) }]}>
+                        {diaSem}, {a}
+                      </Text>
                     </View>
-                    <View style={styles.detInfoBox}>
+                    <View style={[styles.detInfoBox, { backgroundColor: C.fundo }]}>
                       <Ionicons name="people" size={14} color={config.color} />
-                      <Text style={styles.detInfoLabel}>SÉRIES</Text>
-                      <Text style={styles.detInfoValor}>{(eventoDetalhe.series || []).length}</Text>
-                      <Text style={styles.detInfoSub}>{(eventoDetalhe.series || []).join(' · ')}</Text>
+                      <Text style={[styles.detInfoLabel, { color: C.textoSec, fontSize: fs(9) }]}>SÉRIES</Text>
+                      <Text style={[styles.detInfoValor, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                        {(eventoDetalhe.series || []).length}
+                      </Text>
+                      <Text style={[styles.detInfoSub, { color: C.textoSec, fontSize: fs(11) }]}>
+                        {(eventoDetalhe.series || []).join(' · ')}
+                      </Text>
                     </View>
                   </View>
 
                   {eventoDetalhe.descricao ? (
-                    <View style={styles.detDescBox}>
-                      <Text style={styles.detDescLabel}>DESCRIÇÃO</Text>
-                      <Text style={styles.detDescTexto}>{eventoDetalhe.descricao}</Text>
+                    <View style={[styles.detDescBox, { backgroundColor: C.fundo }]}>
+                      <Text style={[styles.detDescLabel, { color: C.textoSec, fontSize: fs(9) }]}>DESCRIÇÃO</Text>
+                      <Text style={[styles.detDescTexto, { color: C.azulEscuro, fontSize: fs(13) }]}>
+                        {eventoDetalhe.descricao}
+                      </Text>
                     </View>
                   ) : null}
 
-                  {/* ✅ Ações Admin: editar + excluir */}
                   {isAdmin && (
                     <View style={styles.detAcoesRow}>
                       <TouchableOpacity
-                        style={styles.detBtnEditar}
+                        style={[styles.detBtnEditar, { backgroundColor: C.fundo, borderColor: C.cinzaClaro }]}
                         onPress={() => editarEventoAdmin(eventoDetalhe)}
                       >
-                        <Ionicons name="pencil" size={14} color={CORES.azulEscuro} />
-                        <Text style={styles.detBtnEditarText}>Editar</Text>
+                        <Ionicons name="pencil" size={14} color={C.azulEscuro} />
+                        <Text style={[styles.detBtnEditarText, { color: C.azulEscuro, fontSize: fs(12) }]}>
+                          Editar
+                        </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.detBtnExcluir}
                         onPress={() => pedirConfirmacaoExcluirEvento(eventoDetalhe.id, eventoDetalhe.data)}
                       >
                         <Ionicons name="trash-outline" size={14} color="#e74c3c" />
-                        <Text style={styles.detBtnExcluirText}>Excluir</Text>
+                        <Text style={[styles.detBtnExcluirText, { fontSize: fs(12) }]}>Excluir</Text>
                       </TouchableOpacity>
                     </View>
                   )}
 
                   <TouchableOpacity
-                    style={styles.btnFecharModal}
+                    style={[styles.btnFecharModal, { backgroundColor: C.fundo }]}
                     onPress={() => setModalDetalhe(false)}
                   >
-                    <Text style={styles.btnFecharModalText}>Fechar</Text>
+                    <Text style={[styles.btnFecharModalText, { color: C.textoSec, fontSize: fs(13) }]}>
+                      Fechar
+                    </Text>
                   </TouchableOpacity>
                 </ScrollView>
               );
@@ -873,12 +942,14 @@ useEffect(() => {
       ════════════════════════════════════════════════ */}
       <Modal visible={modalDia} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
+          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+            <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
 
-            <View style={styles.diaHeader}>
-              <Text style={styles.diaSemLabel}>{diaSemNome}</Text>
-              <Text style={styles.diaTituloData}>{diaNum} de {mesNomeDia}, {anoN}</Text>
+            <View style={[styles.diaHeader, { borderBottomColor: C.cinzaClaro }]}>
+              <Text style={[styles.diaSemLabel, { color: C.rosa, fontSize: fs(10) }]}>{diaSemNome}</Text>
+              <Text style={[styles.diaTituloData, { color: C.azulEscuro, fontSize: fs(20) }]}>
+                {diaNum} de {mesNomeDia}, {anoN}
+              </Text>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: winH * 0.55 }}>
@@ -886,22 +957,39 @@ useEffect(() => {
               {/* EVENTOS ADMIN */}
               {evsAdmDia.length > 0 && (
                 <View style={styles.diaBloco}>
-                  <Text style={styles.diaBlocoTitulo}>AGENDA ESCOLAR</Text>
+                  <Text style={[styles.diaBlocoTitulo, { color: C.textoSec, fontSize: fs(9) }]}>
+                    AGENDA ESCOLAR
+                  </Text>
                   {evsAdmDia.map(ev => (
                     <TouchableOpacity
                       key={ev.id}
-                      style={[styles.eventoItem, { borderLeftColor: TIPO_CONFIG[ev.tipo]?.color }]}
+                      style={[
+                        styles.eventoItem,
+                        { backgroundColor: C.fundo, borderLeftColor: TIPO_CONFIG[ev.tipo]?.color }
+                      ]}
                       onPress={() => { setEventoDetalhe(ev); setModalDia(false); setTimeout(() => setModalDetalhe(true), 250); }}
                     >
                       <View style={styles.eventoTop}>
                         <View style={[styles.tipoBadge, { backgroundColor: TIPO_CONFIG[ev.tipo]?.bg }]}>
-                          <Text style={[styles.tipoBadgeText, { color: TIPO_CONFIG[ev.tipo]?.color }]}>
+                          <Text style={[styles.tipoBadgeText, { color: TIPO_CONFIG[ev.tipo]?.color, fontSize: fs(9) }]}>
                             {ev.tipo}
                           </Text>
                         </View>
-                        <Text style={styles.eventoTitulo} numberOfLines={1}>{ev.titulo}</Text>
+                        <Text
+                          style={[styles.eventoTitulo, { color: C.azulEscuro, fontSize: fs(13) }]}
+                          numberOfLines={1}
+                        >
+                          {ev.titulo}
+                        </Text>
                       </View>
-                      {ev.descricao ? <Text style={styles.eventoDesc} numberOfLines={2}>{ev.descricao}</Text> : null}
+                      {ev.descricao ? (
+                        <Text
+                          style={[styles.eventoDesc, { color: C.textoSec, fontSize: fs(11) }]}
+                          numberOfLines={2}
+                        >
+                          {ev.descricao}
+                        </Text>
+                      ) : null}
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -909,63 +997,107 @@ useEffect(() => {
 
               {/* LEMBRETES */}
               <View style={styles.diaBloco}>
-                <Text style={styles.diaBlocoTitulo}>MEUS LEMBRETES</Text>
+                <Text style={[styles.diaBlocoTitulo, { color: C.textoSec, fontSize: fs(9) }]}>
+                  MEUS LEMBRETES
+                </Text>
                 {lembDia.length === 0 ? (
-                  <Text style={styles.diaVazio}>Nenhum lembrete para este dia.</Text>
+                  <Text style={[styles.diaVazio, { color: C.textoSec, fontSize: fs(12) }]}>
+                    Nenhum lembrete para este dia.
+                  </Text>
                 ) : lembDia.map(ev => (
-                  <View key={ev.id} style={[styles.eventoItem, { borderLeftColor: TIPO_CONFIG.lembrete.color }]}>
+                  <View
+                    key={ev.id}
+                    style={[
+                      styles.eventoItem,
+                      { backgroundColor: C.fundo, borderLeftColor: TIPO_CONFIG.lembrete.color }
+                    ]}
+                  >
                     <View style={styles.eventoTop}>
                       <View style={[styles.tipoBadge, { backgroundColor: TIPO_CONFIG.lembrete.bg }]}>
-                        <Text style={[styles.tipoBadgeText, { color: TIPO_CONFIG.lembrete.color }]}>Lembrete</Text>
+                        <Text style={[styles.tipoBadgeText, { color: TIPO_CONFIG.lembrete.color, fontSize: fs(9) }]}>
+                          Lembrete
+                        </Text>
                       </View>
-                      <Text style={styles.eventoTitulo} numberOfLines={1}>{ev.titulo}</Text>
+                      <Text
+                        style={[styles.eventoTitulo, { color: C.azulEscuro, fontSize: fs(13) }]}
+                        numberOfLines={1}
+                      >
+                        {ev.titulo}
+                      </Text>
                       <View style={{ flexDirection: 'row', gap: 4 }}>
-                        {/* ✅ Botão editar */}
-                        <TouchableOpacity onPress={() => editarLembrete(ev)} style={styles.btnAcaoMini}>
-                          <Ionicons name="pencil" size={12} color={CORES.azulEscuro} />
+                        <TouchableOpacity
+                          onPress={() => editarLembrete(ev)}
+                          style={[styles.btnAcaoMini, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+                        >
+                          <Ionicons name="pencil" size={12} color={C.azulEscuro} />
                         </TouchableOpacity>
-                        {/* ✅ Botão excluir */}
-                        <TouchableOpacity onPress={() => pedirConfirmacaoExcluirLembrete(ev.id)} style={styles.btnAcaoMini}>
+                        <TouchableOpacity
+                          onPress={() => pedirConfirmacaoExcluirLembrete(ev.id)}
+                          style={[styles.btnAcaoMini, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+                        >
                           <Ionicons name="trash-outline" size={12} color="#e74c3c" />
                         </TouchableOpacity>
                       </View>
                     </View>
-                    {ev.descricao ? <Text style={styles.eventoDesc} numberOfLines={2}>{ev.descricao}</Text> : null}
+                    {ev.descricao ? (
+                      <Text
+                        style={[styles.eventoDesc, { color: C.textoSec, fontSize: fs(11) }]}
+                        numberOfLines={2}
+                      >
+                        {ev.descricao}
+                      </Text>
+                    ) : null}
                   </View>
                 ))}
               </View>
 
-              {/* FORM LEMBRETE (criar OU editar) */}
-              <View style={[styles.diaBloco, { borderTopWidth: 1, borderTopColor: CORES.cinzaClaro, paddingTop: 16 }]}>
+              {/* FORM LEMBRETE */}
+              <View style={[
+                styles.diaBloco,
+                { borderTopWidth: 1, borderTopColor: C.cinzaClaro, paddingTop: 16 }
+              ]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <Text style={styles.diaBlocoTitulo}>
+                  <Text style={[styles.diaBlocoTitulo, { color: C.textoSec, fontSize: fs(9) }]}>
                     {lembEditandoId ? 'EDITANDO LEMBRETE' : 'ADICIONAR LEMBRETE'}
                   </Text>
                   {lembEditandoId && (
                     <TouchableOpacity onPress={cancelarEdicaoLembrete}>
-                      <Text style={styles.linkCancelar}>Cancelar</Text>
+                      <Text style={[styles.linkCancelar, { color: C.rosa, fontSize: fs(11) }]}>Cancelar</Text>
                     </TouchableOpacity>
                   )}
                 </View>
                 <TextInput
-                  style={styles.lembInput}
+                  style={[
+                    styles.lembInput,
+                    { backgroundColor: C.fundo, color: C.azulEscuro, borderColor: C.cinzaClaro, fontSize: fs(13) }
+                  ]}
                   placeholder="Título do lembrete *"
-                  placeholderTextColor={CORES.textoSec}
+                  placeholderTextColor={C.textoSec}
                   value={lembreTitulo}
                   onChangeText={setLembreTitulo}
                 />
                 <TextInput
-                  style={[styles.lembInput, { height: 70, textAlignVertical: 'top' }]}
+                  style={[
+                    styles.lembInput,
+                    { height: 70, textAlignVertical: 'top', backgroundColor: C.fundo, color: C.azulEscuro, borderColor: C.cinzaClaro, fontSize: fs(13) }
+                  ]}
                   placeholder="Descrição (opcional)"
-                  placeholderTextColor={CORES.textoSec}
+                  placeholderTextColor={C.textoSec}
                   value={lembreDesc}
                   onChangeText={setLembreDesc}
                   multiline
                 />
-                <TouchableOpacity style={styles.btnSalvarLemb} onPress={salvarLembrete} disabled={salvandoLemb}>
+                <TouchableOpacity
+                  style={[styles.btnSalvarLemb, { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }]}
+                  onPress={salvarLembrete}
+                  disabled={salvandoLemb}
+                >
                   {salvandoLemb
-                    ? <ActivityIndicator color="#FFF" size="small" />
-                    : <Text style={styles.btnSalvarLembText}>
+                    ? <ActivityIndicator color={modoEscuro ? CORES.azulEscuro : '#FFF'} size="small" />
+                    : <Text style={[
+                        styles.btnSalvarLembText,
+                        { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(13) }
+                      ]}>
                         {lembEditandoId ? 'Atualizar Lembrete' : 'Salvar Lembrete'}
                       </Text>
                   }
@@ -974,14 +1106,15 @@ useEffect(() => {
             </ScrollView>
 
             <TouchableOpacity
-              style={styles.btnFecharModal}
+              style={[styles.btnFecharModal, { backgroundColor: C.fundo }]}
               onPress={() => { setModalDia(false); cancelarEdicaoLembrete(); }}
             >
-              <Text style={styles.btnFecharModalText}>Fechar</Text>
+              <Text style={[styles.btnFecharModalText, { color: C.textoSec, fontSize: fs(13) }]}>Fechar</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
+
 
       {/* ════════════════════════════════════════════════
           MODAL ADMIN FORM (cria E edita)
@@ -989,29 +1122,38 @@ useEffect(() => {
       <Modal visible={modalAdminForm} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end' }}>
-            <View style={[styles.modalSheet, { paddingBottom: Platform.OS === 'ios' ? 40 : 28 }]}>
-              <View style={styles.modalHandle} />
-              <Text style={styles.modalTitulo}>
+            <View style={[
+              styles.modalSheet,
+              { paddingBottom: Platform.OS === 'ios' ? 40 : 28, backgroundColor: C.branco }
+            ]}>
+              <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
+              <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>
                 {admEditandoId ? 'Editar Evento' : 'Novo Evento Escolar'}
               </Text>
-              <Text style={styles.modalSub}>
+              <Text style={[styles.modalSub, { color: C.textoSec, fontSize: fs(12) }]}>
                 {admEditandoId ? 'Edite as informações do evento.' : 'Será visível para os alunos das séries selecionadas'}
               </Text>
 
-              <Text style={styles.formLabel}>TÍTULO *</Text>
+              <Text style={[styles.formLabel, { color: C.textoSec, fontSize: fs(10) }]}>TÍTULO *</Text>
               <TextInput
-                style={styles.formInput}
+                style={[
+                  styles.formInput,
+                  { backgroundColor: C.fundo, color: C.azulEscuro, borderColor: C.cinzaClaro, fontSize: fs(13) }
+                ]}
                 placeholder="Ex: Prova de Matemática"
-                placeholderTextColor={CORES.textoSec}
+                placeholderTextColor={C.textoSec}
                 value={adminTitulo}
                 onChangeText={setAdminTitulo}
               />
 
-              <Text style={styles.formLabel}>DESCRIÇÃO</Text>
+              <Text style={[styles.formLabel, { color: C.textoSec, fontSize: fs(10) }]}>DESCRIÇÃO</Text>
               <TextInput
-                style={[styles.formInput, { height: 72, textAlignVertical: 'top' }]}
+                style={[
+                  styles.formInput,
+                  { height: 72, textAlignVertical: 'top', backgroundColor: C.fundo, color: C.azulEscuro, borderColor: C.cinzaClaro, fontSize: fs(13) }
+                ]}
                 placeholder="Informações adicionais..."
-                placeholderTextColor={CORES.textoSec}
+                placeholderTextColor={C.textoSec}
                 value={adminDesc}
                 onChangeText={setAdminDesc}
                 multiline
@@ -1019,9 +1161,9 @@ useEffect(() => {
 
               <View style={styles.adminRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.formLabel}>DATA *</Text>
+                  <Text style={[styles.formLabel, { color: C.textoSec, fontSize: fs(10) }]}>DATA *</Text>
                   <TouchableOpacity
-                    style={styles.formSelect}
+                    style={[styles.formSelect, { backgroundColor: C.fundo, borderColor: C.cinzaClaro }]}
                     onPress={() => {
                       if (adminData) {
                         const [a, m, d] = adminData.split('-').map(Number);
@@ -1032,53 +1174,78 @@ useEffect(() => {
                       setModalDataEvt(true);
                     }}
                   >
-                    <Text style={[styles.formSelectText, !adminData && { color: CORES.textoSec }]}>
+                    <Text style={[
+                      styles.formSelectText,
+                      { color: C.azulEscuro, fontSize: fs(13) },
+                      !adminData && { color: C.textoSec }
+                    ]}>
                       {adminData ? adminData.split('-').reverse().join('/') : 'Selecione...'}
                     </Text>
-                    <Ionicons name="calendar-outline" size={14} color={CORES.textoSec} />
+                    <Ionicons name="calendar-outline" size={14} color={C.textoSec} />
                   </TouchableOpacity>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.formLabel}>TIPO *</Text>
-                  <TouchableOpacity style={styles.formSelect} onPress={() => setModalTipoEvt(true)}>
-                    <Text style={[styles.formSelectText, !adminTipo && { color: CORES.textoSec }]}>
+                  <Text style={[styles.formLabel, { color: C.textoSec, fontSize: fs(10) }]}>TIPO *</Text>
+                  <TouchableOpacity
+                    style={[styles.formSelect, { backgroundColor: C.fundo, borderColor: C.cinzaClaro }]}
+                    onPress={() => setModalTipoEvt(true)}
+                  >
+                    <Text style={[
+                      styles.formSelectText,
+                      { color: C.azulEscuro, fontSize: fs(13) },
+                      !adminTipo && { color: C.textoSec }
+                    ]}>
                       {adminTipo || 'Selecione...'}
                     </Text>
-                    <Ionicons name="chevron-down" size={14} color={CORES.textoSec} />
+                    <Ionicons name="chevron-down" size={14} color={C.textoSec} />
                   </TouchableOpacity>
                 </View>
               </View>
 
-              <Text style={styles.formLabel}>SÉRIES *</Text>
+              <Text style={[styles.formLabel, { color: C.textoSec, fontSize: fs(10) }]}>SÉRIES *</Text>
               <View style={styles.seriesRow}>
-                {['1º','2º','3º'].map(s => (
-                  <TouchableOpacity
-                    key={s}
-                    style={[styles.serieBadge, adminSeries.includes(s) && styles.serieBadgeAtivo]}
-                    onPress={() => toggleSerie(s)}
-                  >
-                    <Text style={[styles.serieBadgeText, adminSeries.includes(s) && { color: CORES.branco }]}>
-                      {s} Ano
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {['1º','2º','3º'].map(s => {
+                  const ativo = adminSeries.includes(s);
+                  return (
+                    <TouchableOpacity
+                      key={s}
+                      style={[
+                        styles.serieBadge,
+                        { backgroundColor: C.fundo, borderColor: C.cinzaClaro },
+                        ativo && { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro, borderColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
+                      ]}
+                      onPress={() => toggleSerie(s)}
+                    >
+                      <Text style={[
+                        styles.serieBadgeText,
+                        { color: C.textoSec, fontSize: fs(12) },
+                        ativo && { color: modoEscuro ? CORES.azulEscuro : CORES.branco }
+                      ]}>
+                        {s} Ano
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
               <View style={styles.formBtns}>
                 <TouchableOpacity
-                  style={[styles.formBtn, { backgroundColor: CORES.cinzaClaro }]}
+                  style={[styles.formBtn, { backgroundColor: C.cinzaClaro }]}
                   onPress={() => { setModalAdminForm(false); setAdmEditandoId(null); }}
                 >
-                  <Text style={[styles.formBtnText, { color: CORES.preto }]}>Cancelar</Text>
+                  <Text style={[styles.formBtnText, { color: C.preto, fontSize: fs(13) }]}>Cancelar</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.formBtn, { backgroundColor: CORES.azulEscuro }]}
+                  style={[styles.formBtn, { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }]}
                   onPress={salvarEventoAdmin}
                   disabled={salvandoAdm}
                 >
                   {salvandoAdm
-                    ? <ActivityIndicator color="#FFF" size="small" />
-                    : <Text style={[styles.formBtnText, { color: CORES.branco }]}>
+                    ? <ActivityIndicator color={modoEscuro ? CORES.azulEscuro : '#FFF'} size="small" />
+                    : <Text style={[
+                        styles.formBtnText,
+                        { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(13) }
+                      ]}>
                         {admEditandoId ? 'Salvar' : 'Publicar'}
                       </Text>
                   }
@@ -1092,18 +1259,18 @@ useEffect(() => {
       {/* MODAL TIPO EVT */}
       <Modal visible={modalTipoEvt} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitulo}>Tipo de Evento</Text>
+          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+            <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
+            <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>Tipo de Evento</Text>
             {TIPOS_EVENTO.map(t => (
               <TouchableOpacity
                 key={t}
-                style={styles.seletorItem}
+                style={[styles.seletorItem, { borderBottomColor: C.cinzaClaro }]}
                 onPress={() => { setAdminTipo(t); setModalTipoEvt(false); }}
               >
                 <View style={[styles.dot, { backgroundColor: TIPO_CONFIG[t]?.color, width: 10, height: 10 }]} />
-                <Text style={styles.seletorItemText}>{t}</Text>
-                {adminTipo === t && <Ionicons name="checkmark" size={18} color={CORES.azulEscuro} />}
+                <Text style={[styles.seletorItemText, { color: C.azulEscuro, fontSize: fs(14) }]}>{t}</Text>
+                {adminTipo === t && <Ionicons name="checkmark" size={18} color={C.azulEscuro} />}
               </TouchableOpacity>
             ))}
           </View>
@@ -1113,44 +1280,79 @@ useEffect(() => {
       {/* MODAL DATA EVT */}
       <Modal visible={modalDataEvt} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitulo}>Selecionar Data</Text>
+          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+            <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
+            <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>Selecionar Data</Text>
 
             <View style={styles.dataPickerRow}>
-              <TouchableOpacity onPress={() => setSelAno(a => a - 1)} style={styles.btnNavMes}>
-                <Ionicons name="chevron-back" size={14} color={CORES.azulEscuro} />
+              <TouchableOpacity
+                onPress={() => setSelAno(a => a - 1)}
+                style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+              >
+                <Ionicons name="chevron-back" size={14} color={C.azulEscuro} />
               </TouchableOpacity>
-              <Text style={styles.dataPickerValor}>{selAno}</Text>
-              <TouchableOpacity onPress={() => setSelAno(a => a + 1)} style={styles.btnNavMes}>
-                <Ionicons name="chevron-forward" size={14} color={CORES.azulEscuro} />
+              <Text style={[styles.dataPickerValor, { color: C.azulEscuro, fontSize: fs(15) }]}>{selAno}</Text>
+              <TouchableOpacity
+                onPress={() => setSelAno(a => a + 1)}
+                style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+              >
+                <Ionicons name="chevron-forward" size={14} color={C.azulEscuro} />
               </TouchableOpacity>
             </View>
 
             <View style={styles.dataPickerRow}>
-              <TouchableOpacity onPress={() => setSelMes(m => m === 1 ? 12 : m - 1)} style={styles.btnNavMes}>
-                <Ionicons name="chevron-back" size={14} color={CORES.azulEscuro} />
+              <TouchableOpacity
+                onPress={() => setSelMes(m => m === 1 ? 12 : m - 1)}
+                style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+              >
+                <Ionicons name="chevron-back" size={14} color={C.azulEscuro} />
               </TouchableOpacity>
-              <Text style={styles.dataPickerValor}>{MESES[selMes - 1]}</Text>
-              <TouchableOpacity onPress={() => setSelMes(m => m === 12 ? 1 : m + 1)} style={styles.btnNavMes}>
-                <Ionicons name="chevron-forward" size={14} color={CORES.azulEscuro} />
+              <Text style={[styles.dataPickerValor, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                {MESES[selMes - 1]}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setSelMes(m => m === 12 ? 1 : m + 1)}
+                style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+              >
+                <Ionicons name="chevron-forward" size={14} color={C.azulEscuro} />
               </TouchableOpacity>
             </View>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 12 }}>
-              {Array.from({ length: totalDiasSelMes }, (_, i) => i + 1).map(d => (
-                <TouchableOpacity
-                  key={d}
-                  style={[styles.diaPickerBtn, selDia === d && styles.diaPickerBtnAtivo]}
-                  onPress={() => setSelDia(d)}
-                >
-                  <Text style={[styles.diaPickerText, selDia === d && { color: CORES.branco }]}>{d}</Text>
-                </TouchableOpacity>
-              ))}
+              {Array.from({ length: totalDiasSelMes }, (_, i) => i + 1).map(d => {
+                const ativo = selDia === d;
+                return (
+                  <TouchableOpacity
+                    key={d}
+                    style={[
+                      styles.diaPickerBtn,
+                      { backgroundColor: C.fundo, borderColor: C.cinzaClaro },
+                      ativo && { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro, borderColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
+                    ]}
+                    onPress={() => setSelDia(d)}
+                  >
+                    <Text style={[
+                      styles.diaPickerText,
+                      { color: C.azulEscuro, fontSize: fs(12) },
+                      ativo && { color: modoEscuro ? CORES.azulEscuro : CORES.branco }
+                    ]}>
+                      {d}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
 
-            <TouchableOpacity style={[styles.formBtn, { backgroundColor: CORES.azulEscuro, marginTop: 8 }]} onPress={confirmarData}>
-              <Text style={[styles.formBtnText, { color: CORES.branco }]}>Confirmar</Text>
+            <TouchableOpacity
+              style={[styles.formBtn, { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro, marginTop: 8 }]}
+              onPress={confirmarData}
+            >
+              <Text style={[
+                styles.formBtnText,
+                { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(13) }
+              ]}>
+                Confirmar
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1159,9 +1361,9 @@ useEffect(() => {
       {/* MODAL LEGENDA */}
       <Modal visible={modalLegenda} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitulo}>Legenda</Text>
+          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+            <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
+            <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>Legenda</Text>
             {[
               { key: 'lembrete', label: 'Meu lembrete' },
               { key: 'Prova',    label: 'Prova'         },
@@ -1171,37 +1373,46 @@ useEffect(() => {
             ].map(item => (
               <View key={item.key} style={styles.legendaItem}>
                 <View style={[styles.dot, { backgroundColor: TIPO_CONFIG[item.key]?.color, width: 10, height: 10 }]} />
-                <Text style={styles.legendaText}>{item.label}</Text>
+                <Text style={[styles.legendaText, { color: C.azulEscuro, fontSize: fs(13) }]}>{item.label}</Text>
               </View>
             ))}
-            <TouchableOpacity style={styles.btnFecharModal} onPress={() => setModalLegenda(false)}>
-              <Text style={styles.btnFecharModalText}>Fechar</Text>
+            <TouchableOpacity
+              style={[styles.btnFecharModal, { backgroundColor: C.fundo }]}
+              onPress={() => setModalLegenda(false)}
+            >
+              <Text style={[styles.btnFecharModalText, { color: C.textoSec, fontSize: fs(13) }]}>Fechar</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* ✅ MODAL DE CONFIRMAÇÃO (substitui Alert.alert) */}
+      {/* MODAL DE CONFIRMAÇÃO */}
       <Modal visible={confirm !== null} transparent animationType="fade">
         <View style={styles.confirmOverlay}>
-          <View style={styles.confirmBox}>
+          <View style={[styles.confirmBox, { backgroundColor: C.branco }]}>
             <View style={styles.confirmIcon}>
               <Ionicons name="alert-circle" size={28} color="#e74c3c" />
             </View>
-            <Text style={styles.confirmTitulo}>{confirm?.titulo}</Text>
-            <Text style={styles.confirmMsg}>{confirm?.msg}</Text>
+            <Text style={[styles.confirmTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>
+              {confirm?.titulo}
+            </Text>
+            <Text style={[styles.confirmMsg, { color: C.textoSec, fontSize: fs(13) }]}>
+              {confirm?.msg}
+            </Text>
             <View style={styles.confirmBtns}>
               <TouchableOpacity
-                style={[styles.confirmBtn, { backgroundColor: CORES.cinzaClaro }]}
+                style={[styles.confirmBtn, { backgroundColor: C.cinzaClaro }]}
                 onPress={() => setConfirm(null)}
               >
-                <Text style={[styles.confirmBtnText, { color: CORES.preto }]}>Cancelar</Text>
+                <Text style={[styles.confirmBtnText, { color: C.preto, fontSize: fs(13) }]}>Cancelar</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.confirmBtn, { backgroundColor: '#e74c3c' }]}
                 onPress={() => { confirm?.onOk(); setConfirm(null); }}
               >
-                <Text style={[styles.confirmBtnText, { color: CORES.branco }]}>{confirm?.btn}</Text>
+                <Text style={[styles.confirmBtnText, { color: CORES.branco, fontSize: fs(13) }]}>
+                  {confirm?.btn}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1213,164 +1424,157 @@ useEffect(() => {
 }
 
 const styles = StyleSheet.create({
-  container:         { flex: 1, backgroundColor: CORES.fundo },
-  centro:            { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: CORES.fundo },
+  container:         { flex: 1 },
+  centro:            { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  // TOAST
+  // TOAST — fixo
   toast:             { position: 'absolute', top: Platform.OS === 'ios' ? 50 : 18, alignSelf: 'center', backgroundColor: CORES.azulEscuro, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 24, zIndex: 9999, elevation: 10 },
-  toastText:         { color: CORES.branco, fontFamily: F.bold, fontSize: 13 },
+  toastText:         { color: CORES.branco, fontFamily: F.bold },
 
-  // HEADER
+  // HEADER — fixo (identidade visual)
   header:            { backgroundColor: CORES.azulEscuro, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 14, gap: 10 },
   btnVoltar:         { padding: 4 },
-  headerEyebrow:     { color: 'rgba(255,255,255,0.5)', fontSize: 9, fontFamily: F.black, letterSpacing: 1.6 },
-  headerTitulo:      { color: CORES.branco, fontSize: 18, fontFamily: F.black, letterSpacing: -0.4 },
+  headerEyebrow:     { color: 'rgba(255,255,255,0.5)', fontFamily: F.black, letterSpacing: 1.6 },
+  headerTitulo:      { color: CORES.branco, fontFamily: F.black, letterSpacing: -0.4 },
   btnIcone:          { padding: 4 },
   btnAdd:            { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: CORES.rosa, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10 },
-  btnAddText:        { color: CORES.branco, fontFamily: F.bold, fontSize: 12 },
+  btnAddText:        { color: CORES.branco, fontFamily: F.bold },
 
   // NAV MÊS
-  navMes:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 14, backgroundColor: CORES.branco, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
-  btnNavMes:         { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: CORES.cinzaClaro, backgroundColor: CORES.branco },
-  navMesNome:        { fontSize: 16, fontFamily: F.black, color: CORES.azulEscuro, textAlign: 'center', letterSpacing: -0.3 },
-  navAno:            { fontSize: 11, color: CORES.textoSec, textAlign: 'center', fontFamily: F.semibold },
+  navMes:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1 },
+  btnNavMes:         { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+  navMesNome:        { fontFamily: F.black, textAlign: 'center', letterSpacing: -0.3 },
+  navAno:            { textAlign: 'center', fontFamily: F.semibold },
 
-  btnHoje:           { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'center', marginVertical: 8, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 18, borderWidth: 1, borderColor: CORES.cinzaClaro, backgroundColor: CORES.branco },
-  btnHojeText:       { fontSize: 11, fontFamily: F.bold, color: CORES.azulEscuro },
+  btnHoje:           { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'center', marginVertical: 8, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 18, borderWidth: 1 },
+  btnHojeText:       { fontFamily: F.bold },
 
   // GRADE
-  semanaRow:         { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 6, backgroundColor: CORES.branco, borderTopWidth: 1, borderTopColor: CORES.cinzaClaro },
-  semanaLabel:       { textAlign: 'center', fontSize: 10, fontFamily: F.black, color: CORES.textoSec, letterSpacing: 0.6 },
-  grade:             { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, paddingTop: 4, backgroundColor: CORES.branco, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
-  celula:            { borderWidth: 0.5, borderColor: CORES.cinzaClaro, padding: 4, backgroundColor: CORES.branco },
-  celulaVazia:       { backgroundColor: '#FBFBFD', borderWidth: 0.5, borderColor: CORES.cinzaClaro },
-  celulaFimSem:      { backgroundColor: '#FAFAF8' },
-  celulaComEvento:   { backgroundColor: '#FAFFF9' },
+  semanaRow:         { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 6, borderTopWidth: 1 },
+  semanaLabel:       { textAlign: 'center', fontFamily: F.black, letterSpacing: 0.6 },
+  grade:             { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, paddingTop: 4, borderBottomWidth: 1 },
+  celula:            { borderWidth: 0.5, padding: 4 },
+  celulaVazia:       { borderWidth: 0.5 },
   numWrap:           { width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
-  numHoje:           { backgroundColor: CORES.azulEscuro },
-  numDia:            { fontSize: 11, fontFamily: F.bold, color: CORES.azulEscuro },
+  numDia:            { fontFamily: F.bold },
   dotsRow:           { flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginTop: 2 },
   dot:               { width: 5, height: 5, borderRadius: 3 },
 
   // SEÇÃO EVENTOS
-  secaoEventos:      { marginHorizontal: 16, marginTop: 18, backgroundColor: CORES.branco, borderRadius: 20, padding: 16, elevation: 3, shadowColor: CORES.azulEscuro, shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
+  secaoEventos:      { marginHorizontal: 16, marginTop: 18, borderRadius: 20, padding: 16, elevation: 3, shadowColor: CORES.azulEscuro, shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
   secaoHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  secaoEyebrow:      { fontSize: 9, fontFamily: F.black, color: CORES.rosa, letterSpacing: 1.4, marginBottom: 2 },
-  secaoTitulo:       { fontSize: 17, fontFamily: F.black, color: CORES.azulEscuro, letterSpacing: -0.3 },
-  secaoCount:        { backgroundColor: CORES.azulEscuro, minWidth: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 10 },
-  secaoCountText:    { color: CORES.branco, fontSize: 12, fontFamily: F.black },
+  secaoEyebrow:      { fontFamily: F.black, letterSpacing: 1.4, marginBottom: 2 },
+  secaoTitulo:       { fontFamily: F.black, letterSpacing: -0.3 },
+  secaoCount:        { minWidth: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 10 },
+  secaoCountText:    { fontFamily: F.black },
 
   // CHIPS
   chipsRow:          { gap: 8, paddingVertical: 8, paddingHorizontal: 2, flexDirection: 'row' },
-  chip:              { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: CORES.fundo, borderWidth: 1, borderColor: CORES.cinzaClaro },
-  chipAtivo:         { backgroundColor: CORES.azulEscuro, borderColor: CORES.azulEscuro },
-  chipText:          { fontSize: 11, fontFamily: F.bold, color: CORES.textoSec },
-  chipTextAtivo:     { color: CORES.branco },
+  chip:              { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
+  chipText:          { fontFamily: F.bold },
 
-  // CARD MÉDIO
-  evCard:            { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: CORES.branco, borderRadius: 14, padding: 10, borderWidth: 0.5, borderColor: CORES.cinzaClaro },
+  // CARD
+  evCard:            { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, padding: 10, borderWidth: 0.5 },
   evDataBox:         { width: 48, height: 54, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  evDataDia:         { fontSize: 19, fontFamily: F.black, lineHeight: 22 },
-  evDataMes:         { fontSize: 9, fontFamily: F.black, letterSpacing: 0.8, marginTop: 2 },
+  evDataDia:         { fontFamily: F.black, lineHeight: 22 },
+  evDataMes:         { fontFamily: F.black, letterSpacing: 0.8, marginTop: 2 },
   evConteudo:        { flex: 1, gap: 3 },
   evTopo:            { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
   evIconWrap:        { width: 18, height: 18, borderRadius: 9, justifyContent: 'center', alignItems: 'center' },
-  evTipoLabel:       { fontSize: 9, fontFamily: F.black, letterSpacing: 0.6 },
+  evTipoLabel:       { fontFamily: F.black, letterSpacing: 0.6 },
   evChipMini:        { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginLeft: 'auto' as any },
-  evChipMiniText:    { fontSize: 8, fontFamily: F.black, letterSpacing: 0.4 },
-  evTitulo:          { fontSize: 13, fontFamily: F.bold, color: CORES.azulEscuro },
+  evChipMiniText:    { fontFamily: F.black, letterSpacing: 0.4 },
+  evTitulo:          { fontFamily: F.bold },
   evMetaRow:         { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  evMeta:            { fontSize: 10, color: CORES.textoSec, fontFamily: F.semibold },
+  evMeta:            { fontFamily: F.semibold },
 
   listaVazia:        { alignItems: 'center', paddingVertical: 28, gap: 8 },
-  listaVaziaText:    { fontSize: 12, color: CORES.textoSec, fontFamily: F.medium, textAlign: 'center' },
+  listaVaziaText:    { fontFamily: F.medium, textAlign: 'center' },
 
   // MODAL DETALHE
   detHero:           { borderRadius: 18, padding: 22, alignItems: 'center', marginBottom: 12 },
   detHeroIcon:       { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
-  detHeroTipo:       { fontSize: 11, fontFamily: F.black, letterSpacing: 1.4, marginBottom: 6 },
-  detHeroTitulo:     { fontSize: 20, fontFamily: F.black, color: CORES.azulEscuro, textAlign: 'center', letterSpacing: -0.3, lineHeight: 26 },
+  detHeroTipo:       { fontFamily: F.black, letterSpacing: 1.4, marginBottom: 6 },
+  detHeroTitulo:     { fontFamily: F.black, textAlign: 'center', letterSpacing: -0.3, lineHeight: 26 },
   detContagem:       { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginTop: 12 },
-  detContagemText:   { color: CORES.branco, fontSize: 11, fontFamily: F.black, letterSpacing: 0.7 },
+  detContagemText:   { color: CORES.branco, fontFamily: F.black, letterSpacing: 0.7 },
   detInfoRow:        { flexDirection: 'row', gap: 10, marginBottom: 12 },
-  detInfoBox:        { flex: 1, backgroundColor: CORES.fundo, borderRadius: 14, padding: 12, gap: 3 },
-  detInfoLabel:      { fontSize: 9, fontFamily: F.black, color: CORES.textoSec, letterSpacing: 1.1, marginTop: 4 },
-  detInfoValor:      { fontSize: 15, fontFamily: F.black, color: CORES.azulEscuro },
-  detInfoSub:        { fontSize: 11, color: CORES.textoSec, fontFamily: F.semibold },
-  detDescBox:        { backgroundColor: CORES.fundo, borderRadius: 14, padding: 12, marginBottom: 12 },
-  detDescLabel:      { fontSize: 9, fontFamily: F.black, color: CORES.textoSec, letterSpacing: 1.1, marginBottom: 5 },
-  detDescTexto:      { fontSize: 13, color: CORES.azulEscuro, lineHeight: 19, fontFamily: F.regular },
+  detInfoBox:        { flex: 1, borderRadius: 14, padding: 12, gap: 3 },
+  detInfoLabel:      { fontFamily: F.black, letterSpacing: 1.1, marginTop: 4 },
+  detInfoValor:      { fontFamily: F.black },
+  detInfoSub:        { fontFamily: F.semibold },
+  detDescBox:        { borderRadius: 14, padding: 12, marginBottom: 12 },
+  detDescLabel:      { fontFamily: F.black, letterSpacing: 1.1, marginBottom: 5 },
+  detDescTexto:      { lineHeight: 19, fontFamily: F.regular },
   detAcoesRow:       { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  detBtnEditar:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: 12, backgroundColor: CORES.fundo, borderWidth: 1, borderColor: CORES.cinzaClaro },
-  detBtnEditarText:  { color: CORES.azulEscuro, fontFamily: F.bold, fontSize: 12 },
+  detBtnEditar:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: 12, borderWidth: 1 },
+  detBtnEditarText:  { fontFamily: F.bold },
   detBtnExcluir:     { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: 12, backgroundColor: '#FFF5F5', borderWidth: 1, borderColor: '#FDECEA' },
-  detBtnExcluirText: { color: '#e74c3c', fontFamily: F.bold, fontSize: 12 },
+  detBtnExcluirText: { color: '#e74c3c', fontFamily: F.bold },
 
   // MODAIS GERAL
   modalOverlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalSheet:        { backgroundColor: CORES.branco, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 22, paddingBottom: 32, maxHeight: '92%' },
-  modalHandle:       { width: 40, height: 4, backgroundColor: CORES.cinzaClaro, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
-  modalTitulo:       { fontSize: 17, fontFamily: F.black, color: CORES.azulEscuro, marginBottom: 4, letterSpacing: -0.3 },
-  modalSub:          { fontSize: 12, color: CORES.textoSec, marginBottom: 14, fontFamily: F.regular },
+  modalSheet:        { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 22, paddingBottom: 32, maxHeight: '92%' },
+  modalHandle:       { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  modalTitulo:       { fontFamily: F.black, marginBottom: 4, letterSpacing: -0.3 },
+  modalSub:          { marginBottom: 14, fontFamily: F.regular },
 
   // MODAL DIA
-  diaHeader:         { marginBottom: 14, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
-  diaSemLabel:       { fontSize: 10, fontFamily: F.black, letterSpacing: 1.4, color: CORES.rosa, textTransform: 'uppercase' },
-  diaTituloData:     { fontSize: 20, fontFamily: F.black, color: CORES.azulEscuro, letterSpacing: -0.4 },
+  diaHeader:         { marginBottom: 14, paddingBottom: 14, borderBottomWidth: 1 },
+  diaSemLabel:       { fontFamily: F.black, letterSpacing: 1.4, textTransform: 'uppercase' },
+  diaTituloData:     { fontFamily: F.black, letterSpacing: -0.4 },
   diaBloco:          { marginBottom: 14 },
-  diaBlocoTitulo:    { fontSize: 9, fontFamily: F.black, color: CORES.textoSec, letterSpacing: 1.2, marginBottom: 8, textTransform: 'uppercase' },
-  diaVazio:          { fontSize: 12, color: CORES.textoSec, fontFamily: F.medium, fontStyle: 'italic' },
-  eventoItem:        { borderLeftWidth: 3, borderLeftColor: CORES.cinzaClaro, paddingLeft: 10, paddingVertical: 8, paddingRight: 8, backgroundColor: CORES.fundo, marginBottom: 6, borderRadius: 8 },
+  diaBlocoTitulo:    { fontFamily: F.black, letterSpacing: 1.2, marginBottom: 8, textTransform: 'uppercase' },
+  diaVazio:          { fontFamily: F.medium, fontStyle: 'italic' },
+  eventoItem:        { borderLeftWidth: 3, paddingLeft: 10, paddingVertical: 8, paddingRight: 8, marginBottom: 6, borderRadius: 8 },
   eventoTop:         { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
-  eventoTitulo:      { fontSize: 13, fontFamily: F.bold, color: CORES.azulEscuro, flex: 1 },
-  eventoDesc:        { fontSize: 11, color: CORES.textoSec, lineHeight: 16, fontFamily: F.regular },
-  btnAcaoMini:       { width: 24, height: 24, borderRadius: 12, backgroundColor: CORES.branco, justifyContent: 'center', alignItems: 'center', borderWidth: 0.5, borderColor: CORES.cinzaClaro },
-  linkCancelar:      { fontSize: 11, color: CORES.rosa, fontFamily: F.bold },
+  eventoTitulo:      { fontFamily: F.bold, flex: 1 },
+  eventoDesc:        { lineHeight: 16, fontFamily: F.regular },
+  btnAcaoMini:       { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 0.5 },
+  linkCancelar:      { fontFamily: F.bold },
 
   tipoBadge:         { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
-  tipoBadgeText:     { fontSize: 9, fontFamily: F.black, letterSpacing: 0.4 },
+  tipoBadgeText:     { fontFamily: F.black, letterSpacing: 0.4 },
 
-  lembInput:         { backgroundColor: CORES.fundo, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 13, color: CORES.azulEscuro, borderWidth: 1, borderColor: CORES.cinzaClaro, marginBottom: 8, fontFamily: F.regular },
-  btnSalvarLemb:     { backgroundColor: CORES.azulEscuro, borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 4 },
-  btnSalvarLembText: { color: CORES.branco, fontFamily: F.black, fontSize: 13 },
+  lembInput:         { borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, marginBottom: 8, fontFamily: F.regular },
+  btnSalvarLemb:     { borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 4 },
+  btnSalvarLembText: { fontFamily: F.black },
 
   // FORM ADMIN
-  formLabel:         { fontSize: 10, fontFamily: F.black, color: CORES.textoSec, letterSpacing: 0.8, marginBottom: 6, marginTop: 12 },
-  formInput:         { backgroundColor: CORES.fundo, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 13, color: CORES.azulEscuro, borderWidth: 1, borderColor: CORES.cinzaClaro, fontFamily: F.regular },
-  formSelect:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: CORES.fundo, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, borderColor: CORES.cinzaClaro },
-  formSelectText:    { fontSize: 13, fontFamily: F.bold, color: CORES.azulEscuro },
+  formLabel:         { fontFamily: F.black, letterSpacing: 0.8, marginBottom: 6, marginTop: 12 },
+  formInput:         { borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, fontFamily: F.regular },
+  formSelect:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1 },
+  formSelectText:    { fontFamily: F.bold },
   adminRow:          { flexDirection: 'row', gap: 10 },
   seriesRow:         { flexDirection: 'row', gap: 10, marginTop: 4 },
-  serieBadge:        { flex: 1, paddingVertical: 11, borderRadius: 12, borderWidth: 1.5, borderColor: CORES.cinzaClaro, alignItems: 'center', backgroundColor: CORES.fundo },
-  serieBadgeAtivo:   { backgroundColor: CORES.azulEscuro, borderColor: CORES.azulEscuro },
-  serieBadgeText:    { fontSize: 12, fontFamily: F.black, color: CORES.textoSec },
+  serieBadge:        { flex: 1, paddingVertical: 11, borderRadius: 12, borderWidth: 1.5, alignItems: 'center' },
+  serieBadgeText:    { fontFamily: F.black },
   formBtns:          { flexDirection: 'row', gap: 10, marginTop: 18 },
   formBtn:           { flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  formBtnText:       { fontFamily: F.black, fontSize: 13 },
+  formBtnText:       { fontFamily: F.black },
 
   // SELETOR DATA
   dataPickerRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  dataPickerValor:   { fontSize: 15, fontFamily: F.black, color: CORES.azulEscuro, flex: 1, textAlign: 'center' },
-  diaPickerBtn:      { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: CORES.cinzaClaro, backgroundColor: CORES.fundo },
-  diaPickerBtnAtivo: { backgroundColor: CORES.azulEscuro, borderColor: CORES.azulEscuro },
-  diaPickerText:     { fontSize: 12, fontFamily: F.bold, color: CORES.azulEscuro },
+  dataPickerValor:   { fontFamily: F.black, flex: 1, textAlign: 'center' },
+  diaPickerBtn:      { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+  diaPickerText:     { fontFamily: F.bold },
 
-  seletorItem:       { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
-  seletorItemText:   { flex: 1, fontSize: 14, fontFamily: F.bold, color: CORES.azulEscuro },
+  seletorItem:       { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, borderBottomWidth: 1 },
+  seletorItemText:   { flex: 1, fontFamily: F.bold },
 
   legendaItem:       { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9 },
-  legendaText:       { fontSize: 13, fontFamily: F.semibold, color: CORES.azulEscuro },
+  legendaText:       { fontFamily: F.semibold },
 
-  btnFecharModal:    { backgroundColor: CORES.fundo, borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 10 },
-  btnFecharModalText:{ fontFamily: F.bold, fontSize: 13, color: CORES.textoSec },
+  btnFecharModal:    { borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 10 },
+  btnFecharModalText:{ fontFamily: F.bold },
 
   // MODAL CONFIRMAÇÃO
   confirmOverlay:    { flex: 1, backgroundColor: 'rgba(11, 32, 70, 0.65)', justifyContent: 'center', alignItems: 'center', padding: 28 },
-  confirmBox:        { width: '100%', maxWidth: 320, backgroundColor: CORES.branco, borderRadius: 22, padding: 24, alignItems: 'center', elevation: 12, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 20 },
+  confirmBox:        { width: '100%', maxWidth: 320, borderRadius: 22, padding: 24, alignItems: 'center', elevation: 12, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 20 },
   confirmIcon:       { width: 56, height: 56, borderRadius: 28, backgroundColor: '#FFF5F5', justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
-  confirmTitulo:     { fontSize: 17, fontFamily: F.black, color: CORES.azulEscuro, marginBottom: 6, textAlign: 'center' },
-  confirmMsg:        { fontSize: 13, color: CORES.textoSec, fontFamily: F.regular, textAlign: 'center', lineHeight: 19, marginBottom: 18 },
+  confirmTitulo:     { fontFamily: F.black, marginBottom: 6, textAlign: 'center' },
+  confirmMsg:        { fontFamily: F.regular, textAlign: 'center', lineHeight: 19, marginBottom: 18 },
   confirmBtns:       { flexDirection: 'row', gap: 8, width: '100%' },
   confirmBtn:        { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
-  confirmBtnText:    { fontFamily: F.black, fontSize: 13 },
+  confirmBtnText:    { fontFamily: F.black },
 });
