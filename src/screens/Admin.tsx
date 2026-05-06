@@ -11,6 +11,8 @@ import {
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppSettings } from '../contexts/AppSettingsContext';
+
 import {
   LineChart, BarChart, PieChart, ProgressChart
 } from 'react-native-chart-kit';
@@ -109,6 +111,9 @@ export default function Admin({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const { width: winW } = useWindowDimensions();
   const uid = route?.params?.uid;
+
+  const { cores: C, fonteScale, modoEscuro } = useAppSettings();
+  const fs = (size: number) => size * fonteScale;
 
   const [posts,    setPosts]    = useState<any[]>([]);
   const [usuarios, setUsuarios] = useState<any[]>([]);
@@ -322,47 +327,64 @@ export default function Admin({ navigation, route }: any) {
   }, [usuarios, filtroTipoU]);
 
   // ── Config dos gráficos ──────────────────────────────────
-  const chartConfigBase = {
-    backgroundColor:        CORES.branco,
-    backgroundGradientFrom: CORES.branco,
-    backgroundGradientTo:   CORES.branco,
+  const chartConfigBase = useMemo(() => ({
+    backgroundColor:        C.branco,
+    backgroundGradientFrom: C.branco,
+    backgroundGradientTo:   C.branco,
     decimalPlaces:          0,
-    color:                  (opacity = 1) => `rgba(11, 32, 70, ${opacity})`,
-    labelColor:             (opacity = 1) => `rgba(141, 153, 174, ${opacity})`,
+    // Cor das linhas/dots — no dark usa rosa pra contraste
+    color: (opacity = 1) => modoEscuro
+      ? `rgba(255, 92, 151, ${opacity})`
+      : `rgba(11, 32, 70, ${opacity})`,
+    // Cor dos labels (eixos)
+    labelColor: (opacity = 1) => modoEscuro
+      ? `rgba(180, 190, 200, ${opacity})`
+      : `rgba(141, 153, 174, ${opacity})`,
     style:                  { borderRadius: 16 },
     propsForDots:           { r: '5', strokeWidth: '2', stroke: CORES.rosa },
-    propsForBackgroundLines:{ strokeDasharray: '', stroke: CORES.cinzaClaro, strokeWidth: 0.5 },
+    propsForBackgroundLines:{
+      strokeDasharray: '',
+      stroke: modoEscuro ? '#3A4048' : CORES.cinzaClaro,
+      strokeWidth: 0.5
+    },
     propsForLabels:         { fontFamily: F.semibold, fontSize: 10 },
-  };
+  }), [modoEscuro, C.branco]);
 
-  const chartConfigBar = {
+  const chartConfigBar = useMemo(() => ({
     ...chartConfigBase,
     color: (opacity = 1) => `rgba(229, 28, 106, ${opacity})`,
     fillShadowGradient: CORES.rosa,
     fillShadowGradientOpacity: 1,
     barPercentage: 0.6,
-  };
+  }), [chartConfigBase]);
+
+  const postsPorCatStyled = useMemo(() => postsPorCat.map(p => ({
+    ...p,
+    legendFontColor: C.azulEscuro,
+  })), [postsPorCat, C.azulEscuro]);
 
   if (loading) return (
-    <View style={styles.centro}>
-      <ActivityIndicator size="large" color={CORES.azulEscuro} />
-      <Text style={styles.loadingText}>Carregando dashboard...</Text>
+    <View style={[styles.centro, { backgroundColor: C.fundo }]}>
+      <ActivityIndicator size="large" color={modoEscuro ? C.amarelo : CORES.azulEscuro} />
+      <Text style={[styles.loadingText, { color: C.textoSec, fontSize: fs(13) }]}>
+        Carregando dashboard...
+      </Text>
     </View>
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: C.fundo }]}>
       <StatusBar barStyle="light-content" backgroundColor={CORES.azulEscuro} />
 
-      {/* TOAST */}
+      {/* TOAST — fixo */}
       {toast !== '' && (
         <View style={[styles.toast, { top: insets.top + 12 }]}>
           <Ionicons name="checkmark-circle" size={16} color={CORES.amarelo} />
-          <Text style={styles.toastText}>{toast}</Text>
+          <Text style={[styles.toastText, { fontSize: fs(12) }]}>{toast}</Text>
         </View>
       )}
 
-      {/* HEADER PREMIUM */}
+      {/* HEADER — fixo */}
       <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
         <TouchableOpacity
           onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Index', params: { uid } }] })}
@@ -373,9 +395,9 @@ export default function Admin({ navigation, route }: any) {
         <View style={{ flex: 1 }}>
           <View style={styles.headerEyebrowRow}>
             <View style={styles.headerDot} />
-            <Text style={styles.headerEyebrow}>PAINEL RESTRITO</Text>
+            <Text style={[styles.headerEyebrow, { fontSize: fs(9) }]}>PAINEL RESTRITO</Text>
           </View>
-          <Text style={styles.headerTitulo}>Dashboard Admin</Text>
+          <Text style={[styles.headerTitulo, { fontSize: fs(19) }]}>Dashboard Admin</Text>
         </View>
         <TouchableOpacity onPress={carregar} style={styles.btnRefresh}>
           <Ionicons name="refresh" size={18} color={CORES.branco} />
@@ -383,27 +405,34 @@ export default function Admin({ navigation, route }: any) {
       </View>
 
       {/* ABAS */}
-      <View style={styles.abas}>
+      <View style={[styles.abas, { backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
         {[
           { key: 'overview',   label: 'Visão Geral', icon: 'grid'        },
           { key: 'engagement', label: 'Engajamento', icon: 'trending-up' },
           { key: 'usuarios',   label: 'Usuários',    icon: 'people'      },
-        ].map(a => (
-          <TouchableOpacity
-            key={a.key}
-            style={[styles.aba, abaAtiva === a.key && styles.abaAtiva]}
-            onPress={() => setAbaAtiva(a.key as any)}
-          >
-            <Ionicons
-              name={a.icon as any}
-              size={14}
-              color={abaAtiva === a.key ? CORES.azulEscuro : CORES.textoSec}
-            />
-            <Text style={[styles.abaText, abaAtiva === a.key && styles.abaTextAtiva]}>
-              {a.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        ].map(a => {
+          const ativo = abaAtiva === a.key;
+          return (
+            <TouchableOpacity
+              key={a.key}
+              style={[styles.aba, ativo && { borderBottomWidth: 3, borderBottomColor: CORES.rosa }]}
+              onPress={() => setAbaAtiva(a.key as any)}
+            >
+              <Ionicons
+                name={a.icon as any}
+                size={14}
+                color={ativo ? C.azulEscuro : C.textoSec}
+              />
+              <Text style={[
+                styles.abaText,
+                { color: C.textoSec, fontSize: fs(11) },
+                ativo && { color: C.azulEscuro }
+              ]}>
+                {a.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       <ScrollView
@@ -415,25 +444,27 @@ export default function Admin({ navigation, route }: any) {
         {abaAtiva === 'overview' && (
           <View style={{ padding: 16 }}>
 
-            {/* HERO STATS */}
+            {/* HERO STATS — sempre azul escuro fixo (identidade) */}
             <FadeInView delay={0}>
               <View style={styles.heroCard}>
                 <View>
-                  <Text style={styles.heroEyebrow}>TOTAL DE VISUALIZAÇÕES</Text>
+                  <Text style={[styles.heroEyebrow, { fontSize: fs(9) }]}>
+                    TOTAL DE VISUALIZAÇÕES
+                  </Text>
                   <AnimatedCounter
                     value={stats.totalViews}
-                    style={styles.heroValor}
+                    style={[styles.heroValor, { fontSize: fs(38) }]}
                   />
                   <View style={styles.heroBadges}>
                     <View style={styles.heroBadge}>
                       <Ionicons name="trending-up" size={10} color={CORES.verde} />
-                      <Text style={[styles.heroBadgeText, { color: CORES.verde }]}>
+                      <Text style={[styles.heroBadgeText, { color: CORES.verde, fontSize: fs(10) }]}>
                         {stats.mediaViews}/post
                       </Text>
                     </View>
                     <View style={styles.heroBadge}>
                       <Ionicons name="flash" size={10} color={CORES.amarelo} />
-                      <Text style={[styles.heroBadgeText, { color: CORES.amarelo }]}>
+                      <Text style={[styles.heroBadgeText, { color: CORES.amarelo, fontSize: fs(10) }]}>
                         {stats.taxaEngaj}% engaj.
                       </Text>
                     </View>
@@ -448,51 +479,77 @@ export default function Admin({ navigation, route }: any) {
             {/* MINI STATS GRID */}
             <FadeInView delay={120}>
               <View style={styles.miniGrid}>
-                <View style={[styles.miniCard, { borderLeftColor: CORES.azulCeu }]}>
-                  <View style={[styles.miniIcon, { backgroundColor: CORES.azulCeu + '15' }]}>
+                <View style={[styles.miniCard, { backgroundColor: C.branco, borderLeftColor: CORES.azulCeu }]}>
+                  <View style={[styles.miniIcon, { backgroundColor: CORES.azulCeu + (modoEscuro ? '25' : '15') }]}>
                     <Ionicons name="people" size={16} color={CORES.azulCeu} />
                   </View>
-                  <AnimatedCounter value={usuarios.length} style={styles.miniValor} />
-                  <Text style={styles.miniLabel}>Usuários</Text>
+                  <AnimatedCounter
+                    value={usuarios.length}
+                    style={[styles.miniValor, { color: C.azulEscuro, fontSize: fs(22) }]}
+                  />
+                  <Text style={[styles.miniLabel, { color: C.textoSec, fontSize: fs(10) }]}>
+                    Usuários
+                  </Text>
                 </View>
 
-                <View style={[styles.miniCard, { borderLeftColor: CORES.verde }]}>
-                  <View style={[styles.miniIcon, { backgroundColor: CORES.verde + '15' }]}>
+                <View style={[styles.miniCard, { backgroundColor: C.branco, borderLeftColor: CORES.verde }]}>
+                  <View style={[styles.miniIcon, { backgroundColor: CORES.verde + (modoEscuro ? '25' : '15') }]}>
                     <Ionicons name="checkmark-circle" size={16} color={CORES.verde} />
                   </View>
-                  <AnimatedCounter value={stats.totalAtivos} style={styles.miniValor} />
-                  <Text style={styles.miniLabel}>Ativos</Text>
+                  <AnimatedCounter
+                    value={stats.totalAtivos}
+                    style={[styles.miniValor, { color: C.azulEscuro, fontSize: fs(22) }]}
+                  />
+                  <Text style={[styles.miniLabel, { color: C.textoSec, fontSize: fs(10) }]}>
+                    Ativos
+                  </Text>
                 </View>
 
-                <View style={[styles.miniCard, { borderLeftColor: CORES.amarelo }]}>
-                  <View style={[styles.miniIcon, { backgroundColor: CORES.amarelo + '20' }]}>
+                <View style={[styles.miniCard, { backgroundColor: C.branco, borderLeftColor: CORES.amarelo }]}>
+                  <View style={[styles.miniIcon, { backgroundColor: CORES.amarelo + (modoEscuro ? '30' : '20') }]}>
                     <Ionicons name="time" size={16} color={CORES.laranja} />
                   </View>
-                  <AnimatedCounter value={stats.totalPendentes} style={styles.miniValor} />
-                  <Text style={styles.miniLabel}>Pendentes</Text>
+                  <AnimatedCounter
+                    value={stats.totalPendentes}
+                    style={[styles.miniValor, { color: C.azulEscuro, fontSize: fs(22) }]}
+                  />
+                  <Text style={[styles.miniLabel, { color: C.textoSec, fontSize: fs(10) }]}>
+                    Pendentes
+                  </Text>
                 </View>
 
-                <View style={[styles.miniCard, { borderLeftColor: CORES.rosa }]}>
-                  <View style={[styles.miniIcon, { backgroundColor: CORES.rosa + '15' }]}>
+                <View style={[styles.miniCard, { backgroundColor: C.branco, borderLeftColor: CORES.rosa }]}>
+                  <View style={[styles.miniIcon, { backgroundColor: CORES.rosa + (modoEscuro ? '25' : '15') }]}>
                     <Ionicons name="document-text" size={16} color={CORES.rosa} />
                   </View>
-                  <AnimatedCounter value={posts.length} style={styles.miniValor} />
-                  <Text style={styles.miniLabel}>Posts</Text>
+                  <AnimatedCounter
+                    value={posts.length}
+                    style={[styles.miniValor, { color: C.azulEscuro, fontSize: fs(22) }]}
+                  />
+                  <Text style={[styles.miniLabel, { color: C.textoSec, fontSize: fs(10) }]}>
+                    Posts
+                  </Text>
                 </View>
               </View>
             </FadeInView>
 
             {/* GRÁFICO LINHA — CADASTROS */}
             <FadeInView delay={240}>
-              <View style={styles.chartCard}>
+              <View style={[styles.chartCard, { backgroundColor: C.branco }]}>
                 <View style={styles.chartHeader}>
                   <View>
-                    <Text style={styles.chartEyebrow}>ÚLTIMOS 6 MESES</Text>
-                    <Text style={styles.chartTitulo}>Crescimento de cadastros</Text>
+                    <Text style={[styles.chartEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
+                      ÚLTIMOS 6 MESES
+                    </Text>
+                    <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                      Crescimento de cadastros
+                    </Text>
                   </View>
-                  <View style={styles.chartLegenda}>
+                  <View style={[styles.chartLegenda, { backgroundColor: C.fundo }]}>
                     <View style={[styles.dotCor, { backgroundColor: CORES.rosa }]} />
-                    <Text style={styles.chartLegendaText}>Novos usuários</Text>
+                    <Text style={[styles.chartLegendaText, { color: C.textoSec, fontSize: fs(10) }]}>
+                      Novos usuários
+                    </Text>
                   </View>
                 </View>
 
@@ -514,19 +571,23 @@ export default function Admin({ navigation, route }: any) {
               </View>
             </FadeInView>
 
-            {/* PIZZA + DISTRIBUIÇÃO */}
+            {/* PIZZA */}
             <FadeInView delay={360}>
-              <View style={styles.chartCard}>
+              <View style={[styles.chartCard, { backgroundColor: C.branco }]}>
                 <View style={styles.chartHeader}>
                   <View>
-                    <Text style={styles.chartEyebrow}>DISTRIBUIÇÃO</Text>
-                    <Text style={styles.chartTitulo}>Posts por categoria</Text>
+                    <Text style={[styles.chartEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
+                      DISTRIBUIÇÃO
+                    </Text>
+                    <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                      Posts por categoria
+                    </Text>
                   </View>
                 </View>
 
-                {postsPorCat.length > 0 ? (
+                {postsPorCatStyled.length > 0 ? (
                   <PieChart
-                    data={postsPorCat}
+                    data={postsPorCatStyled}
                     width={winW - 64}
                     height={180}
                     chartConfig={chartConfigBase}
@@ -537,8 +598,10 @@ export default function Admin({ navigation, route }: any) {
                   />
                 ) : (
                   <View style={styles.chartVazio}>
-                    <Ionicons name="pie-chart-outline" size={32} color={CORES.cinzaClaro} />
-                    <Text style={styles.chartVazioText}>Sem dados ainda</Text>
+                    <Ionicons name="pie-chart-outline" size={32} color={C.cinzaClaro} />
+                    <Text style={[styles.chartVazioText, { color: C.textoSec, fontSize: fs(12) }]}>
+                      Sem dados ainda
+                    </Text>
                   </View>
                 )}
               </View>
@@ -546,15 +609,20 @@ export default function Admin({ navigation, route }: any) {
 
             {/* CARDS DE STATUS */}
             <FadeInView delay={480}>
-              <Text style={styles.secaoTituloGrande}>Status dos usuários</Text>
+              <Text style={[styles.secaoTituloGrande, { color: C.azulEscuro, fontSize: fs(13) }]}>
+                Status dos usuários
+              </Text>
               <View style={styles.statusGrid}>
-                <View style={[styles.statusCard, { backgroundColor: CORES.verde + '12' }]}>
+                <View style={[styles.statusCard, { backgroundColor: CORES.verde + (modoEscuro ? '20' : '12') }]}>
                   <View style={[styles.statusBolha, { backgroundColor: CORES.verde }]}>
                     <Ionicons name="checkmark" size={20} color="#FFF" />
                   </View>
-                  <AnimatedCounter value={stats.totalAtivos} style={[styles.statusN, { color: CORES.verde }]} />
-                  <Text style={styles.statusL}>Ativos</Text>
-                  <View style={styles.statusBarra}>
+                  <AnimatedCounter
+                    value={stats.totalAtivos}
+                    style={[styles.statusN, { color: CORES.verde, fontSize: fs(24) }]}
+                  />
+                  <Text style={[styles.statusL, { color: C.textoSec, fontSize: fs(10) }]}>Ativos</Text>
+                  <View style={[styles.statusBarra, { backgroundColor: modoEscuro ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
                     <View style={[styles.statusBarraFill, {
                       width: `${(stats.totalAtivos / Math.max(1, usuarios.length)) * 100}%`,
                       backgroundColor: CORES.verde
@@ -562,13 +630,16 @@ export default function Admin({ navigation, route }: any) {
                   </View>
                 </View>
 
-                <View style={[styles.statusCard, { backgroundColor: CORES.amarelo + '20' }]}>
+                <View style={[styles.statusCard, { backgroundColor: CORES.amarelo + (modoEscuro ? '30' : '20') }]}>
                   <View style={[styles.statusBolha, { backgroundColor: CORES.laranja }]}>
                     <Ionicons name="hourglass" size={18} color="#FFF" />
                   </View>
-                  <AnimatedCounter value={stats.totalPendentes} style={[styles.statusN, { color: CORES.laranja }]} />
-                  <Text style={styles.statusL}>Pendentes</Text>
-                  <View style={styles.statusBarra}>
+                  <AnimatedCounter
+                    value={stats.totalPendentes}
+                    style={[styles.statusN, { color: CORES.laranja, fontSize: fs(24) }]}
+                  />
+                  <Text style={[styles.statusL, { color: C.textoSec, fontSize: fs(10) }]}>Pendentes</Text>
+                  <View style={[styles.statusBarra, { backgroundColor: modoEscuro ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
                     <View style={[styles.statusBarraFill, {
                       width: `${(stats.totalPendentes / Math.max(1, usuarios.length)) * 100}%`,
                       backgroundColor: CORES.laranja
@@ -576,13 +647,16 @@ export default function Admin({ navigation, route }: any) {
                   </View>
                 </View>
 
-                <View style={[styles.statusCard, { backgroundColor: CORES.vermelho + '12' }]}>
+                <View style={[styles.statusCard, { backgroundColor: CORES.vermelho + (modoEscuro ? '20' : '12') }]}>
                   <View style={[styles.statusBolha, { backgroundColor: CORES.vermelho }]}>
                     <Ionicons name="close" size={20} color="#FFF" />
                   </View>
-                  <AnimatedCounter value={stats.totalSuspensos} style={[styles.statusN, { color: CORES.vermelho }]} />
-                  <Text style={styles.statusL}>Suspensos</Text>
-                  <View style={styles.statusBarra}>
+                  <AnimatedCounter
+                    value={stats.totalSuspensos}
+                    style={[styles.statusN, { color: CORES.vermelho, fontSize: fs(24) }]}
+                  />
+                  <Text style={[styles.statusL, { color: C.textoSec, fontSize: fs(10) }]}>Suspensos</Text>
+                  <View style={[styles.statusBarra, { backgroundColor: modoEscuro ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
                     <View style={[styles.statusBarraFill, {
                       width: `${(stats.totalSuspensos / Math.max(1, usuarios.length)) * 100}%`,
                       backgroundColor: CORES.vermelho
@@ -594,11 +668,15 @@ export default function Admin({ navigation, route }: any) {
 
             {/* COMPOSIÇÃO USUÁRIOS */}
             <FadeInView delay={600}>
-              <View style={styles.chartCard}>
+              <View style={[styles.chartCard, { backgroundColor: C.branco }]}>
                 <View style={styles.chartHeader}>
                   <View>
-                    <Text style={styles.chartEyebrow}>COMPOSIÇÃO</Text>
-                    <Text style={styles.chartTitulo}>Tipos de usuário</Text>
+                    <Text style={[styles.chartEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
+                      COMPOSIÇÃO
+                    </Text>
+                    <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                      Tipos de usuário
+                    </Text>
                   </View>
                 </View>
 
@@ -611,15 +689,20 @@ export default function Admin({ navigation, route }: any) {
                     const pct = Math.round((item.n / Math.max(1, usuarios.length)) * 100);
                     return (
                       <View key={item.tipo} style={styles.composicaoItem}>
-                        <View style={[styles.composicaoIcon, { backgroundColor: item.cor + '15' }]}>
+                        <View style={[styles.composicaoIcon, { backgroundColor: item.cor + (modoEscuro ? '25' : '15') }]}>
                           <Ionicons name={item.icon as any} size={14} color={item.cor} />
                         </View>
                         <View style={{ flex: 1 }}>
                           <View style={styles.composicaoTopo}>
-                            <Text style={styles.composicaoNome}>{item.tipo}</Text>
-                            <Text style={styles.composicaoValor}>{item.n} <Text style={{ color: CORES.textoSec, fontFamily: F.regular }}>· {pct}%</Text></Text>
+                            <Text style={[styles.composicaoNome, { color: C.azulEscuro, fontSize: fs(13) }]}>
+                              {item.tipo}
+                            </Text>
+                            <Text style={[styles.composicaoValor, { color: C.azulEscuro, fontSize: fs(13) }]}>
+                              {item.n}{' '}
+                              <Text style={{ color: C.textoSec, fontFamily: F.regular }}>· {pct}%</Text>
+                            </Text>
                           </View>
-                          <View style={styles.composicaoBarra}>
+                          <View style={[styles.composicaoBarra, { backgroundColor: C.cinzaClaro }]}>
                             <View style={[styles.composicaoBarraFill, { width: `${pct}%`, backgroundColor: item.cor }]} />
                           </View>
                         </View>
@@ -636,13 +719,17 @@ export default function Admin({ navigation, route }: any) {
         {abaAtiva === 'engagement' && (
           <View style={{ padding: 16 }}>
 
-            {/* GRÁFICO BARRA — VIEWS POR CATEGORIA */}
+            {/* GRÁFICO BARRA */}
             <FadeInView delay={0}>
-              <View style={styles.chartCard}>
+              <View style={[styles.chartCard, { backgroundColor: C.branco }]}>
                 <View style={styles.chartHeader}>
                   <View>
-                    <Text style={styles.chartEyebrow}>POR CATEGORIA</Text>
-                    <Text style={styles.chartTitulo}>Visualizações totais</Text>
+                    <Text style={[styles.chartEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
+                      POR CATEGORIA
+                    </Text>
+                    <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                      Visualizações totais
+                    </Text>
                   </View>
                 </View>
 
@@ -664,20 +751,26 @@ export default function Admin({ navigation, route }: any) {
                   />
                 ) : (
                   <View style={styles.chartVazio}>
-                    <Ionicons name="bar-chart-outline" size={32} color={CORES.cinzaClaro} />
-                    <Text style={styles.chartVazioText}>Sem dados ainda</Text>
+                    <Ionicons name="bar-chart-outline" size={32} color={C.cinzaClaro} />
+                    <Text style={[styles.chartVazioText, { color: C.textoSec, fontSize: fs(12) }]}>
+                      Sem dados ainda
+                    </Text>
                   </View>
                 )}
               </View>
             </FadeInView>
 
-            {/* PROGRESS — ENGAJAMENTO POR CATEGORIA */}
+            {/* PROGRESS */}
             <FadeInView delay={120}>
-              <View style={styles.chartCard}>
+              <View style={[styles.chartCard, { backgroundColor: C.branco }]}>
                 <View style={styles.chartHeader}>
                   <View>
-                    <Text style={styles.chartEyebrow}>RANKING RELATIVO</Text>
-                    <Text style={styles.chartTitulo}>Performance comparada</Text>
+                    <Text style={[styles.chartEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
+                      RANKING RELATIVO
+                    </Text>
+                    <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                      Performance comparada
+                    </Text>
                   </View>
                 </View>
 
@@ -696,58 +789,94 @@ export default function Admin({ navigation, route }: any) {
                   />
                 ) : (
                   <View style={styles.chartVazio}>
-                    <Ionicons name="speedometer-outline" size={32} color={CORES.cinzaClaro} />
-                    <Text style={styles.chartVazioText}>Sem dados ainda</Text>
+                    <Ionicons name="speedometer-outline" size={32} color={C.cinzaClaro} />
+                    <Text style={[styles.chartVazioText, { color: C.textoSec, fontSize: fs(12) }]}>
+                      Sem dados ainda
+                    </Text>
                   </View>
                 )}
               </View>
             </FadeInView>
 
-            {/* TOP 5 PREMIUM */}
+            {/* TOP 5 */}
             <FadeInView delay={240}>
-              <View style={styles.chartCard}>
+              <View style={[styles.chartCard, { backgroundColor: C.branco }]}>
                 <View style={styles.chartHeader}>
                   <View>
-                    <Text style={styles.chartEyebrow}>HALL DA FAMA</Text>
-                    <Text style={styles.chartTitulo}>Top 5 posts</Text>
+                    <Text style={[styles.chartEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
+                      HALL DA FAMA
+                    </Text>
+                    <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                      Top 5 posts
+                    </Text>
                   </View>
-                  <View style={styles.trofeu}>
+                  <View style={[styles.trofeu, { backgroundColor: CORES.amarelo + (modoEscuro ? '30' : '20') }]}>
                     <FontAwesome5 name="trophy" size={14} color={CORES.amarelo} />
                   </View>
                 </View>
 
                 {top5.length === 0 ? (
                   <View style={styles.chartVazio}>
-                    <Ionicons name="trophy-outline" size={32} color={CORES.cinzaClaro} />
-                    <Text style={styles.chartVazioText}>Sem posts ainda</Text>
+                    <Ionicons name="trophy-outline" size={32} color={C.cinzaClaro} />
+                    <Text style={[styles.chartVazioText, { color: C.textoSec, fontSize: fs(12) }]}>
+                      Sem posts ainda
+                    </Text>
                   </View>
                 ) : top5.map((p: any, i: number) => {
-                  const corPos = i === 0 ? CORES.amarelo : i === 1 ? '#A8B2C8' : i === 2 ? '#CD7F32' : CORES.cinzaClaro;
+                  const corPos = i === 0 ? CORES.amarelo : i === 1 ? '#A8B2C8' : i === 2 ? '#CD7F32' : C.cinzaClaro;
                   const pctBar = Math.round(((p.visualizacoes || 0) / maxViews) * 100);
 
                   return (
-                    <View key={p.id} style={styles.top5ItemPro}>
-                      <View style={[styles.top5Medalha, { backgroundColor: corPos + '25', borderColor: corPos }]}>
-                        <Text style={[styles.top5Pos, { color: i < 3 ? corPos : CORES.textoSec }]}>
+                    <View
+                      key={p.id}
+                      style={[styles.top5ItemPro, { borderBottomColor: C.cinzaClaro }]}
+                    >
+                      <View style={[
+                        styles.top5Medalha,
+                        { backgroundColor: corPos + (modoEscuro ? '35' : '25'), borderColor: corPos }
+                      ]}>
+                        <Text style={[
+                          styles.top5Pos,
+                          { fontSize: fs(14), color: i < 3 ? corPos : C.textoSec }
+                        ]}>
                           {i + 1}
                         </Text>
                       </View>
 
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.top5Nome} numberOfLines={1}>{p.titulo}</Text>
+                        <Text
+                          style={[styles.top5Nome, { color: C.azulEscuro, fontSize: fs(13) }]}
+                          numberOfLines={1}
+                        >
+                          {p.titulo}
+                        </Text>
                         <View style={styles.top5MetaRow}>
-                          <View style={[styles.top5Cat, { backgroundColor: (CAT_CORES[p.categoria] || '#888') + '20' }]}>
-                            <Text style={[styles.top5CatText, { color: CAT_CORES[p.categoria] || '#888' }]}>
+                          <View style={[
+                            styles.top5Cat,
+                            { backgroundColor: (CAT_CORES[p.categoria] || '#888') + (modoEscuro ? '30' : '20') }
+                          ]}>
+                            <Text style={[
+                              styles.top5CatText,
+                              { color: CAT_CORES[p.categoria] || '#888', fontSize: fs(9) }
+                            ]}>
                               {CAT_LABELS[p.categoria] || p.categoria}
                             </Text>
                           </View>
                           <View style={styles.top5Views}>
                             <Ionicons name="eye" size={11} color={CORES.rosa} />
-                            <Text style={styles.top5ViewsText}>{p.visualizacoes || 0}</Text>
+                            <Text style={[styles.top5ViewsText, { fontSize: fs(11) }]}>
+                              {p.visualizacoes || 0}
+                            </Text>
                           </View>
                         </View>
-                        <View style={styles.barraWrap}>
-                          <View style={[styles.barra, { width: `${pctBar}%` }]} />
+                        <View style={[styles.barraWrap, { backgroundColor: C.cinzaClaro }]}>
+                          <View style={[
+                            styles.barra,
+                            {
+                              width: `${pctBar}%`,
+                              backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro
+                            }
+                          ]} />
                         </View>
                       </View>
                     </View>
@@ -765,78 +894,124 @@ export default function Admin({ navigation, route }: any) {
 
             {/* BUSCA */}
             <FadeInView delay={0}>
-              <View style={styles.chartCard}>
-                <Text style={styles.chartEyebrow}>BUSCA RÁPIDA</Text>
-                <Text style={[styles.chartTitulo, { marginBottom: 14 }]}>Encontrar por RA</Text>
+              <View style={[styles.chartCard, { backgroundColor: C.branco }]}>
+                <Text style={[styles.chartEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
+                  BUSCA RÁPIDA
+                </Text>
+                <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15), marginBottom: 14 }]}>
+                  Encontrar por RA
+                </Text>
 
                 <View style={styles.buscaRow}>
-                  <View style={styles.buscaInputWrap}>
-                    <Ionicons name="search" size={16} color={CORES.textoSec} />
+                  <View style={[styles.buscaInputWrap, { backgroundColor: C.fundo, borderColor: C.cinzaClaro }]}>
+                    <Ionicons name="search" size={16} color={C.textoSec} />
                     <TextInput
-                      style={styles.buscaInput}
+                      style={[styles.buscaInput, { color: C.azulEscuro, fontSize: fs(13) }]}
                       placeholder="Digite o RA do aluno..."
-                      placeholderTextColor={CORES.textoSec}
+                      placeholderTextColor={C.textoSec}
                       value={buscaRA}
                       onChangeText={setBuscaRA}
                       autoCapitalize="characters"
                       onSubmitEditing={buscarRA}
                     />
                   </View>
-                  <TouchableOpacity style={styles.btnBuscar} onPress={buscarRA}>
-                    <Text style={styles.btnBuscarText}>Buscar</Text>
+                  <TouchableOpacity
+                    style={[styles.btnBuscar, { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }]}
+                    onPress={buscarRA}
+                  >
+                    <Text style={[
+                      styles.btnBuscarText,
+                      { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(12) }
+                    ]}>
+                      Buscar
+                    </Text>
                   </TouchableOpacity>
                 </View>
 
                 {usuarioBuscado && (
                   <FadeInView delay={100}>
-                    <View style={styles.cartaoEncontrado}>
+                    <View style={[styles.cartaoEncontrado, { backgroundColor: C.fundo, borderColor: C.cinzaClaro }]}>
                       <View style={styles.cartaoEncontradoTopo}>
                         <View style={styles.cartaoAvatar}>
-                          <Text style={styles.cartaoAvatarText}>
+                          <Text style={[styles.cartaoAvatarText, { fontSize: fs(18) }]}>
                             {usuarioBuscado.nome_completo?.charAt(0)?.toUpperCase() || '?'}
                           </Text>
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.cartaoNome}>{usuarioBuscado.nome_completo}</Text>
-                          <Text style={styles.cartaoEmail}>{usuarioBuscado.email_escolar}</Text>
+                          <Text style={[styles.cartaoNome, { color: C.azulEscuro, fontSize: fs(14) }]}>
+                            {usuarioBuscado.nome_completo}
+                          </Text>
+                          <Text style={[styles.cartaoEmail, { color: C.textoSec, fontSize: fs(11) }]}>
+                            {usuarioBuscado.email_escolar}
+                          </Text>
                         </View>
                       </View>
 
                       <View style={styles.cartaoInfoRow}>
-                        <View style={styles.cartaoInfoBox}>
-                          <Text style={styles.cartaoInfoLabel}>RA</Text>
-                          <Text style={styles.cartaoInfoValor}>{usuarioBuscado.ra || '—'}</Text>
+                        <View style={[styles.cartaoInfoBox, { backgroundColor: C.branco }]}>
+                          <Text style={[styles.cartaoInfoLabel, { color: C.textoSec, fontSize: fs(9) }]}>RA</Text>
+                          <Text style={[styles.cartaoInfoValor, { color: C.azulEscuro, fontSize: fs(14) }]}>
+                            {usuarioBuscado.ra || '—'}
+                          </Text>
                         </View>
-                        <View style={styles.cartaoInfoBox}>
-                          <Text style={styles.cartaoInfoLabel}>TURMA</Text>
-                          <Text style={styles.cartaoInfoValor}>{usuarioBuscado.turma || '—'}</Text>
+                        <View style={[styles.cartaoInfoBox, { backgroundColor: C.branco }]}>
+                          <Text style={[styles.cartaoInfoLabel, { color: C.textoSec, fontSize: fs(9) }]}>TURMA</Text>
+                          <Text style={[styles.cartaoInfoValor, { color: C.azulEscuro, fontSize: fs(14) }]}>
+                            {usuarioBuscado.turma || '—'}
+                          </Text>
                         </View>
                       </View>
 
                       <View style={styles.cartaoControles}>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.campoLabel}>TIPO</Text>
-                          <TouchableOpacity style={styles.seletorBtn} onPress={() => setModalCartaoTipo(true)}>
-                            <Text style={styles.seletorBtnText}>{cartaoTipo}</Text>
-                            <Ionicons name="chevron-down" size={14} color={CORES.textoSec} />
+                          <Text style={[styles.campoLabel, { color: C.textoSec, fontSize: fs(9) }]}>TIPO</Text>
+                          <TouchableOpacity
+                            style={[styles.seletorBtn, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+                            onPress={() => setModalCartaoTipo(true)}
+                          >
+                            <Text style={[styles.seletorBtnText, { color: C.azulEscuro, fontSize: fs(12) }]}>
+                              {cartaoTipo}
+                            </Text>
+                            <Ionicons name="chevron-down" size={14} color={C.textoSec} />
                           </TouchableOpacity>
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.campoLabel}>STATUS</Text>
-                          <TouchableOpacity style={styles.seletorBtn} onPress={() => setModalCartaoSts(true)}>
+                          <Text style={[styles.campoLabel, { color: C.textoSec, fontSize: fs(9) }]}>STATUS</Text>
+                          <TouchableOpacity
+                            style={[styles.seletorBtn, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+                            onPress={() => setModalCartaoSts(true)}
+                          >
                             <View style={[styles.dotStatus, { backgroundColor: STATUS_CORES[cartaoStatus] }]} />
-                            <Text style={styles.seletorBtnText}>{STATUS_LABELS[cartaoStatus]}</Text>
-                            <Ionicons name="chevron-down" size={14} color={CORES.textoSec} />
+                            <Text style={[styles.seletorBtnText, { color: C.azulEscuro, fontSize: fs(12) }]}>
+                              {STATUS_LABELS[cartaoStatus]}
+                            </Text>
+                            <Ionicons name="chevron-down" size={14} color={C.textoSec} />
                           </TouchableOpacity>
                         </View>
                       </View>
 
-                      <TouchableOpacity style={styles.btnSalvarCartao} onPress={salvarCartao} disabled={salvandoCartao}>
+                      <TouchableOpacity
+                        style={[
+                          styles.btnSalvarCartao,
+                          { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
+                        ]}
+                        onPress={salvarCartao}
+                        disabled={salvandoCartao}
+                      >
                         {salvandoCartao
-                          ? <ActivityIndicator color="#FFF" size="small" />
+                          ? <ActivityIndicator color={modoEscuro ? CORES.azulEscuro : '#FFF'} size="small" />
                           : <>
-                              <Ionicons name="save" size={14} color="#FFF" />
-                              <Text style={styles.btnSalvarCartaoText}>Salvar Alterações</Text>
+                              <Ionicons
+                                name="save"
+                                size={14}
+                                color={modoEscuro ? CORES.azulEscuro : '#FFF'}
+                              />
+                              <Text style={[
+                                styles.btnSalvarCartaoText,
+                                { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(13) }
+                              ]}>
+                                Salvar Alterações
+                              </Text>
                             </>
                         }
                       </TouchableOpacity>
@@ -846,13 +1021,15 @@ export default function Admin({ navigation, route }: any) {
               </View>
             </FadeInView>
 
-            {/* FILTROS */}
+            {/* FILTROS + LISTA */}
             <FadeInView delay={120}>
-              <View style={styles.chartCard}>
+              <View style={[styles.chartCard, { backgroundColor: C.branco }]}>
                 <View style={styles.chartHeader}>
                   <View>
-                    <Text style={styles.chartEyebrow}>GERENCIAR</Text>
-                    <Text style={styles.chartTitulo}>
+                    <Text style={[styles.chartEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
+                      GERENCIAR
+                    </Text>
+                    <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
                       {usuariosFiltrados.length} usuário{usuariosFiltrados.length !== 1 ? 's' : ''}
                     </Text>
                   </View>
@@ -875,15 +1052,26 @@ export default function Admin({ navigation, route }: any) {
                     return (
                       <TouchableOpacity
                         key={c.key}
-                        style={[styles.chip, ativo && styles.chipAtivo]}
+                        style={[
+                          styles.chip,
+                          { backgroundColor: C.fundo, borderColor: C.cinzaClaro },
+                          ativo && {
+                            backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro,
+                            borderColor: modoEscuro ? C.amarelo : CORES.azulEscuro
+                          }
+                        ]}
                         onPress={() => setFiltroTipoU(c.key)}
                       >
                         <Ionicons
                           name={c.icon as any}
                           size={11}
-                          color={ativo ? CORES.branco : CORES.textoSec}
+                          color={ativo ? (modoEscuro ? CORES.azulEscuro : CORES.branco) : C.textoSec}
                         />
-                        <Text style={[styles.chipText, ativo && styles.chipTextAtivo]}>
+                        <Text style={[
+                          styles.chipText,
+                          { color: C.textoSec, fontSize: fs(11) },
+                          ativo && { color: modoEscuro ? CORES.azulEscuro : CORES.branco }
+                        ]}>
                           {c.label}
                         </Text>
                       </TouchableOpacity>
@@ -891,24 +1079,51 @@ export default function Admin({ navigation, route }: any) {
                   })}
                 </ScrollView>
 
-                {/* LISTA */}
+                {/* LISTA DE USUÁRIOS */}
                 {usuariosFiltrados.map((u: any, i: number) => (
                   <FadeInView key={u.uid} delay={i * 30}>
-                    <View style={styles.usuarioCard}>
+                    <View style={[
+                      styles.usuarioCard,
+                      { backgroundColor: C.fundo, borderColor: C.cinzaClaro }
+                    ]}>
                       <View style={styles.usuarioTopo}>
-                        <View style={styles.usuarioAvatar}>
-                          <Text style={styles.usuarioAvatarText}>
+                        <View style={[
+                          styles.usuarioAvatar,
+                          { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
+                        ]}>
+                          <Text style={[
+                            styles.usuarioAvatarText,
+                            { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(15) }
+                          ]}>
                             {u.nome_completo?.charAt(0)?.toUpperCase() || '?'}
                           </Text>
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.usuarioNome} numberOfLines={1}>{u.nome_completo || '—'}</Text>
-                          <Text style={styles.usuarioEmail} numberOfLines={1}>{u.email_escolar || ''}</Text>
-                          <Text style={styles.usuarioDetalhe}>{u.ra || '—'} · {u.turma || '—'}</Text>
+                          <Text
+                            style={[styles.usuarioNome, { color: C.azulEscuro, fontSize: fs(13) }]}
+                            numberOfLines={1}
+                          >
+                            {u.nome_completo || '—'}
+                          </Text>
+                          <Text
+                            style={[styles.usuarioEmail, { color: C.textoSec, fontSize: fs(11) }]}
+                            numberOfLines={1}
+                          >
+                            {u.email_escolar || ''}
+                          </Text>
+                          <Text style={[styles.usuarioDetalhe, { color: C.textoSec, fontSize: fs(10) }]}>
+                            {u.ra || '—'} · {u.turma || '—'}
+                          </Text>
                         </View>
-                        <View style={[styles.statusPill, { backgroundColor: STATUS_CORES[u.status] + '20' }]}>
+                        <View style={[
+                          styles.statusPill,
+                          { backgroundColor: STATUS_CORES[u.status] + (modoEscuro ? '30' : '20') }
+                        ]}>
                           <View style={[styles.dotStatus, { backgroundColor: STATUS_CORES[u.status] }]} />
-                          <Text style={[styles.statusPillText, { color: STATUS_CORES[u.status] }]}>
+                          <Text style={[
+                            styles.statusPillText,
+                            { color: STATUS_CORES[u.status], fontSize: fs(9) }
+                          ]}>
                             {STATUS_LABELS[u.status]}
                           </Text>
                         </View>
@@ -916,20 +1131,24 @@ export default function Admin({ navigation, route }: any) {
 
                       <View style={styles.usuarioControles}>
                         <TouchableOpacity
-                          style={styles.seletorBtnSm}
+                          style={[styles.seletorBtnSm, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
                           onPress={() => { setModalUidAlvo(u.uid); setModalTipo(true); }}
                         >
-                          <Text style={styles.seletorBtnSmText}>{editTipo[u.uid] || u.tipo}</Text>
-                          <Ionicons name="chevron-down" size={11} color={CORES.textoSec} />
+                          <Text style={[styles.seletorBtnSmText, { color: C.azulEscuro, fontSize: fs(10) }]}>
+                            {editTipo[u.uid] || u.tipo}
+                          </Text>
+                          <Ionicons name="chevron-down" size={11} color={C.textoSec} />
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                          style={styles.seletorBtnSm}
+                          style={[styles.seletorBtnSm, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
                           onPress={() => { setModalUidAlvo(u.uid); setModalStatus(true); }}
                         >
                           <View style={[styles.dotStatus, { backgroundColor: STATUS_CORES[editStatus[u.uid] ?? u.status] }]} />
-                          <Text style={styles.seletorBtnSmText}>{STATUS_LABELS[editStatus[u.uid] ?? u.status]}</Text>
-                          <Ionicons name="chevron-down" size={11} color={CORES.textoSec} />
+                          <Text style={[styles.seletorBtnSmText, { color: C.azulEscuro, fontSize: fs(10) }]}>
+                            {STATUS_LABELS[editStatus[u.uid] ?? u.status]}
+                          </Text>
+                          <Ionicons name="chevron-down" size={11} color={C.textoSec} />
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -952,23 +1171,27 @@ export default function Admin({ navigation, route }: any) {
         )}
       </ScrollView>
 
-      {/* MODAIS */}
+      {/* ════════════════════════════════════════════════
+          MODAIS DE SELEÇÃO
+      ════════════════════════════════════════════════ */}
       <Modal visible={modalTipo} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 24 }]}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitulo}>Tipo de Usuário</Text>
+          <View style={[styles.modalSheet, { backgroundColor: C.branco, paddingBottom: insets.bottom + 24 }]}>
+            <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
+            <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(16) }]}>
+              Tipo de Usuário
+            </Text>
             {TIPOS_USUARIO.map(t => (
               <TouchableOpacity
                 key={t}
-                style={styles.seletorItem}
+                style={[styles.seletorItem, { borderBottomColor: C.cinzaClaro }]}
                 onPress={() => {
                   setEditTipo(prev => ({ ...prev, [modalUidAlvo]: t }));
                   setModalTipo(false);
                 }}
               >
-                <Text style={styles.seletorItemText}>{t}</Text>
-                {editTipo[modalUidAlvo] === t && <Ionicons name="checkmark" size={18} color={CORES.azulEscuro} />}
+                <Text style={[styles.seletorItemText, { color: C.azulEscuro, fontSize: fs(14) }]}>{t}</Text>
+                {editTipo[modalUidAlvo] === t && <Ionicons name="checkmark" size={18} color={C.azulEscuro} />}
               </TouchableOpacity>
             ))}
           </View>
@@ -977,13 +1200,13 @@ export default function Admin({ navigation, route }: any) {
 
       <Modal visible={modalStatus} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 24 }]}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitulo}>Status</Text>
+          <View style={[styles.modalSheet, { backgroundColor: C.branco, paddingBottom: insets.bottom + 24 }]}>
+            <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
+            <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(16) }]}>Status</Text>
             {STATUS_OPCOES.map(s => (
               <TouchableOpacity
                 key={s.value}
-                style={styles.seletorItem}
+                style={[styles.seletorItem, { borderBottomColor: C.cinzaClaro }]}
                 onPress={() => {
                   setEditStatus(prev => ({ ...prev, [modalUidAlvo]: s.value }));
                   setModalStatus(false);
@@ -991,9 +1214,9 @@ export default function Admin({ navigation, route }: any) {
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <View style={[styles.dotStatus, { backgroundColor: STATUS_CORES[s.value] }]} />
-                  <Text style={styles.seletorItemText}>{s.label}</Text>
+                  <Text style={[styles.seletorItemText, { color: C.azulEscuro, fontSize: fs(14) }]}>{s.label}</Text>
                 </View>
-                {editStatus[modalUidAlvo] === s.value && <Ionicons name="checkmark" size={18} color={CORES.azulEscuro} />}
+                {editStatus[modalUidAlvo] === s.value && <Ionicons name="checkmark" size={18} color={C.azulEscuro} />}
               </TouchableOpacity>
             ))}
           </View>
@@ -1002,17 +1225,19 @@ export default function Admin({ navigation, route }: any) {
 
       <Modal visible={modalCartaoTipo} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 24 }]}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitulo}>Tipo de Usuário</Text>
+          <View style={[styles.modalSheet, { backgroundColor: C.branco, paddingBottom: insets.bottom + 24 }]}>
+            <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
+            <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(16) }]}>
+              Tipo de Usuário
+            </Text>
             {TIPOS_USUARIO.map(t => (
               <TouchableOpacity
                 key={t}
-                style={styles.seletorItem}
+                style={[styles.seletorItem, { borderBottomColor: C.cinzaClaro }]}
                 onPress={() => { setCartaoTipo(t); setModalCartaoTipo(false); }}
               >
-                <Text style={styles.seletorItemText}>{t}</Text>
-                {cartaoTipo === t && <Ionicons name="checkmark" size={18} color={CORES.azulEscuro} />}
+                <Text style={[styles.seletorItemText, { color: C.azulEscuro, fontSize: fs(14) }]}>{t}</Text>
+                {cartaoTipo === t && <Ionicons name="checkmark" size={18} color={C.azulEscuro} />}
               </TouchableOpacity>
             ))}
           </View>
@@ -1021,20 +1246,20 @@ export default function Admin({ navigation, route }: any) {
 
       <Modal visible={modalCartaoSts} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 24 }]}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitulo}>Status</Text>
+          <View style={[styles.modalSheet, { backgroundColor: C.branco, paddingBottom: insets.bottom + 24 }]}>
+            <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
+            <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(16) }]}>Status</Text>
             {STATUS_OPCOES.map(s => (
               <TouchableOpacity
                 key={s.value}
-                style={styles.seletorItem}
+                style={[styles.seletorItem, { borderBottomColor: C.cinzaClaro }]}
                 onPress={() => { setCartaoStatus(s.value); setModalCartaoSts(false); }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <View style={[styles.dotStatus, { backgroundColor: STATUS_CORES[s.value] }]} />
-                  <Text style={styles.seletorItemText}>{s.label}</Text>
+                  <Text style={[styles.seletorItemText, { color: C.azulEscuro, fontSize: fs(14) }]}>{s.label}</Text>
                 </View>
-                {cartaoStatus === s.value && <Ionicons name="checkmark" size={18} color={CORES.azulEscuro} />}
+                {cartaoStatus === s.value && <Ionicons name="checkmark" size={18} color={C.azulEscuro} />}
               </TouchableOpacity>
             ))}
           </View>
@@ -1044,70 +1269,70 @@ export default function Admin({ navigation, route }: any) {
   );
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// STYLESHEET — sem cores hardcoded em elementos dinâmicos
+// ════════════════════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
-  container:          { flex: 1, backgroundColor: CORES.fundo },
-  centro:             { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: CORES.fundo, gap: 14 },
-  loadingText:        { fontSize: 13, color: CORES.textoSec, fontFamily: F.semibold },
+  container:          { flex: 1 },
+  centro:             { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 14 },
+  loadingText:        { fontFamily: F.semibold },
 
   // TOAST
   toast:              { position: 'absolute', alignSelf: 'center', backgroundColor: CORES.azulEscuro, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 24, zIndex: 9999, elevation: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  toastText:          { color: CORES.branco, fontFamily: F.bold, fontSize: 12 },
+  toastText:          { color: CORES.branco, fontFamily: F.bold },
 
   // HEADER
   header:             { backgroundColor: CORES.azulEscuro, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingBottom: 16, gap: 12 },
   btnVoltar:          { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
   headerEyebrowRow:   { flexDirection: 'row', alignItems: 'center', gap: 6 },
   headerDot:          { width: 6, height: 6, borderRadius: 3, backgroundColor: CORES.amarelo },
-  headerEyebrow:      { color: 'rgba(255,255,255,0.7)', fontSize: 9, fontFamily: F.black, letterSpacing: 1.6 },
-  headerTitulo:       { color: CORES.branco, fontSize: 19, fontFamily: F.black, letterSpacing: -0.4, marginTop: 2 },
+  headerEyebrow:      { color: 'rgba(255,255,255,0.7)', fontFamily: F.black, letterSpacing: 1.6 },
+  headerTitulo:       { color: CORES.branco, fontFamily: F.black, letterSpacing: -0.4, marginTop: 2 },
   btnRefresh:         { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
 
   // ABAS
-  abas:               { flexDirection: 'row', backgroundColor: CORES.branco, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
+  abas:               { flexDirection: 'row', paddingHorizontal: 4, borderBottomWidth: 1 },
   aba:                { flex: 1, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 5 },
-  abaAtiva:           { borderBottomWidth: 3, borderBottomColor: CORES.rosa },
-  abaText:            { fontSize: 11, fontFamily: F.bold, color: CORES.textoSec },
-  abaTextAtiva:       { color: CORES.azulEscuro },
+  abaText:            { fontFamily: F.bold },
 
-  // HERO CARD
+  // HERO CARD — fixo azul escuro
   heroCard:           { backgroundColor: CORES.azulEscuro, borderRadius: 22, padding: 22, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, elevation: 4, shadowColor: CORES.azulEscuro, shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, overflow: 'hidden' },
-  heroEyebrow:        { color: 'rgba(255,255,255,0.6)', fontSize: 9, fontFamily: F.black, letterSpacing: 1.4, marginBottom: 6 },
-  heroValor:          { color: CORES.branco, fontSize: 38, fontFamily: F.black, letterSpacing: -1, lineHeight: 42 },
+  heroEyebrow:        { color: 'rgba(255,255,255,0.6)', fontFamily: F.black, letterSpacing: 1.4, marginBottom: 6 },
+  heroValor:          { color: CORES.branco, fontFamily: F.black, letterSpacing: -1, lineHeight: 42 },
   heroBadges:         { flexDirection: 'row', gap: 6, marginTop: 8 },
   heroBadge:          { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.12)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  heroBadgeText:      { fontSize: 10, fontFamily: F.bold },
+  heroBadgeText:      { fontFamily: F.bold },
   heroIconWrap:       { width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
 
   // MINI GRID
   miniGrid:           { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
-  miniCard:           { width: '48.5%', backgroundColor: CORES.branco, borderRadius: 14, padding: 12, borderLeftWidth: 3, gap: 6 },
+  miniCard:           { width: '48.5%', borderRadius: 14, padding: 12, borderLeftWidth: 3, gap: 6 },
   miniIcon:           { width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  miniValor:          { fontSize: 22, fontFamily: F.black, color: CORES.azulEscuro, letterSpacing: -0.5 },
-  miniLabel:          { fontSize: 10, fontFamily: F.bold, color: CORES.textoSec, letterSpacing: 0.6, textTransform: 'uppercase' },
+  miniValor:          { fontFamily: F.black, letterSpacing: -0.5 },
+  miniLabel:          { fontFamily: F.bold, letterSpacing: 0.6, textTransform: 'uppercase' },
 
   // CHART CARD
-  chartCard:          { backgroundColor: CORES.branco, borderRadius: 18, padding: 16, marginBottom: 14, elevation: 2, shadowColor: CORES.azulEscuro, shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
+  chartCard:          { borderRadius: 18, padding: 16, marginBottom: 14, elevation: 2, shadowColor: CORES.azulEscuro, shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
   chartHeader:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
-  chartEyebrow:       { fontSize: 9, fontFamily: F.black, color: CORES.rosa, letterSpacing: 1.2 },
-  chartTitulo:        { fontSize: 15, fontFamily: F.black, color: CORES.azulEscuro, marginTop: 2, letterSpacing: -0.2 },
-  chartLegenda:       { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: CORES.fundo, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  chartLegendaText:   { fontSize: 10, fontFamily: F.semibold, color: CORES.textoSec },
+  chartEyebrow:       { fontFamily: F.black, letterSpacing: 1.2 },
+  chartTitulo:        { fontFamily: F.black, marginTop: 2, letterSpacing: -0.2 },
+  chartLegenda:       { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  chartLegendaText:   { fontFamily: F.semibold },
   dotCor:             { width: 8, height: 8, borderRadius: 4 },
   chartGraph:         { borderRadius: 14, marginVertical: 4, marginLeft: -10 },
   chartVazio:         { alignItems: 'center', paddingVertical: 30, gap: 8 },
-  chartVazioText:     { fontSize: 12, color: CORES.textoSec, fontFamily: F.medium },
-  trofeu:             { width: 32, height: 32, borderRadius: 10, backgroundColor: CORES.amarelo + '20', justifyContent: 'center', alignItems: 'center' },
+  chartVazioText:     { fontFamily: F.medium },
+  trofeu:             { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
 
-  // SECAO TITULO GRANDE
-  secaoTituloGrande:  { fontSize: 13, fontFamily: F.black, color: CORES.azulEscuro, marginBottom: 10, marginTop: 4, letterSpacing: -0.2 },
+  secaoTituloGrande:  { fontFamily: F.black, marginBottom: 10, marginTop: 4, letterSpacing: -0.2 },
 
   // STATUS GRID
   statusGrid:         { flexDirection: 'row', gap: 8, marginBottom: 14 },
   statusCard:         { flex: 1, borderRadius: 16, padding: 14, alignItems: 'center', gap: 6 },
   statusBolha:        { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
-  statusN:            { fontSize: 24, fontFamily: F.black, letterSpacing: -0.5 },
-  statusL:            { fontSize: 10, fontFamily: F.bold, color: CORES.textoSec, letterSpacing: 0.6, textTransform: 'uppercase' },
-  statusBarra:        { width: '100%', height: 3, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 2, marginTop: 8, overflow: 'hidden' },
+  statusN:            { fontFamily: F.black, letterSpacing: -0.5 },
+  statusL:            { fontFamily: F.bold, letterSpacing: 0.6, textTransform: 'uppercase' },
+  statusBarra:        { width: '100%', height: 3, borderRadius: 2, marginTop: 8, overflow: 'hidden' },
   statusBarraFill:    { height: 3, borderRadius: 2 },
 
   // COMPOSIÇÃO
@@ -1115,77 +1340,75 @@ const styles = StyleSheet.create({
   composicaoItem:     { flexDirection: 'row', alignItems: 'center', gap: 12 },
   composicaoIcon:     { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   composicaoTopo:     { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  composicaoNome:     { fontSize: 13, fontFamily: F.bold, color: CORES.azulEscuro },
-  composicaoValor:    { fontSize: 13, fontFamily: F.black, color: CORES.azulEscuro },
-  composicaoBarra:    { height: 5, backgroundColor: CORES.cinzaClaro, borderRadius: 3, overflow: 'hidden' },
+  composicaoNome:     { fontFamily: F.bold },
+  composicaoValor:    { fontFamily: F.black },
+  composicaoBarra:    { height: 5, borderRadius: 3, overflow: 'hidden' },
   composicaoBarraFill:{ height: 5, borderRadius: 3 },
 
   // TOP 5
-  top5ItemPro:        { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: CORES.cinzaClaro },
+  top5ItemPro:        { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 0.5 },
   top5Medalha:        { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5 },
-  top5Pos:            { fontSize: 14, fontFamily: F.black },
-  top5Nome:           { fontSize: 13, fontFamily: F.bold, color: CORES.azulEscuro, marginBottom: 4 },
+  top5Pos:            { fontFamily: F.black },
+  top5Nome:           { fontFamily: F.bold, marginBottom: 4 },
   top5MetaRow:        { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
   top5Cat:            { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
-  top5CatText:        { fontSize: 9, fontFamily: F.black, letterSpacing: 0.4 },
+  top5CatText:        { fontFamily: F.black, letterSpacing: 0.4 },
   top5Views:          { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  top5ViewsText:      { fontSize: 11, color: CORES.rosa, fontFamily: F.bold },
-  barraWrap:          { height: 4, backgroundColor: CORES.cinzaClaro, borderRadius: 2, overflow: 'hidden' },
-  barra:              { height: 4, backgroundColor: CORES.azulEscuro, borderRadius: 2 },
+  top5ViewsText:      { color: CORES.rosa, fontFamily: F.bold },
+  barraWrap:          { height: 4, borderRadius: 2, overflow: 'hidden' },
+  barra:              { height: 4, borderRadius: 2 },
 
   // BUSCA
   buscaRow:           { flexDirection: 'row', gap: 8 },
-  buscaInputWrap:     { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: CORES.fundo, borderRadius: 12, paddingHorizontal: 12, borderWidth: 1, borderColor: CORES.cinzaClaro },
-  buscaInput:         { flex: 1, paddingVertical: 12, fontSize: 13, color: CORES.azulEscuro, fontFamily: F.medium },
-  btnBuscar:          { backgroundColor: CORES.azulEscuro, borderRadius: 12, paddingHorizontal: 18, justifyContent: 'center', alignItems: 'center' },
-  btnBuscarText:      { color: CORES.branco, fontFamily: F.black, fontSize: 12 },
+  buscaInputWrap:     { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, paddingHorizontal: 12, borderWidth: 1 },
+  buscaInput:         { flex: 1, paddingVertical: 12, fontFamily: F.medium },
+  btnBuscar:          { borderRadius: 12, paddingHorizontal: 18, justifyContent: 'center', alignItems: 'center' },
+  btnBuscarText:      { fontFamily: F.black },
 
   // CARTÃO ENCONTRADO
-  cartaoEncontrado:       { marginTop: 14, padding: 16, backgroundColor: CORES.fundo, borderRadius: 14, borderWidth: 1, borderColor: CORES.cinzaClaro },
+  cartaoEncontrado:       { marginTop: 14, padding: 16, borderRadius: 14, borderWidth: 1 },
   cartaoEncontradoTopo:   { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
   cartaoAvatar:           { width: 44, height: 44, borderRadius: 22, backgroundColor: CORES.rosa, justifyContent: 'center', alignItems: 'center' },
-  cartaoAvatarText:       { color: CORES.branco, fontSize: 18, fontFamily: F.black },
-  cartaoNome:             { fontSize: 14, fontFamily: F.black, color: CORES.azulEscuro },
-  cartaoEmail:            { fontSize: 11, color: CORES.textoSec, fontFamily: F.medium, marginTop: 2 },
+  cartaoAvatarText:       { color: CORES.branco, fontFamily: F.black },
+  cartaoNome:             { fontFamily: F.black },
+  cartaoEmail:            { fontFamily: F.medium, marginTop: 2 },
   cartaoInfoRow:          { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  cartaoInfoBox:          { flex: 1, backgroundColor: CORES.branco, borderRadius: 10, padding: 10 },
-  cartaoInfoLabel:        { fontSize: 9, fontFamily: F.black, color: CORES.textoSec, letterSpacing: 0.8 },
-  cartaoInfoValor:        { fontSize: 14, fontFamily: F.bold, color: CORES.azulEscuro, marginTop: 3 },
+  cartaoInfoBox:          { flex: 1, borderRadius: 10, padding: 10 },
+  cartaoInfoLabel:        { fontFamily: F.black, letterSpacing: 0.8 },
+  cartaoInfoValor:        { fontFamily: F.bold, marginTop: 3 },
   cartaoControles:        { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  campoLabel:             { fontSize: 9, fontFamily: F.black, color: CORES.textoSec, letterSpacing: 0.8, marginBottom: 5 },
-  seletorBtn:             { flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'space-between', backgroundColor: CORES.branco, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: CORES.cinzaClaro },
-  seletorBtnText:         { fontSize: 12, fontFamily: F.bold, color: CORES.azulEscuro, flex: 1 },
+  campoLabel:             { fontFamily: F.black, letterSpacing: 0.8, marginBottom: 5 },
+  seletorBtn:             { flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'space-between', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1 },
+  seletorBtnText:         { fontFamily: F.bold, flex: 1 },
   dotStatus:              { width: 8, height: 8, borderRadius: 4 },
-  btnSalvarCartao:        { flexDirection: 'row', gap: 6, backgroundColor: CORES.azulEscuro, borderRadius: 12, paddingVertical: 12, justifyContent: 'center', alignItems: 'center' },
-  btnSalvarCartaoText:    { color: CORES.branco, fontFamily: F.black, fontSize: 13 },
+  btnSalvarCartao:        { flexDirection: 'row', gap: 6, borderRadius: 12, paddingVertical: 12, justifyContent: 'center', alignItems: 'center' },
+  btnSalvarCartaoText:    { fontFamily: F.black },
 
   // CHIPS
   chipsRow:           { gap: 8, paddingVertical: 4, paddingBottom: 12, flexDirection: 'row' },
-  chip:               { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: CORES.fundo, borderWidth: 1, borderColor: CORES.cinzaClaro },
-  chipAtivo:          { backgroundColor: CORES.azulEscuro, borderColor: CORES.azulEscuro },
-  chipText:           { fontSize: 11, fontFamily: F.bold, color: CORES.textoSec },
-  chipTextAtivo:      { color: CORES.branco },
+  chip:               { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
+  chipText:           { fontFamily: F.bold },
 
   // USUÁRIO CARD
-  usuarioCard:        { backgroundColor: CORES.fundo, borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 0.5, borderColor: CORES.cinzaClaro },
+  usuarioCard:        { borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 0.5 },
   usuarioTopo:        { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  usuarioAvatar:      { width: 40, height: 40, borderRadius: 20, backgroundColor: CORES.azulEscuro, justifyContent: 'center', alignItems: 'center' },
-  usuarioAvatarText:  { color: CORES.branco, fontSize: 15, fontFamily: F.black },
-  usuarioNome:        { fontSize: 13, fontFamily: F.black, color: CORES.azulEscuro },
-  usuarioEmail:       { fontSize: 11, color: CORES.textoSec, fontFamily: F.medium, marginTop: 2 },
-  usuarioDetalhe:     { fontSize: 10, color: CORES.textoSec, fontFamily: F.semibold, marginTop: 1 },
+  usuarioAvatar:      { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  usuarioAvatarText:  { fontFamily: F.black },
+  usuarioNome:        { fontFamily: F.black },
+  usuarioEmail:       { fontFamily: F.medium, marginTop: 2 },
+  usuarioDetalhe:     { fontFamily: F.semibold, marginTop: 1 },
   statusPill:         { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  statusPillText:     { fontSize: 9, fontFamily: F.black, letterSpacing: 0.4 },
+  statusPillText:     { fontFamily: F.black, letterSpacing: 0.4 },
   usuarioControles:   { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  seletorBtnSm:       { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4, backgroundColor: CORES.branco, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 7, borderWidth: 0.5, borderColor: CORES.cinzaClaro },
-  seletorBtnSmText:   { fontSize: 10, fontFamily: F.bold, color: CORES.azulEscuro, flex: 1 },
+  seletorBtnSm:       { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 7, borderWidth: 0.5 },
+  seletorBtnSmText:   { fontFamily: F.bold, flex: 1 },
   btnSalvarRow:       { width: 32, height: 32, borderRadius: 8, backgroundColor: CORES.verde, justifyContent: 'center', alignItems: 'center' },
 
   // MODAIS
   modalOverlay:       { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalSheet:         { backgroundColor: CORES.branco, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 22, paddingBottom: 32 },
-  modalHandle:        { width: 40, height: 4, backgroundColor: CORES.cinzaClaro, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
-  modalTitulo:        { fontSize: 16, fontFamily: F.black, color: CORES.azulEscuro, marginBottom: 10 },
-  seletorItem:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: 0.5, borderBottomColor: CORES.cinzaClaro },
-  seletorItemText:    { fontSize: 14, fontFamily: F.bold, color: CORES.azulEscuro },
+  modalSheet:         { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 22, paddingBottom: 32 },
+  modalHandle:        { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  modalTitulo:        { fontFamily: F.black, marginBottom: 10 },
+  seletorItem:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: 0.5 },
+  seletorItemText:    { fontFamily: F.bold },
 });
