@@ -12,6 +12,9 @@ import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSettings } from '../contexts/AppSettingsContext';
+import { RefreshControl } from 'react-native';
+
+
 
 import {
   LineChart, BarChart, PieChart, ProgressChart
@@ -108,6 +111,7 @@ const AnimatedCounter = ({ value, style, duration = 1200 }: any) => {
 };
 
 export default function Admin({ navigation, route }: any) {
+  const [refreshing,   setRefreshing]   = useState(false); 
   const insets = useSafeAreaInsets();
   const { width: winW } = useWindowDimensions();
   const uid = route?.params?.uid;
@@ -141,6 +145,8 @@ export default function Admin({ navigation, route }: any) {
 
   // Filtro tipo de usuário
   const [filtroTipoU, setFiltroTipoU] = useState<string>('todos');
+  
+
 
   // Toast
   const [toast, setToast] = useState('');
@@ -277,6 +283,18 @@ export default function Admin({ navigation, route }: any) {
     return { labels, data };
   }, [posts]);
 
+  const handleRefresh = async () => {
+  setRefreshing(true);
+  try {
+    // Recarregar todos os dados
+    await carregar();
+  } catch (error) {
+    console.error('Erro ao recarregar:', error);
+  } finally {
+    setRefreshing(false);
+  }
+};
+
   // ── Salvar usuário ───────────────────────────────────────
   const salvarUsuario = async (uid: string) => {
     setSalvando(prev => ({ ...prev, [uid]: true }));
@@ -408,7 +426,6 @@ export default function Admin({ navigation, route }: any) {
       <View style={[styles.abas, { backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
         {[
           { key: 'overview',   label: 'Visão Geral', icon: 'grid'        },
-          { key: 'engagement', label: 'Engajamento', icon: 'trending-up' },
           { key: 'usuarios',   label: 'Usuários',    icon: 'people'      },
         ].map(a => {
           const ativo = abaAtiva === a.key;
@@ -437,6 +454,15 @@ export default function Admin({ navigation, route }: any) {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
+        refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          tintColor={modoEscuro ? C.amarelo : CORES.azulEscuro}
+          title="Puxe para recarregar"
+          titleColor={C.textoSec}
+        />
+      }     
         contentContainerStyle={{ paddingBottom: insets.bottom + 60 }}
       >
 
@@ -715,178 +741,7 @@ export default function Admin({ navigation, route }: any) {
           </View>
         )}
 
-        {/* ═══════ ABA ENGAGEMENT ═══════ */}
-        {abaAtiva === 'engagement' && (
-          <View style={{ padding: 16 }}>
-
-            {/* GRÁFICO BARRA */}
-            <FadeInView delay={0}>
-              <View style={[styles.chartCard, { backgroundColor: C.branco }]}>
-                <View style={styles.chartHeader}>
-                  <View>
-                    <Text style={[styles.chartEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
-                      POR CATEGORIA
-                    </Text>
-                    <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
-                      Visualizações totais
-                    </Text>
-                  </View>
-                </View>
-
-                {viewsPorCat.dados.length > 0 ? (
-                  <BarChart
-                    data={{
-                      labels:   viewsPorCat.labels,
-                      datasets: [{ data: viewsPorCat.dados }],
-                    }}
-                    width={winW - 64}
-                    height={210}
-                    chartConfig={chartConfigBar}
-                    style={styles.chartGraph}
-                    fromZero
-                    showValuesOnTopOfBars
-                    withInnerLines={false}
-                    yAxisLabel=""
-                    yAxisSuffix=""
-                  />
-                ) : (
-                  <View style={styles.chartVazio}>
-                    <Ionicons name="bar-chart-outline" size={32} color={C.cinzaClaro} />
-                    <Text style={[styles.chartVazioText, { color: C.textoSec, fontSize: fs(12) }]}>
-                      Sem dados ainda
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </FadeInView>
-
-            {/* PROGRESS */}
-            <FadeInView delay={120}>
-              <View style={[styles.chartCard, { backgroundColor: C.branco }]}>
-                <View style={styles.chartHeader}>
-                  <View>
-                    <Text style={[styles.chartEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
-                      RANKING RELATIVO
-                    </Text>
-                    <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
-                      Performance comparada
-                    </Text>
-                  </View>
-                </View>
-
-                {progressData.data.some(d => d > 0) ? (
-                  <ProgressChart
-                    data={progressData}
-                    width={winW - 64}
-                    height={200}
-                    strokeWidth={12}
-                    radius={26}
-                    chartConfig={{
-                      ...chartConfigBase,
-                      color: (opacity = 1) => `rgba(229, 28, 106, ${opacity})`,
-                    }}
-                    hideLegend={false}
-                  />
-                ) : (
-                  <View style={styles.chartVazio}>
-                    <Ionicons name="speedometer-outline" size={32} color={C.cinzaClaro} />
-                    <Text style={[styles.chartVazioText, { color: C.textoSec, fontSize: fs(12) }]}>
-                      Sem dados ainda
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </FadeInView>
-
-            {/* TOP 5 */}
-            <FadeInView delay={240}>
-              <View style={[styles.chartCard, { backgroundColor: C.branco }]}>
-                <View style={styles.chartHeader}>
-                  <View>
-                    <Text style={[styles.chartEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
-                      HALL DA FAMA
-                    </Text>
-                    <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
-                      Top 5 posts
-                    </Text>
-                  </View>
-                  <View style={[styles.trofeu, { backgroundColor: CORES.amarelo + (modoEscuro ? '30' : '20') }]}>
-                    <FontAwesome5 name="trophy" size={14} color={CORES.amarelo} />
-                  </View>
-                </View>
-
-                {top5.length === 0 ? (
-                  <View style={styles.chartVazio}>
-                    <Ionicons name="trophy-outline" size={32} color={C.cinzaClaro} />
-                    <Text style={[styles.chartVazioText, { color: C.textoSec, fontSize: fs(12) }]}>
-                      Sem posts ainda
-                    </Text>
-                  </View>
-                ) : top5.map((p: any, i: number) => {
-                  const corPos = i === 0 ? CORES.amarelo : i === 1 ? '#A8B2C8' : i === 2 ? '#CD7F32' : C.cinzaClaro;
-                  const pctBar = Math.round(((p.visualizacoes || 0) / maxViews) * 100);
-
-                  return (
-                    <View
-                      key={p.id}
-                      style={[styles.top5ItemPro, { borderBottomColor: C.cinzaClaro }]}
-                    >
-                      <View style={[
-                        styles.top5Medalha,
-                        { backgroundColor: corPos + (modoEscuro ? '35' : '25'), borderColor: corPos }
-                      ]}>
-                        <Text style={[
-                          styles.top5Pos,
-                          { fontSize: fs(14), color: i < 3 ? corPos : C.textoSec }
-                        ]}>
-                          {i + 1}
-                        </Text>
-                      </View>
-
-                      <View style={{ flex: 1 }}>
-                        <Text
-                          style={[styles.top5Nome, { color: C.azulEscuro, fontSize: fs(13) }]}
-                          numberOfLines={1}
-                        >
-                          {p.titulo}
-                        </Text>
-                        <View style={styles.top5MetaRow}>
-                          <View style={[
-                            styles.top5Cat,
-                            { backgroundColor: (CAT_CORES[p.categoria] || '#888') + (modoEscuro ? '30' : '20') }
-                          ]}>
-                            <Text style={[
-                              styles.top5CatText,
-                              { color: CAT_CORES[p.categoria] || '#888', fontSize: fs(9) }
-                            ]}>
-                              {CAT_LABELS[p.categoria] || p.categoria}
-                            </Text>
-                          </View>
-                          <View style={styles.top5Views}>
-                            <Ionicons name="eye" size={11} color={CORES.rosa} />
-                            <Text style={[styles.top5ViewsText, { fontSize: fs(11) }]}>
-                              {p.visualizacoes || 0}
-                            </Text>
-                          </View>
-                        </View>
-                        <View style={[styles.barraWrap, { backgroundColor: C.cinzaClaro }]}>
-                          <View style={[
-                            styles.barra,
-                            {
-                              width: `${pctBar}%`,
-                              backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro
-                            }
-                          ]} />
-                        </View>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            </FadeInView>
-
-          </View>
-        )}
+        
 
         {/* ═══════ ABA USUÁRIOS ═══════ */}
         {abaAtiva === 'usuarios' && (

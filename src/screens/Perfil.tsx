@@ -1,493 +1,1006 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  StyleSheet, Text, View, Image, TouchableOpacity,
-  TextInput, ScrollView, Alert, ActivityIndicator,
-  SafeAreaView, ImageBackground, Platform, Modal, FlatList
+  StyleSheet, Text, View, TouchableOpacity, ScrollView,
+  SafeAreaView, StatusBar, Modal, TextInput, ActivityIndicator,
+  Image, Animated, Platform
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import { db } from '../config/firebaseConfig';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import {
+  doc, getDoc, updateDoc, collection, getDocs, onSnapshot
+} from 'firebase/firestore';
+import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { RefreshControl } from 'react-native';
+import Svg, { Polygon, Circle, Line, Text as SvgText, G } from 'react-native-svg';
+import { useAppSettings } from '../contexts/AppSettingsContext';
 
-
-
-const CORES = {
-  azulEscuro: '#0B2046',
-  rosa:        '#E51C6A',
-  amarelo:     '#FFC82C',
-  verde:       '#10B981',
-  fundo:       '#F4F6F8',
-  branco:      '#FFFFFF',
-  cinzaClaro:  '#EDF2F7',
-  textoSec:    '#8D99AE',
+// ── Fonte Poppins ──
+const F = {
+  regular:  'Poppins_400Regular',
+  medium:   'Poppins_500Medium',
+  semibold: 'Poppins_600SemiBold',
+  bold:     'Poppins_700Bold',
+  black:    'Poppins_800ExtraBold',
 };
 
-const BANNERS = [
-  'https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=500',
-  'https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=500',
-  'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?q=80&w=500',
-  'https://images.unsplash.com/photo-1531297484001-80022131f5a1?q=80&w=500',
+// ── Paleta estática ──
+const CORES = {
+  azulEscuro: '#0B2046',
+  rosa:       '#E51C6A',
+  amarelo:    '#FFC82C',
+  verde:      '#27ae60',
+  vermelho:   '#e74c3c',
+  laranja:    '#e67e22',
+  roxo:       '#8e44ad',
+  azulCeu:    '#3498db',
+  fundo:      '#F5F7FA',
+  branco:     '#FFFFFF',
+  cinzaClaro: '#EAEFF4',
+  textoSec:   '#8D99AE',
+};
+
+// ════════════════════════════════════════════════════════════════════════
+//  ÁREAS DE CONHECIMENTO
+// ════════════════════════════════════════════════════════════════════════
+const AREAS = [
+  { key: 'exatas',     label: 'Exatas',      cor: CORES.azulCeu },
+  { key: 'humanas',    label: 'Humanas',     cor: CORES.laranja },
+  { key: 'biologicas', label: 'Biológicas',  cor: CORES.verde },
+  { key: 'linguagens', label: 'Linguagens',  cor: CORES.rosa },
+  { key: 'tecnologia', label: 'Lógica',      cor: CORES.roxo },
 ];
 
-const MATERIAS = [
-  // Linguagens
-  { grupo: 'Linguagens',          nome: 'Português'   },
-  { grupo: 'Linguagens',          nome: 'Literatura'  },
-  { grupo: 'Linguagens',          nome: 'Inglês'      },
-  { grupo: 'Linguagens',          nome: 'Artes'       },
-  // Matemática
-  { grupo: 'Matemática',          nome: 'Matemática'  },
-  // Ciências da Natureza
-  { grupo: 'Ciências da Natureza', nome: 'Física'     },
-  { grupo: 'Ciências da Natureza', nome: 'Química'    },
-  { grupo: 'Ciências da Natureza', nome: 'Biologia'   },
-  // Ciências Humanas
-  { grupo: 'Ciências Humanas',    nome: 'História'    },
-  { grupo: 'Ciências Humanas',    nome: 'Geografia'   },
-  { grupo: 'Ciências Humanas',    nome: 'Filosofia'   },
-  { grupo: 'Ciências Humanas',    nome: 'Sociologia'  },
-];
+const MATERIA_AREA: Record<string, string> = {
+  'Matemática': 'exatas', 'Física': 'exatas', 'Química': 'exatas',
+  'Cálculo': 'exatas', 'Estatística': 'exatas',
+  'História': 'humanas', 'Geografia': 'humanas', 'Filosofia': 'humanas',
+  'Sociologia': 'humanas', 'Atualidades': 'humanas',
+  'Biologia': 'biologicas', 'Ciências': 'biologicas',
+  'Anatomia': 'biologicas', 'Ecologia': 'biologicas',
+  'Português': 'linguagens', 'Literatura': 'linguagens', 'Redação': 'linguagens',
+  'Inglês': 'linguagens', 'Espanhol': 'linguagens',
+  'Gramática': 'linguagens', 'Artes': 'linguagens',
+  'Programação': 'tecnologia', 'Lógica': 'tecnologia', 'Robótica': 'tecnologia',
+  'Banco de Dados': 'tecnologia', 'Web': 'tecnologia', 'Python': 'tecnologia',
+};
 
-const GRUPOS = [...new Set(MATERIAS.map(m => m.grupo))];
+const MATERIAS_DISPONIVEIS = Object.keys(MATERIA_AREA).sort();
 
-// ─── Chip de matéria com X ────────────────────────────────
-const Chip = ({ label, cor, onRemove }: any) => (
-  <View style={[styles.chip, { backgroundColor: cor + '18', borderColor: cor + '40' }]}>
-    <Text style={[styles.chipText, { color: cor }]}>{label}</Text>
-    <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-      <Ionicons name="close-circle" size={16} color={cor} />
-    </TouchableOpacity>
-  </View>
-);
+// ════════════════════════════════════════════════════════════════════════
+//  ANIMAÇÃO
+// ════════════════════════════════════════════════════════════════════════
+const FadeInView = ({ children, delay = 0, style }: any) => {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: 1, duration: 450, delay, useNativeDriver: true,
+    }).start();
+  }, []);
+  return (
+    <Animated.View style={[
+      style,
+      {
+        opacity: anim,
+        transform: [{ translateY: anim.interpolate({ inputRange: [0,1], outputRange: [10, 0] }) }],
+      },
+    ]}>
+      {children}
+    </Animated.View>
+  );
+};
 
-// ─── Modal de seleção de matérias ────────────────────────
-const ModalMaterias = ({ visible, titulo, cor, selecionadas, onToggle, onClose }: any) => (
-  <Modal visible={visible} transparent animationType="slide">
-    <View style={styles.modalOverlay}>
-      <View style={styles.modalSheet}>
-        <View style={styles.modalHandle} />
-        <Text style={styles.modalTitulo}>{titulo}</Text>
-        <Text style={styles.modalSub}>Toque para adicionar ou remover</Text>
-        <ScrollView showsVerticalScrollIndicator={false}>
-          {GRUPOS.map(grupo => (
-            <View key={grupo}>
-              <Text style={styles.grupoLabel}>{grupo}</Text>
-              <View style={styles.grupoChips}>
-                {MATERIAS.filter(m => m.grupo === grupo).map(m => {
-                  const selecionada = selecionadas.includes(m.nome);
-                  return (
-                    <TouchableOpacity
-                      key={m.nome}
-                      style={[
-                        styles.chipOpcao,
-                        selecionada && { backgroundColor: cor, borderColor: cor }
-                      ]}
-                      onPress={() => onToggle(m.nome)}
-                    >
-                      {selecionada && (
-                        <Ionicons name="checkmark" size={13} color="#FFF" />
-                      )}
-                      <Text style={[styles.chipOpcaoText, selecionada && { color: '#FFF' }]}>
-                        {m.nome}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-          ))}
-          <View style={{ height: 20 }} />
-        </ScrollView>
-        <TouchableOpacity style={[styles.btnFechar, { backgroundColor: cor }]} onPress={onClose}>
-          <Text style={styles.btnFecharText}>Confirmar</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  </Modal>
-);
+// ════════════════════════════════════════════════════════════════════════
+//  RADAR CHART pequeno (estilo da imagem)
+// ════════════════════════════════════════════════════════════════════════
+const RadarChart = ({ scores, size, modoEscuro }: any) => {
+  const cx = size / 2;
+  const cy = size / 2;
+  const radius = size * 0.30;
+  const N = AREAS.length;
+  const labelDist = radius + size * 0.16;
 
-// ─── Tela principal ───────────────────────────────────────
+  const getPoint = (i: number, dist: number) => {
+    const angle = (i * 2 * Math.PI) / N - Math.PI / 2;
+    return {
+      x: cx + dist * Math.cos(angle),
+      y: cy + dist * Math.sin(angle),
+    };
+  };
+
+  const aneis = [0.5, 1.0];
+
+  const scorePoints = scores
+    .map((s: number, i: number) => {
+      const p = getPoint(i, radius * Math.max(0.05, s));
+      return `${p.x},${p.y}`;
+    })
+    .join(' ');
+
+  const corLinhas = modoEscuro ? '#3A4048' : '#D8DEE6';
+  const corLabel  = modoEscuro ? '#B4BEC8' : CORES.textoSec;
+  const corPolig  = CORES.azulCeu;
+
+  return (
+    <Svg width={size} height={size}>
+      {aneis.map((nivel, idx) => {
+        const pts = scores
+          .map((_: any, i: number) => {
+            const p = getPoint(i, radius * nivel);
+            return `${p.x},${p.y}`;
+          })
+          .join(' ');
+        return (
+          <Polygon
+            key={idx}
+            points={pts}
+            fill="none"
+            stroke={corLinhas}
+            strokeWidth={0.7}
+            strokeDasharray={idx === 0 ? '2,3' : ''}
+          />
+        );
+      })}
+
+      {scores.map((_: any, i: number) => {
+        const p = getPoint(i, radius);
+        return (
+          <Line
+            key={i}
+            x1={cx} y1={cy}
+            x2={p.x} y2={p.y}
+            stroke={corLinhas}
+            strokeWidth={0.6}
+          />
+        );
+      })}
+
+      <Polygon
+        points={scorePoints}
+        fill={corPolig}
+        fillOpacity={modoEscuro ? 0.35 : 0.28}
+        stroke={corPolig}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+      />
+
+      {AREAS.map((area, i) => {
+        const p = getPoint(i, labelDist);
+        return (
+          <SvgText
+            key={area.key}
+            x={p.x}
+            y={p.y}
+            fill={corLabel}
+            fontSize={size * 0.075}
+            fontFamily={F.semibold}
+            textAnchor="middle"
+            alignmentBaseline="middle"
+          >
+            {area.label}
+          </SvgText>
+        );
+      })}
+    </Svg>
+  );
+};
+
+// ════════════════════════════════════════════════════════════════════════
+//  COMPONENTE PRINCIPAL
+// ════════════════════════════════════════════════════════════════════════
 export default function Perfil({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
+  const uid = route?.params?.uid;
+  const [refreshing, setRefreshing] = useState(false);
+
+  const { cores: C, fonteScale, modoEscuro } = useAppSettings();
+  const fs = (size: number) => size * fonteScale;
+
+  const [usuario,      setUsuario]      = useState<any>(null);
+  const [medalhas,     setMedalhas]     = useState<any[]>([]);
   const [loading,      setLoading]      = useState(true);
-  const [updating,     setUpdating]     = useState(false);
-  const [userData,     setUserData]     = useState<any>(null);
-  const [bio,          setBio]          = useState('');
-  const [fotoBase64,   setFotoBase64]   = useState<string | null>(null);
-  const [originalBio,  setOriginalBio]  = useState('');
-  const [originalFoto, setOriginalFoto] = useState<string | null>(null);
-  const [banner,       setBanner]       = useState('');
+  const [salvando,     setSalvando]     = useState(false);
+  const [toast,        setToast]        = useState('');
 
-  const [ensinar,  setEnsinar]  = useState<string[]>([]);
-  const [melhorar, setMelhorar] = useState<string[]>([]);
-  const [originalEnsinar,  setOriginalEnsinar]  = useState<string[]>([]);
-  const [originalMelhorar, setOriginalMelhorar] = useState<string[]>([]);
-
-  const [modalEnsinar,  setModalEnsinar]  = useState(false);
-  const [modalMelhorar, setModalMelhorar] = useState(false);
-
-  const hasChanges =
-    bio !== originalBio ||
-    fotoBase64 !== originalFoto ||
-    JSON.stringify(ensinar)  !== JSON.stringify(originalEnsinar) ||
-    JSON.stringify(melhorar) !== JSON.stringify(originalMelhorar);
+  const [modalBio,     setModalBio]     = useState(false);
+  const [bioTemp,      setBioTemp]      = useState('');
+  const [modalSkill,   setModalSkill]   = useState<'ensina' | 'melhorar' | null>(null);
+  const [modalConfirmSair, setModalConfirmSair] = useState(false);
 
   useEffect(() => {
-    setBanner(BANNERS[Math.floor(Math.random() * BANNERS.length)]);
-    const carregar = async () => {
-      try {
-        const uid = route?.params?.uid;
-        if (!uid) { Alert.alert('Erro', 'Usuário não identificado.'); return; }
-        const snap = await getDoc(doc(db, 'usuarios', uid));
-        if (snap.exists()) {
-          const d = snap.data();
-          setUserData({ ...d, uid });
-          setBio(d.bio || '');            setOriginalBio(d.bio || '');
-          setFotoBase64(d.foto || null);  setOriginalFoto(d.foto || null);
-          setEnsinar(d.ensinar  || []);   setOriginalEnsinar(d.ensinar  || []);
-          setMelhorar(d.melhorar || []);  setOriginalMelhorar(d.melhorar || []);
-        }
-      } catch { Alert.alert('Erro', 'Erro ao carregar perfil.'); }
-      finally  { setLoading(false); }
-    };
-    carregar();
-  }, []);
+    if (!toast) return;
+    const t = setTimeout(() => setToast(''), 2400);
+    return () => clearTimeout(t);
+  }, [toast]);
 
-  const trocarFoto = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') return Alert.alert('Aviso', 'Acesso negado.');
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true, aspect: [1, 1], quality: 0.2, base64: true,
+  useEffect(() => {
+    if (!uid) return;
+    const unsubUser = onSnapshot(doc(db, 'usuarios', uid), (snap) => {
+      if (snap.exists()) setUsuario({ uid: snap.id, ...snap.data() });
+      setLoading(false);
     });
-    if (!result.canceled && result.assets[0].base64) {
-      setFotoBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+    carregarMedalhas();
+    return () => unsubUser();
+  }, [uid]);
+
+  const carregarMedalhas = async () => {
+    try {
+      const userSnap = await getDoc(doc(db, 'usuarios', uid));
+      if (!userSnap.exists()) return;
+      const idsVisiveis: string[] = userSnap.data()?.medalhas_visiveis || [];
+      if (idsVisiveis.length === 0) { setMedalhas([]); return; }
+      const snapAll = await getDocs(collection(db, 'medalhas'));
+      const todas = snapAll.docs.map(d => ({ id: d.id, ...d.data() }));
+      const minhas = todas.filter((m: any) => idsVisiveis.includes(m.id));
+      setMedalhas(minhas);
+    } catch (e) {
+      console.error('Erro ao carregar medalhas:', e);
     }
   };
 
-  const salvar = async () => {
-    setUpdating(true);
+  const radarScores = useMemo(() => {
+    if (!usuario) return AREAS.map(() => 0);
+    const ensina  = usuario.posso_ensinar || [];
+    const aprende = usuario.quer_aprender || [];
+    const pontos: Record<string, number> = {};
+    AREAS.forEach(a => { pontos[a.key] = 0; });
+    ensina.forEach((m: string) => {
+      const area = MATERIA_AREA[m];
+      if (area) pontos[area] += 1;
+    });
+    aprende.forEach((m: string) => {
+      const area = MATERIA_AREA[m];
+      if (area) pontos[area] = Math.max(0, pontos[area] - 0.4);
+    });
+    const max = Math.max(1, ...Object.values(pontos));
+    return AREAS.map(a => Math.min(1, pontos[a.key] / max));
+  }, [usuario]);
+
+  const abrirEdicaoBio = () => {
+    setBioTemp(usuario?.bio || '');
+    setModalBio(true);
+  };
+
+  const salvarBio = async () => {
+    setSalvando(true);
     try {
-      const uid = userData?.uid;
-      if (!uid) return;
-      await updateDoc(doc(db, 'usuarios', uid), {
-        foto:     fotoBase64,
-        bio:      bio.trim(),
-        ensinar,
-        melhorar,
-      });
-      setOriginalBio(bio.trim());
-      setOriginalFoto(fotoBase64);
-      setOriginalEnsinar([...ensinar]);
-      setOriginalMelhorar([...melhorar]);
-      Alert.alert('Sucesso!', 'Perfil atualizado.');
-    } catch { Alert.alert('Erro', 'Falha ao salvar.'); }
-    finally  { setUpdating(false); }
+      await updateDoc(doc(db, 'usuarios', uid), { bio: bioTemp.trim() });
+      setToast('Bio atualizada');
+      setModalBio(false);
+    } catch { setToast('Erro ao salvar'); }
+    finally { setSalvando(false); }
   };
 
-  const reverter = () => {
-    setBio(originalBio);
-    setFotoBase64(originalFoto);
-    setEnsinar([...originalEnsinar]);
-    setMelhorar([...originalMelhorar]);
+  const toggleSkill = async (tipo: 'ensina' | 'melhorar', materia: string) => {
+    if (!usuario) return;
+    const campo = tipo === 'ensina' ? 'posso_ensinar' : 'quer_aprender';
+    const lista: string[] = usuario[campo] || [];
+    const nova = lista.includes(materia)
+      ? lista.filter((m: string) => m !== materia)
+      : [...lista, materia];
+    try {
+      await updateDoc(doc(db, 'usuarios', uid), { [campo]: nova });
+      setToast(lista.includes(materia) ? 'Removido' : 'Adicionado');
+    } catch { setToast('Erro ao salvar'); }
   };
 
-  const toggleEnsinar  = (m: string) =>
-    setEnsinar(prev  => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
-  const toggleMelhorar = (m: string) =>
-    setMelhorar(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
-
-  const handleSair = async () => {
+  const sair = async () => {
     await AsyncStorage.removeItem('uid');
     navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
   };
 
   if (loading) return (
-    <View style={styles.center}>
-      <ActivityIndicator size="large" color={CORES.rosa} />
+    <View style={[styles.centro, { backgroundColor: C.fundo }]}>
+      <ActivityIndicator size="large" color={modoEscuro ? C.amarelo : CORES.azulEscuro} />
     </View>
   );
 
+  if (!usuario) return (
+    <View style={[styles.centro, { backgroundColor: C.fundo }]}>
+      <Ionicons name="alert-circle" size={48} color={C.textoSec} />
+      <Text style={[styles.semDadosText, { color: C.textoSec, fontSize: fs(14) }]}>
+        Usuário não encontrado
+      </Text>
+    </View>
+  );
+
+  const handleRefresh = async () => {
+  setRefreshing(true);
+  try {
+    // Recarregar dados do usuário
+    if (uid) {
+      const docSnap = await getDoc(doc(db, 'usuarios', uid));
+      if (docSnap.exists()) setUsuario({ uid: docSnap.id, ...docSnap.data() });
+    }
+    
+    // Recarregar medalhas
+    await carregarMedalhas();
+  } catch (error) {
+    console.error('Erro ao recarregar:', error);
+  } finally {
+    setRefreshing(false);
+  }
+};
+
+  const isTutor = usuario.tipo?.toLowerCase() === 'gremista' || usuario.tipo?.toLowerCase() === 'administrador';
+  const ensina  = usuario.posso_ensinar || [];
+  const aprende = usuario.quer_aprender  || [];
+
+  // Top matérias para mostrar no card de especialidades (max 3)
+  const topMaterias = [...ensina].slice(0, 3);
+
   return (
-    <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 50 }}>
+    <SafeAreaView style={[styles.container, { backgroundColor: C.fundo }]}>
+      <StatusBar
+        barStyle={modoEscuro ? 'light-content' : 'dark-content'}
+        backgroundColor={C.fundo}
+      />
 
-        {/* BANNER */}
-        <ImageBackground source={{ uri: banner }} style={styles.banner}>
-          <View style={styles.bannerOverlay} />
-          <View style={styles.topNav}>
-            <TouchableOpacity style={styles.btnBack} onPress={() => navigation.goBack()}>
-              <Ionicons name="arrow-back" size={22} color={CORES.azulEscuro} />
-            </TouchableOpacity>
-            <Text style={styles.topTitle}>Meu Perfil</Text>
-            <View style={{ width: 38 }} />
+      {/* TOAST */}
+      {toast !== '' && (
+        <View style={[styles.toast, { top: insets.top + 12 }]}>
+          <Ionicons name="checkmark-circle" size={15} color={CORES.amarelo} />
+          <Text style={[styles.toastText, { fontSize: fs(12) }]}>{toast}</Text>
+        </View>
+      )}
+
+      {/* ════════════════════════════════════════════════
+          HEADER MINIMALISTA (logo JUMO no centro)
+      ════════════════════════════════════════════════ */}
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={[styles.btnVoltar, { backgroundColor: C.branco }]}
+        >
+          <Ionicons name="arrow-back" size={18} color={C.azulEscuro} />
+        </TouchableOpacity>
+
+        <Text style={[styles.logoText, { fontSize: fs(22) }]}>
+          <Text style={{ color: C.azulEscuro }}>JU</Text>
+          <Text style={{ color: CORES.rosa }}>MO</Text>
+        </Text>
+
+        <TouchableOpacity style={[styles.btnMenu, { backgroundColor: C.branco }]}>
+          <Ionicons name="ellipsis-horizontal" size={18} color={C.azulEscuro} />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          tintColor={modoEscuro ? C.amarelo : CORES.azulEscuro}
+          title="Puxe para recarregar"
+          titleColor={C.textoSec}
+        />
+      }
+        contentContainerStyle={{ paddingBottom: insets.bottom + 50, paddingTop: 6 }}
+      >
+        {/* ════════════════════════════════════════════════
+            HERO HORIZONTAL (foto à esquerda, nome à direita)
+        ════════════════════════════════════════════════ */}
+        <FadeInView delay={0}>
+          <View style={[styles.heroCard, { backgroundColor: C.branco }]}>
+            <View style={styles.fotoWrap}>
+              {usuario.foto_url ? (
+                <Image source={{ uri: usuario.foto_url }} style={styles.foto} />
+              ) : (
+                <View style={[styles.fotoPlaceholder, { backgroundColor: CORES.rosa + '20' }]}>
+                  <Text style={[styles.fotoLetra, { fontSize: fs(34) }]}>
+                    {usuario.nome_completo?.charAt(0)?.toUpperCase() || '?'}
+                  </Text>
+                </View>
+              )}
+              <TouchableOpacity style={styles.fotoEditBtn} activeOpacity={0.8}>
+                <Ionicons name="camera" size={11} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.heroInfo}>
+              <Text
+                style={[styles.nome, { color: C.azulEscuro, fontSize: fs(22) }]}
+                numberOfLines={2}
+              >
+                {usuario.nome_completo || 'Sem nome'}
+              </Text>
+              {isTutor && (
+                <View style={[styles.tutorBadge, { borderColor: CORES.verde + '60' }]}>
+                  <FontAwesome5 name="graduation-cap" size={9} color={CORES.verde} />
+                  <Text style={[styles.tutorBadgeText, { fontSize: fs(9) }]}>TUTOR</Text>
+                </View>
+              )}
+            </View>
           </View>
-        </ImageBackground>
+        </FadeInView>
 
-        {/* CARD PRINCIPAL */}
-        <View style={styles.cardPrincipal}>
-          <View style={styles.avatarWrap}>
-            <View style={styles.avatarBorda}>
-              {fotoBase64
-                ? <Image source={{ uri: fotoBase64 }} style={styles.avatarImg} />
-                : <View style={styles.avatarPlaceholder}>
-                    <MaterialIcons name="person" size={52} color="#CCC" />
+        {/* ════════════════════════════════════════════════
+            CONQUISTAS & MEDALHAS (em fila com label embaixo)
+        ════════════════════════════════════════════════ */}
+        <FadeInView delay={120}>
+          <View style={styles.secao}>
+            <Text style={[styles.secaoTituloPrincipal, { color: C.azulEscuro, fontSize: fs(15) }]}>
+              Conquistas & Medalhas
+            </Text>
+
+            {medalhas.length === 0 ? (
+              <View style={[styles.medalhasVazio, { backgroundColor: C.branco }]}>
+                <FontAwesome5 name="medal" size={22} color={C.textoSec} style={{ opacity: 0.5 }} />
+                <Text style={[styles.medalhasVazioText, { color: C.textoSec, fontSize: fs(11) }]}>
+                  As conquistas habilitadas aparecerão aqui
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.medalhasRow}
+              >
+                {medalhas.map((m: any) => (
+                  <View key={m.id} style={styles.medalhaItem}>
+                    <View style={[
+                      styles.medalhaCirculo,
+                      { backgroundColor: (m.cor || CORES.amarelo) + (modoEscuro ? '30' : '20') }
+                    ]}>
+                      {m.imagem_url ? (
+                        <Image source={{ uri: m.imagem_url }} style={styles.medalhaImage} />
+                      ) : (
+                        <FontAwesome5 name="medal" size={26} color={m.cor || CORES.amarelo} />
+                      )}
+                    </View>
+                    <Text
+                      style={[styles.medalhaLabel, { color: C.azulEscuro, fontSize: fs(11) }]}
+                      numberOfLines={1}
+                    >
+                      {m.label || 'Medalha'}
+                    </Text>
                   </View>
-              }
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </FadeInView>
+
+        {/* ════════════════════════════════════════════════
+            MINHAS ESPECIALIDADES (radar + matérias ao lado — fiel à imagem)
+        ════════════════════════════════════════════════ */}
+        <FadeInView delay={240}>
+          <View style={styles.secao}>
+            <Text style={[styles.secaoTituloPrincipal, { color: C.azulEscuro, fontSize: fs(15) }]}>
+              Minhas Especialidades
+            </Text>
+
+            <View style={[styles.especCard, { backgroundColor: C.branco }]}>
+              {/* Radar à esquerda */}
+              <View style={styles.especRadarBox}>
+                <RadarChart
+                  scores={radarScores}
+                  size={150}
+                  modoEscuro={modoEscuro}
+                />
+              </View>
+
+              {/* Matérias à direita (cards individuais) */}
+              <View style={styles.especListaBox}>
+                {topMaterias.length === 0 ? (
+                  <View style={styles.especVazio}>
+                    <Ionicons name="add-circle-outline" size={22} color={C.textoSec} />
+                    <Text style={[styles.especVazioText, { color: C.textoSec, fontSize: fs(11) }]}>
+                      Adicione matérias abaixo
+                    </Text>
+                  </View>
+                ) : (
+                  topMaterias.map((m: string) => {
+                    const area = MATERIA_AREA[m];
+                    const cor = AREAS.find(a => a.key === area)?.cor || CORES.azulEscuro;
+                    return (
+                      <View
+                        key={m}
+                        style={[styles.materiaPill, { backgroundColor: C.fundo }]}
+                      >
+                        <View style={[styles.materiaDot, { backgroundColor: cor }]} />
+                        <Text
+                          style={[styles.materiaText, { color: C.azulEscuro, fontSize: fs(13) }]}
+                          numberOfLines={1}
+                        >
+                          {m}
+                        </Text>
+                      </View>
+                    );
+                  })
+                )}
+              </View>
             </View>
-            <TouchableOpacity style={styles.btnCamera} onPress={trocarFoto}>
-              <MaterialIcons name="camera-alt" size={16} color="#FFF" />
+          </View>
+        </FadeInView>
+
+        {/* ════════════════════════════════════════════════
+            POSSO ENSINAR
+        ════════════════════════════════════════════════ */}
+        <FadeInView delay={360}>
+          <View style={styles.secao}>
+            <View style={styles.secaoHeaderRow}>
+              <View style={styles.secaoTituloComIcon}>
+                <FontAwesome5 name="graduation-cap" size={12} color={CORES.verde} />
+                <Text style={[styles.secaoTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                  Posso ensinar
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.btnAdicionar, { backgroundColor: CORES.verde + (modoEscuro ? '30' : '15') }]}
+                onPress={() => setModalSkill('ensina')}
+              >
+                <Ionicons name="add" size={13} color={CORES.verde} />
+                <Text style={[styles.btnAdicionarText, { color: CORES.verde, fontSize: fs(11) }]}>
+                  Adicionar
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.skillsCard, { backgroundColor: C.branco }]}>
+              {ensina.length === 0 ? (
+                <Text style={[styles.skillsVazio, { color: C.textoSec, fontSize: fs(12) }]}>
+                  Nenhuma matéria adicionada
+                </Text>
+              ) : (
+                <View style={styles.chipsWrap}>
+                  {ensina.map((m: string) => (
+                    <TouchableOpacity
+                      key={m}
+                      style={[styles.chipSkill, {
+                        backgroundColor: CORES.verde + (modoEscuro ? '25' : '12'),
+                        borderColor: CORES.verde + '50',
+                      }]}
+                      onPress={() => toggleSkill('ensina', m)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.chipSkillText, { color: CORES.verde, fontSize: fs(12) }]}>
+                        {m}
+                      </Text>
+                      <Ionicons name="close-circle" size={14} color={CORES.verde} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+        </FadeInView>
+
+        {/* ════════════════════════════════════════════════
+            QUERO MELHORAR
+        ════════════════════════════════════════════════ */}
+        <FadeInView delay={480}>
+          <View style={styles.secao}>
+            <View style={styles.secaoHeaderRow}>
+              <View style={styles.secaoTituloComIcon}>
+                <Ionicons name="trending-up" size={14} color={CORES.rosa} />
+                <Text style={[styles.secaoTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                  Quero melhorar
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.btnAdicionar, { backgroundColor: CORES.rosa + (modoEscuro ? '30' : '15') }]}
+                onPress={() => setModalSkill('melhorar')}
+              >
+                <Ionicons name="add" size={13} color={CORES.rosa} />
+                <Text style={[styles.btnAdicionarText, { color: CORES.rosa, fontSize: fs(11) }]}>
+                  Adicionar
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.skillsCard, { backgroundColor: C.branco }]}>
+              {aprende.length === 0 ? (
+                <Text style={[styles.skillsVazio, { color: C.textoSec, fontSize: fs(12) }]}>
+                  Nenhuma matéria adicionada
+                </Text>
+              ) : (
+                <View style={styles.chipsWrap}>
+                  {aprende.map((m: string) => (
+                    <TouchableOpacity
+                      key={m}
+                      style={[styles.chipSkill, {
+                        backgroundColor: CORES.rosa + (modoEscuro ? '25' : '12'),
+                        borderColor: CORES.rosa + '50',
+                      }]}
+                      onPress={() => toggleSkill('melhorar', m)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.chipSkillText, { color: CORES.rosa, fontSize: fs(12) }]}>
+                        {m}
+                      </Text>
+                      <Ionicons name="close-circle" size={14} color={CORES.rosa} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+        </FadeInView>
+
+        {/* ════════════════════════════════════════════════
+            SOBRE MIM
+        ════════════════════════════════════════════════ */}
+        <FadeInView delay={600}>
+          <View style={styles.secao}>
+            <View style={styles.secaoHeaderRow}>
+              <View style={styles.secaoTituloComIcon}>
+                <Ionicons name="reader-outline" size={14} color={C.textoSec} />
+                <Text style={[styles.secaoTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                  Sobre mim
+                </Text>
+              </View>
+              <TouchableOpacity onPress={abrirEdicaoBio}>
+                <Ionicons name="create-outline" size={16} color={CORES.rosa} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.bioCard, { backgroundColor: C.branco }]}
+              activeOpacity={0.75}
+              onPress={abrirEdicaoBio}
+            >
+              <Text
+                style={[styles.bioText, {
+                  color: usuario.bio ? C.azulEscuro : C.textoSec,
+                  fontSize: fs(13),
+                  fontStyle: usuario.bio ? 'normal' : 'italic',
+                }]}
+              >
+                {usuario.bio || 'Toque para adicionar uma descrição sobre você...'}
+              </Text>
             </TouchableOpacity>
           </View>
+        </FadeInView>
 
-          <Text style={styles.userName}>{userData?.nome_completo || 'Usuário'}</Text>
-          <Text style={styles.userEmail}>{userData?.email_escolar}</Text>
+        {/* ════════════════════════════════════════════════
+            INFORMAÇÕES ACADÊMICAS
+        ════════════════════════════════════════════════ */}
+        <FadeInView delay={720}>
+          <View style={styles.secao}>
+            <Text style={[styles.secaoTituloPrincipal, { color: C.azulEscuro, fontSize: fs(15) }]}>
+              Informações Acadêmicas
+            </Text>
 
-          {/* BADGES */}
-          <View style={styles.badgesRow}>
-            {userData?.tipo === 'Administrador' && (
-              <View style={[styles.badge, { backgroundColor: '#E3F2FD', borderColor: '#2196F3' }]}>
-                <MaterialIcons name="admin-panel-settings" size={13} color="#2196F3" />
-                <Text style={[styles.badgeText, { color: '#2196F3' }]}>ADMIN</Text>
-              </View>
-            )}
-            {userData?.tipo === 'Gremista' && (
-              <View style={[styles.badge, { backgroundColor: '#FFF0F5', borderColor: CORES.rosa }]}>
-                <MaterialIcons name="verified" size={13} color={CORES.rosa} />
-                <Text style={[styles.badgeText, { color: CORES.rosa }]}>GRÊMIO</Text>
-              </View>
-            )}
-            {ensinar.length > 0 && (
-              <View style={[styles.badge, { backgroundColor: '#ECFDF5', borderColor: CORES.verde }]}>
-                <Ionicons name="school" size={13} color={CORES.verde} />
-                <Text style={[styles.badgeText, { color: CORES.verde }]}>TUTOR</Text>
-              </View>
-            )}
-          </View>
-        </View>
-
-        <View style={styles.secoes}>
-
-          {/* BARRA SALVAR */}
-          {hasChanges && (
-            <View style={styles.barraSalvar}>
-              <View style={styles.barraSalvarLeft}>
-                <View style={styles.dotAlerta} />
-                <Text style={styles.barraSalvarText}>Alterações não salvas</Text>
-              </View>
-              <View style={styles.barraSalvarBtns}>
-                <TouchableOpacity style={styles.btnReverter} onPress={reverter}>
-                  <Ionicons name="close" size={18} color="#FF5252" />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.btnSalvar} onPress={salvar} disabled={updating}>
-                  {updating
-                    ? <ActivityIndicator size="small" color="#FFF" />
-                    : <Ionicons name="checkmark" size={18} color="#FFF" />
-                  }
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
-          {/* BIO */}
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardHeaderLeft}>
-                <MaterialIcons name="notes" size={18} color={CORES.azulEscuro} />
-                <Text style={styles.cardTitulo}>Sobre mim</Text>
-              </View>
-              <MaterialIcons name="edit" size={15} color={CORES.textoSec} />
-            </View>
-            <TextInput
-              style={styles.bioInput}
-              value={bio}
-              onChangeText={setBio}
-              multiline
-              scrollEnabled={false}
-              placeholder="Escreva algo sobre você..."
-              placeholderTextColor={CORES.textoSec}
-            />
-          </View>
-
-          {/* ENSINAR */}
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardHeaderLeft}>
-                <Ionicons name="school" size={18} color={CORES.verde} />
-                <Text style={styles.cardTitulo}>Posso ensinar</Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.btnAddMateria, { backgroundColor: CORES.verde + '18' }]}
-                onPress={() => setModalEnsinar(true)}
-              >
-                <Ionicons name="add" size={16} color={CORES.verde} />
-                <Text style={[styles.btnAddMateriaText, { color: CORES.verde }]}>Adicionar</Text>
-              </TouchableOpacity>
-            </View>
-            {ensinar.length > 0
-              ? <View style={styles.chipsWrap}>
-                  {ensinar.map(m => (
-                    <Chip
-                      key={m}
-                      label={m}
-                      cor={CORES.verde}
-                      onRemove={() => toggleEnsinar(m)}
-                    />
-                  ))}
-                </View>
-              : <Text style={styles.emptyMateria}>
-                  Nenhuma matéria adicionada ainda.
+            <View style={[styles.infoCard, { backgroundColor: C.branco }]}>
+              <View style={styles.infoBox}>
+                <Text style={[styles.infoLabel, { color: C.textoSec, fontSize: fs(9) }]}>TURMA</Text>
+                <Text
+                  style={[styles.infoValor, { color: C.azulEscuro, fontSize: fs(15) }]}
+                  numberOfLines={1}
+                >
+                  {usuario.turma || '—'}
                 </Text>
-            }
-          </View>
-
-          {/* MELHORAR */}
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardHeaderLeft}>
-                <Ionicons name="trending-up" size={18} color={CORES.rosa} />
-                <Text style={styles.cardTitulo}>Quero melhorar</Text>
               </View>
-              <TouchableOpacity
-                style={[styles.btnAddMateria, { backgroundColor: CORES.rosa + '18' }]}
-                onPress={() => setModalMelhorar(true)}
-              >
-                <Ionicons name="add" size={16} color={CORES.rosa} />
-                <Text style={[styles.btnAddMateriaText, { color: CORES.rosa }]}>Adicionar</Text>
-              </TouchableOpacity>
-            </View>
-            {melhorar.length > 0
-              ? <View style={styles.chipsWrap}>
-                  {melhorar.map(m => (
-                    <Chip
-                      key={m}
-                      label={m}
-                      cor={CORES.rosa}
-                      onRemove={() => toggleMelhorar(m)}
-                    />
-                  ))}
-                </View>
-              : <Text style={styles.emptyMateria}>
-                  Nenhuma matéria adicionada ainda.
+              <View style={[styles.infoSep, { backgroundColor: C.cinzaClaro }]} />
+              <View style={styles.infoBox}>
+                <Text style={[styles.infoLabel, { color: C.textoSec, fontSize: fs(9) }]}>RA</Text>
+                <Text
+                  style={[styles.infoValor, { color: C.azulEscuro, fontSize: fs(15) }]}
+                  numberOfLines={1}
+                >
+                  {usuario.ra || '—'}
                 </Text>
-            }
-          </View>
-
-          {/* ACADÊMICO */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitulo}>Informações Acadêmicas</Text>
-            <View style={styles.academicRow}>
-              <View style={styles.academicBox}>
-                <Text style={styles.academicLabel}>TURMA</Text>
-                <Text style={styles.academicValue}>{userData?.turma || '---'}</Text>
               </View>
-              <View style={styles.academicDivider} />
-              <View style={styles.academicBox}>
-                <Text style={styles.academicLabel}>RA</Text>
-                <Text style={styles.academicValue}>{userData?.ra || '---'}</Text>
-              </View>
-              <View style={styles.academicDivider} />
-              <View style={styles.academicBox}>
-                <Text style={styles.academicLabel}>AJUDAS</Text>
-                <Text style={styles.academicValue}>{userData?.ajudas_realizadas || 0}</Text>
+              <View style={[styles.infoSep, { backgroundColor: C.cinzaClaro }]} />
+              <View style={styles.infoBox}>
+                <Text style={[styles.infoLabel, { color: C.textoSec, fontSize: fs(9) }]}>AJUDAS</Text>
+                <Text style={[styles.infoValor, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                  {usuario.ajudas || 0}
+                </Text>
               </View>
             </View>
           </View>
+        </FadeInView>
 
-          {/* LOGOUT */}
-          <TouchableOpacity style={styles.btnLogout} onPress={handleSair}>
-            <Ionicons name="log-out-outline" size={20} color="#FF5252" />
-            <Text style={styles.btnLogoutText}>Sair da conta</Text>
+        {/* ════════════════════════════════════════════════
+            SAIR DA CONTA
+        ════════════════════════════════════════════════ */}
+        <FadeInView delay={840}>
+          <TouchableOpacity
+            style={styles.btnSair}
+            onPress={() => setModalConfirmSair(true)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="log-out-outline" size={18} color={CORES.rosa} />
+            <Text style={[styles.btnSairText, { color: CORES.rosa, fontSize: fs(15) }]}>
+              Sair da conta
+            </Text>
           </TouchableOpacity>
-
-        </View>
+        </FadeInView>
       </ScrollView>
 
-      {/* MODAIS */}
-      <ModalMaterias
-        visible={modalEnsinar}
-        titulo="Posso ensinar"
-        cor={CORES.verde}
-        selecionadas={ensinar}
-        onToggle={toggleEnsinar}
-        onClose={() => setModalEnsinar(false)}
-      />
-      <ModalMaterias
-        visible={modalMelhorar}
-        titulo="Quero melhorar"
-        cor={CORES.rosa}
-        selecionadas={melhorar}
-        onToggle={toggleMelhorar}
-        onClose={() => setModalMelhorar(false)}
-      />
+      {/* ════════════════════════════════════════════════
+          MODAL EDITAR BIO
+      ════════════════════════════════════════════════ */}
+      <Modal visible={modalBio} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+            <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
+            <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>
+              Editar Bio
+            </Text>
+            <Text style={[styles.modalSub, { color: C.textoSec, fontSize: fs(12) }]}>
+              Conte algo sobre você (até 200 caracteres)
+            </Text>
+
+            <TextInput
+              style={[
+                styles.bioInput,
+                {
+                  backgroundColor: C.fundo,
+                  color: C.azulEscuro,
+                  borderColor: C.cinzaClaro,
+                  fontSize: fs(13),
+                }
+              ]}
+              placeholder="Ex: Adoro ensinar matemática e jogar xadrez..."
+              placeholderTextColor={C.textoSec}
+              value={bioTemp}
+              onChangeText={setBioTemp}
+              multiline
+              maxLength={200}
+              textAlignVertical="top"
+            />
+
+            <Text style={[styles.contador, { color: C.textoSec, fontSize: fs(10) }]}>
+              {bioTemp.length}/200
+            </Text>
+
+            <View style={styles.modalBtns}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: C.cinzaClaro }]}
+                onPress={() => setModalBio(false)}
+              >
+                <Text style={[styles.modalBtnText, { color: C.azulEscuro, fontSize: fs(13) }]}>
+                  Cancelar
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: CORES.rosa }]}
+                onPress={salvarBio}
+                disabled={salvando}
+              >
+                {salvando ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <Text style={[styles.modalBtnText, { color: '#FFF', fontSize: fs(13) }]}>
+                    Salvar
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ════════════════════════════════════════════════
+          MODAL ADICIONAR SKILL
+      ════════════════════════════════════════════════ */}
+      <Modal visible={modalSkill !== null} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { backgroundColor: C.branco, maxHeight: '85%' }]}>
+            <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
+            <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>
+              {modalSkill === 'ensina' ? 'Posso ensinar' : 'Quero melhorar'}
+            </Text>
+            <Text style={[styles.modalSub, { color: C.textoSec, fontSize: fs(12) }]}>
+              Toque para adicionar ou remover
+            </Text>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 8 }}>
+              {AREAS.map(area => {
+                const materiasArea = MATERIAS_DISPONIVEIS.filter(m => MATERIA_AREA[m] === area.key);
+                return (
+                  <View key={area.key} style={{ marginBottom: 12 }}>
+                    <View style={styles.areaHeader}>
+                      <View style={[styles.areaPin, { backgroundColor: area.cor }]} />
+                      <Text style={[styles.areaLabel, { color: C.azulEscuro, fontSize: fs(11) }]}>
+                        {area.label.toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={styles.chipsWrap}>
+                      {materiasArea.map(m => {
+                        const lista = modalSkill === 'ensina' ? ensina : aprende;
+                        const ativo = lista.includes(m);
+                        return (
+                          <TouchableOpacity
+                            key={m}
+                            style={[
+                              styles.chipSkillSelector,
+                              {
+                                backgroundColor: ativo
+                                  ? area.cor + (modoEscuro ? '30' : '15')
+                                  : C.fundo,
+                                borderColor: ativo ? area.cor : C.cinzaClaro,
+                              }
+                            ]}
+                            onPress={() => toggleSkill(modalSkill!, m)}
+                          >
+                            {ativo && <Ionicons name="checkmark" size={12} color={area.cor} />}
+                            <Text style={[
+                              styles.chipSkillText,
+                              {
+                                color: ativo ? area.cor : C.azulEscuro,
+                                fontSize: fs(12),
+                              }
+                            ]}>
+                              {m}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.btnFecharModal, { backgroundColor: C.fundo }]}
+              onPress={() => setModalSkill(null)}
+            >
+              <Text style={[styles.btnFecharModalText, { color: C.textoSec, fontSize: fs(13) }]}>
+                Fechar
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ════════════════════════════════════════════════
+          MODAL CONFIRMAÇÃO SAIR
+      ════════════════════════════════════════════════ */}
+      <Modal visible={modalConfirmSair} transparent animationType="fade">
+        <View style={styles.confirmOverlay}>
+          <View style={[styles.confirmBox, { backgroundColor: C.branco }]}>
+            <View style={[styles.confirmIcon, { backgroundColor: CORES.rosa + '20' }]}>
+              <Ionicons name="log-out" size={26} color={CORES.rosa} />
+            </View>
+            <Text style={[styles.confirmTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>
+              Sair da conta?
+            </Text>
+            <Text style={[styles.confirmMsg, { color: C.textoSec, fontSize: fs(13) }]}>
+              Você precisará fazer login novamente para acessar o app.
+            </Text>
+            <View style={styles.confirmBtns}>
+              <TouchableOpacity
+                style={[styles.confirmBtn, { backgroundColor: C.cinzaClaro }]}
+                onPress={() => setModalConfirmSair(false)}
+              >
+                <Text style={[styles.confirmBtnText, { color: C.azulEscuro, fontSize: fs(13) }]}>
+                  Cancelar
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmBtn, { backgroundColor: CORES.rosa }]}
+                onPress={() => { setModalConfirmSair(false); sair(); }}
+              >
+                <Text style={[styles.confirmBtnText, { color: '#FFF', fontSize: fs(13) }]}>
+                  Sair
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
+// ════════════════════════════════════════════════════════════════════════
+//  STYLESHEET
+// ════════════════════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
-  container:         { flex: 1, backgroundColor: CORES.fundo },
-  center:            { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  banner:            { width: '100%', height: 155 },
-  bannerOverlay:     { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)' },
-  topNav:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 36 },
-  btnBack:           { backgroundColor: CORES.branco, padding: 8, borderRadius: 20 },
-  topTitle:          { color: CORES.branco, fontSize: 17, fontWeight: '800' },
+  container: { flex: 1 },
+  centro:    { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
+  semDadosText: { fontFamily: F.bold },
 
-  cardPrincipal:     { backgroundColor: CORES.branco, marginHorizontal: 20, marginTop: -44, borderRadius: 24, padding: 22, alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10 },
-  avatarWrap:        { position: 'relative', marginTop: -62, marginBottom: 12 },
-  avatarBorda:       { width: 96, height: 96, borderRadius: 48, borderWidth: 4, borderColor: CORES.branco, overflow: 'hidden', backgroundColor: CORES.cinzaClaro, elevation: 4 },
-  avatarImg:         { width: '100%', height: '100%' },
-  avatarPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  btnCamera:         { position: 'absolute', bottom: 0, right: 0, backgroundColor: CORES.rosa, width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: CORES.branco },
-  userName:          { fontSize: 20, fontWeight: '900', color: CORES.azulEscuro, letterSpacing: -0.3 },
-  userEmail:         { fontSize: 13, color: CORES.textoSec, marginTop: 3, fontWeight: '500' },
-  badgesRow:         { flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' },
-  badge:             { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, borderWidth: 1 },
-  badgeText:         { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  // TOAST
+  toast:     { position: 'absolute', alignSelf: 'center', backgroundColor: CORES.azulEscuro, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 24, zIndex: 9999, elevation: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  toastText: { color: CORES.branco, fontFamily: F.bold },
 
-  secoes:            { padding: 18, gap: 14 },
+  // HEADER
+  header:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingBottom: 4 },
+  btnVoltar: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3 },
+  btnMenu:   { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3 },
+  logoText:  { fontFamily: F.black, letterSpacing: -0.5 },
 
-  barraSalvar:       { flexDirection: 'row', backgroundColor: CORES.azulEscuro, borderRadius: 16, padding: 14, alignItems: 'center', justifyContent: 'space-between' },
-  barraSalvarLeft:   { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  dotAlerta:         { width: 8, height: 8, borderRadius: 4, backgroundColor: CORES.amarelo },
-  barraSalvarText:   { color: CORES.branco, fontWeight: '700', fontSize: 13 },
-  barraSalvarBtns:   { flexDirection: 'row', gap: 8 },
-  btnReverter:       { backgroundColor: 'rgba(255,82,82,0.15)', padding: 8, borderRadius: 10 },
-  btnSalvar:         { backgroundColor: CORES.rosa, padding: 8, borderRadius: 10 },
+  // HERO
+  heroCard:  { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 14, padding: 16, borderRadius: 22, gap: 14, elevation: 2, shadowColor: CORES.azulEscuro, shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
+  fotoWrap:  { width: 76, height: 76 },
+  foto:      { width: 76, height: 76, borderRadius: 38, borderWidth: 3, borderColor: CORES.rosa },
+  fotoPlaceholder: { width: 76, height: 76, borderRadius: 38, borderWidth: 3, borderColor: CORES.rosa, justifyContent: 'center', alignItems: 'center' },
+  fotoLetra: { color: CORES.rosa, fontFamily: F.black, letterSpacing: -1 },
+  fotoEditBtn: { position: 'absolute', bottom: 0, right: 0, width: 26, height: 26, borderRadius: 13, backgroundColor: CORES.rosa, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: CORES.branco },
 
-  card:              { backgroundColor: CORES.branco, borderRadius: 20, padding: 18, elevation: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6 },
-  cardHeader:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  cardHeaderLeft:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  cardTitulo:        { fontSize: 15, fontWeight: '800', color: CORES.azulEscuro },
-  bioInput:          { color: '#4A5568', fontSize: 15, lineHeight: 22, padding: 0, minHeight: 60 },
+  heroInfo:  { flex: 1, gap: 6 },
+  nome:      { fontFamily: F.black, letterSpacing: -0.4, lineHeight: 27 },
+  tutorBadge:{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, borderWidth: 1, alignSelf: 'flex-start' },
+  tutorBadgeText: { color: CORES.verde, fontFamily: F.black, letterSpacing: 1 },
 
-  btnAddMateria:     { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
-  btnAddMateriaText: { fontSize: 12, fontWeight: '800' },
-  chipsWrap:         { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip:              { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
-  chipText:          { fontSize: 13, fontWeight: '700' },
-  emptyMateria:      { fontSize: 13, color: CORES.textoSec, fontStyle: 'italic' },
+  // SECAO
+  secao:     { marginHorizontal: 16, marginTop: 22 },
+  secaoTituloPrincipal: { fontFamily: F.black, letterSpacing: -0.3, marginBottom: 10, paddingHorizontal: 2 },
+  secaoHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, paddingHorizontal: 2 },
+  secaoTitulo: { fontFamily: F.black, letterSpacing: -0.3 },
+  secaoTituloComIcon: { flexDirection: 'row', alignItems: 'center', gap: 7 },
 
-  academicRow:       { flexDirection: 'row', justifyContent: 'space-around', marginTop: 14 },
-  academicBox:       { alignItems: 'center', flex: 1 },
-  academicLabel:     { fontSize: 10, color: CORES.textoSec, fontWeight: '800', letterSpacing: 1, marginBottom: 4 },
-  academicValue:     { fontSize: 18, color: CORES.azulEscuro, fontWeight: '900' },
-  academicDivider:   { width: 1, height: 32, backgroundColor: CORES.cinzaClaro },
+  // MEDALHAS
+  medalhasRow: { gap: 18, paddingHorizontal: 4, paddingVertical: 6, paddingRight: 20 },
+  medalhaItem: { alignItems: 'center', gap: 6, width: 76 },
+  medalhaCirculo: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center' },
+  medalhaImage: { width: 50, height: 50, borderRadius: 25 },
+  medalhaLabel: { fontFamily: F.bold, textAlign: 'center', letterSpacing: -0.2 },
+  medalhasVazio: { borderRadius: 16, paddingVertical: 22, alignItems: 'center', gap: 8 },
+  medalhasVazioText: { fontFamily: F.medium, paddingHorizontal: 30, textAlign: 'center' },
 
-  btnLogout:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 18 },
-  btnLogoutText:     { color: '#FF5252', fontWeight: '800', fontSize: 15 },
+  // ESPECIALIDADES
+  especCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 22, padding: 12, gap: 4, elevation: 1, shadowColor: CORES.azulEscuro, shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
+  especRadarBox: { width: 150, height: 150, justifyContent: 'center', alignItems: 'center' },
+  especListaBox: { flex: 1, gap: 8, paddingLeft: 4 },
+  materiaPill: { paddingHorizontal: 16, paddingVertical: 14, borderRadius: 18, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  materiaDot: { width: 6, height: 6, borderRadius: 3 },
+  materiaText: { fontFamily: F.bold, flex: 1 },
+  especVazio: { paddingVertical: 30, alignItems: 'center', gap: 6 },
+  especVazioText: { fontFamily: F.medium, fontStyle: 'italic', textAlign: 'center' },
 
-  modalOverlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  modalSheet:        { backgroundColor: CORES.branco, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, maxHeight: '80%' },
-  modalHandle:       { width: 40, height: 4, backgroundColor: CORES.cinzaClaro, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  modalTitulo:       { fontSize: 18, fontWeight: '900', color: CORES.azulEscuro, marginBottom: 4 },
-  modalSub:          { fontSize: 13, color: CORES.textoSec, marginBottom: 20, fontWeight: '500' },
-  grupoLabel:        { fontSize: 11, fontWeight: '900', color: CORES.textoSec, letterSpacing: 1, marginTop: 16, marginBottom: 10 },
-  grupoChips:        { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chipOpcao:         { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: CORES.cinzaClaro, backgroundColor: CORES.fundo },
-  chipOpcaoText:     { fontSize: 13, fontWeight: '700', color: CORES.azulEscuro },
-  btnFechar:         { borderRadius: 16, paddingVertical: 15, alignItems: 'center', marginTop: 20 },
-  btnFecharText:     { color: CORES.branco, fontWeight: '900', fontSize: 15 },
+  // BTN ADICIONAR
+  btnAdicionar: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 18 },
+  btnAdicionarText: { fontFamily: F.black, letterSpacing: 0.4 },
+
+  // SKILLS
+  skillsCard: { borderRadius: 14, padding: 14, elevation: 1 },
+  skillsVazio: { fontFamily: F.medium, fontStyle: 'italic', textAlign: 'center', paddingVertical: 14 },
+  chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chipSkill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingLeft: 12, paddingRight: 8, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
+  chipSkillText: { fontFamily: F.bold },
+  chipSkillSelector: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
+
+  // BIO
+  bioCard: { borderRadius: 14, padding: 14, elevation: 1 },
+  bioText: { fontFamily: F.regular, lineHeight: 19 },
+
+  // INFO
+  infoCard: { flexDirection: 'row', borderRadius: 14, padding: 16, elevation: 1, alignItems: 'center' },
+  infoBox: { flex: 1, alignItems: 'center', gap: 4 },
+  infoLabel: { fontFamily: F.black, letterSpacing: 1 },
+  infoValor: { fontFamily: F.black, letterSpacing: -0.3 },
+  infoSep: { width: 1, height: 26 },
+
+  // SAIR
+  btnSair: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 26, paddingVertical: 12 },
+  btnSairText: { fontFamily: F.black },
+
+  // MODAIS
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 22, paddingBottom: 36 },
+  modalHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  modalTitulo: { fontFamily: F.black, marginBottom: 4, letterSpacing: -0.3 },
+  modalSub: { fontFamily: F.regular, marginBottom: 14 },
+
+  bioInput: { borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, fontFamily: F.regular, height: 100 },
+  contador: { fontFamily: F.bold, textAlign: 'right', marginTop: 6 },
+
+  modalBtns: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  modalBtn: { flex: 1, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  modalBtnText: { fontFamily: F.black },
+
+  areaHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8, paddingHorizontal: 2 },
+  areaPin: { width: 4, height: 14, borderRadius: 2 },
+  areaLabel: { fontFamily: F.black, letterSpacing: 1.2 },
+
+  btnFecharModal: { borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 14 },
+  btnFecharModalText: { fontFamily: F.bold },
+
+  // CONFIRMAÇÃO
+  confirmOverlay: { flex: 1, backgroundColor: 'rgba(11,32,70,0.65)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 30 },
+  confirmBox: { width: '100%', maxWidth: 360, borderRadius: 18, padding: 22, alignItems: 'center' },
+  confirmIcon: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
+  confirmTitulo: { fontFamily: F.black, marginBottom: 6, textAlign: 'center' },
+  confirmMsg: { fontFamily: F.regular, textAlign: 'center', lineHeight: 19, marginBottom: 18 },
+  confirmBtns: { flexDirection: 'row', gap: 8, width: '100%' },
+  confirmBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  confirmBtnText: { fontFamily: F.black },
 });

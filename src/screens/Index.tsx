@@ -10,10 +10,11 @@ import {
   updateDoc, increment, arrayUnion, where, getDocs
 } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { RefreshControl } from 'react-native';
 import { useAppSettings } from '../contexts/AppSettingsContext';
-
 import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 
 const { width, height } = Dimensions.get('window');
 const DESTAQUE_W = (width - 18 * 2 - 10) / 2;
@@ -108,6 +109,7 @@ const extrairSerie = (turma: string) => {
 };
 
 export default function Index({ navigation, route }: any) {
+  const [refreshing, setRefreshing] = useState(false);
   const insets = useSafeAreaInsets();
   const [userData, setUserData]                 = useState<any>(null);
   const [posts, setPosts]                       = useState<any[]>([]);
@@ -117,6 +119,8 @@ export default function Index({ navigation, route }: any) {
   const [modoEdicao, setModoEdicao]             = useState(false);
   const [miniMenuAberto, setMiniMenuAberto]     = useState(false);
   const [destaqueIdx, setDestaqueIdx]           = useState(0);
+  const [notificacoes, setNotificacoes] = useState<any[]>([]);
+  const [modalNotif, setModalNotif] = useState(false);
   const [serieFiltroAdm, setSerieFiltroAdm]     = useState('todas');
 
   const [modalEvento, setModalEvento]           = useState(false);
@@ -136,6 +140,26 @@ export default function Index({ navigation, route }: any) {
   const isGremio            = userData?.tipo === 'Gremista';
   const temPermissaoDeStaff = isSuperAdmin || isGremio;
   const primeiroNome        = userData?.nome_completo?.split(' ')[0] || 'aluno';
+
+
+  const handleRefresh = async () => {
+  setRefreshing(true);
+  try {
+    // Recarregar dados do perfil
+    const uid = route?.params?.uid;
+    if (uid) {
+      const docSnap = await getDoc(doc(db, 'usuarios', uid));
+      if (docSnap.exists()) setUserData({ ...docSnap.data(), uid });
+    }
+    
+    // Recarregar agenda
+    await carregarAgenda();
+  } catch (error) {
+    console.error('Erro ao recarregar:', error);
+  } finally {
+    setRefreshing(false);
+  }
+};
 
   // ── Carregar perfil + posts ──
   useEffect(() => {
@@ -232,6 +256,42 @@ export default function Index({ navigation, route }: any) {
       dt.setHours(0, 0, 0, 0);
       return dt >= hoje && dt <= limite;
     }).sort((a, b) => a.data.localeCompare(b.data));
+
+    // ✅ NOTIFICAÇÕES — lembretes vencidos + provas próximas
+      const notifs: any[] = [];
+
+      // Lembretes vencidos
+      itens.forEach(item => {
+        if (item.tipo === 'lembrete') {
+          const [a, m, d] = item.data.split('-').map(Number);
+          const dt = new Date(a, m - 1, d);
+          dt.setHours(0, 0, 0, 0);
+          if (dt < hoje) {
+            notifs.push({
+              id: item.id,
+              tipo: 'lembrete_vencido',
+              titulo: item.titulo,
+              data: item.data,
+              icon: 'alert-circle'
+            });
+          }
+        }
+      });
+
+      // Provas nos próximos 7 dias
+      itens.forEach(item => {
+        if (item.tipo === 'Prova') {
+          notifs.push({
+            id: item.id,
+            tipo: 'prova_proxima',
+            titulo: item.titulo,
+            data: item.data,
+            icon: 'document-text'
+          });
+        }
+      });
+
+      setNotificacoes(notifs);
 
     setAgendaItens(proximos);
   } catch (e) {
@@ -459,9 +519,18 @@ export default function Index({ navigation, route }: any) {
             </TouchableOpacity>
           )}
 
-          <TouchableOpacity style={[styles.btnSino, { backgroundColor: C.fundo }]}>
+          <TouchableOpacity 
+            style={[styles.btnSino, { backgroundColor: C.fundo }]}
+            onPress={() => setModalNotif(true)}
+          >
             <Ionicons name="notifications-outline" size={18} color={C.azulEscuro} />
-            <View style={[styles.dotNotif, { borderColor: C.branco }]} />
+            {notificacoes.length > 0 && (
+              <View style={[styles.dotNotif, { borderColor: C.branco, backgroundColor: CORES.rosa }]}>
+                <Text style={{ color: '#FFF', fontSize: 8, fontFamily: F.bold, textAlign: 'center' }}>
+                  {notificacoes.length}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -485,6 +554,15 @@ export default function Index({ navigation, route }: any) {
         style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={modoEscuro ? C.amarelo : CORES.azulEscuro}
+            title="Puxe para recarregar"
+            titleColor={C.textoSec}
+          />
+        }
       >
 
         {/* SAUDAÇÃO */}
@@ -744,7 +822,7 @@ export default function Index({ navigation, route }: any) {
           </TouchableOpacity>
         </View>
 
-        <TabItem icon="search-outline"      label="Achados" onPress={() => navigation.navigate('AchadosPerdidos', { uid: userData?.uid, tipo: userData?.tipo })} />
+        <TabItem icon="document-text-outline" label="Resumos" onPress={() => navigation.navigate('Resumos', { uid: userData?.uid })} />
         <TabItem icon="ellipsis-horizontal" label="Mais"    onPress={() => setMiniMenuAberto(true)} />
       </View>
 
@@ -994,6 +1072,62 @@ export default function Index({ navigation, route }: any) {
                 {selectedPost?.conteudo}
               </Text>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL NOTIFICAÇÕES */}
+      <Modal visible={modalNotif} transparent animationType="slide">
+        <View style={[styles.evModalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+          <View style={[styles.evModalSheet, { backgroundColor: C.branco }]}>
+            <View style={[styles.evModalHandle, { backgroundColor: C.cinzaClaro }]} />
+            <Text style={[styles.evHeroTitulo, { color: C.azulEscuro, fontSize: fs(18), marginBottom: 16 }]}>
+              Notificações ({notificacoes.length})
+            </Text>
+
+            {notificacoes.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <Ionicons name="notifications-off" size={40} color={C.cinzaClaro} />
+                <Text style={[{ color: C.textoSec, fontSize: fs(14), marginTop: 12 }]}>
+                  Nenhuma notificação
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={notificacoes}
+                keyExtractor={item => item.id}
+                renderItem={({ item }) => (
+                  <View style={[styles.agCard, { backgroundColor: C.fundo, borderColor: C.cinzaClaro, borderLeftColor: item.tipo === 'lembrete_vencido' ? '#e74c3c' : '#e67e22', marginBottom: 8 }]}>
+                    <View style={[styles.agData, { backgroundColor: item.tipo === 'lembrete_vencido' ? '#FDECEA' : '#FEF3E7' }]}>
+                      <Ionicons 
+                        name={item.icon} 
+                        size={18} 
+                        color={item.tipo === 'lembrete_vencido' ? '#e74c3c' : '#e67e22'} 
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.agTitulo, { color: C.azulEscuro, fontSize: fs(13) }]}>
+                        {item.titulo}
+                      </Text>
+                      <Text style={[styles.agMeta, { color: C.textoSec, fontSize: fs(10) }]}>
+                        {item.tipo === 'lembrete_vencido' ? '⚠️ Vencido' : '📅 Próximo'}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                scrollEnabled={notificacoes.length > 3}
+                nestedScrollEnabled
+              />
+            )}
+
+            <TouchableOpacity
+              style={[styles.evBtnPrimario, { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro, marginTop: 16 }]}
+              onPress={() => setModalNotif(false)}
+            >
+              <Text style={[styles.evBtnPrimarioText, { color: modoEscuro ? CORES.azulEscuro : '#FFF', fontSize: fs(13) }]}>
+                Fechar
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

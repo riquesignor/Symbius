@@ -13,6 +13,8 @@ import {
 } from 'firebase/firestore';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { RefreshControl } from 'react-native';
+
 
 
 // ── Fonte Poppins (igual Index) ──
@@ -123,6 +125,7 @@ const FadeInView = ({ children, delay = 0, style }: any) => {
 
 // ── Componente principal ───────────────────────────────
 export default function Calendario({ navigation, route }: any) {
+  const [refreshing, setRefreshing] = useState(false);
   const insets = useSafeAreaInsets();
   const { width: winW, height: winH } = useWindowDimensions();
   const CEL_SIZE = Math.floor((winW - 32) / 7);
@@ -511,6 +514,17 @@ useEffect(() => {
 
   const noMesAtual = mes === hoje.getMonth() && ano === hoje.getFullYear();
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([carregarLembretes(), carregarEventosAdmin()]);
+      } catch (error) {
+      console.error('Erro ao recarregar:', error);
+      } finally {
+      setRefreshing(false);
+    }
+  };
+  
   const renderCelula = (dia: number | null, idx: number) => {
     if (!dia) return (
       <View
@@ -526,6 +540,8 @@ useEffect(() => {
         ]}
       />
     );
+
+    
 
     const dataStr   = formatarDataStr(ano, mes + 1, dia);
     const eHoje     = dia === hoje.getDate() && noMesAtual;
@@ -683,8 +699,17 @@ useEffect(() => {
         )}
       </View>
 
-      <ScrollView
+    <ScrollView
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          tintColor={modoEscuro ? C.amarelo : CORES.azulEscuro}
+          title="Puxe para recarregar"
+          titleColor={C.textoSec}
+        />
+        }
         contentContainerStyle={{ paddingBottom: 40 }}
       >
         {/* NAV MÊS */}
