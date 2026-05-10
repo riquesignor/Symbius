@@ -12,6 +12,7 @@ import {
 } from "firebase/firestore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const IMG_MAX = 220;
@@ -199,6 +200,7 @@ const TypingDotsNative = () => {
 // CHAT PRINCIPAL
 // ══════════════════════════════════════════════════════════
 export default function Chat({ route, navigation }: any) {
+  const insets = useSafeAreaInsets();
   const { outroUid, outroNome } = route.params || {};
 
   const scrollRef        = useRef<ScrollView>(null);

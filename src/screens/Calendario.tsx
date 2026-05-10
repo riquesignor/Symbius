@@ -1,43 +1,76 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
-  SafeAreaView, StatusBar, Modal, TextInput, Alert,
-  ActivityIndicator, Platform, FlatList
+  SafeAreaView, StatusBar, Modal, TextInput,
+  ActivityIndicator, Platform, FlatList,
+  useWindowDimensions, Animated
 } from 'react-native';
+import { useAppSettings } from '../contexts/AppSettingsContext';
 import { db } from '../config/firebaseConfig';
 import {
-  collection, query, where, getDocs, addDoc,
-  deleteDoc, doc, serverTimestamp
+  collection, query, where, getDocs, addDoc, updateDoc,
+  deleteDoc, doc, setDoc, getDoc, serverTimestamp
 } from 'firebase/firestore';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// ── Constantes ─────────────────────────────────────────────────
-const MESES = [
-  'Janeiro','Fevereiro','Março','Abril','Maio','Junho',
-  'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'
-];
+
+// ── Fonte Poppins (igual Index) ──
+const F = {
+  regular:  'Poppins_400Regular',
+  medium:   'Poppins_500Medium',
+  semibold: 'Poppins_600SemiBold',
+  bold:     'Poppins_700Bold',
+  black:    'Poppins_800ExtraBold',
+};
+
+// ── Paleta alinhada com Index ──
+const CORES = {
+  azulEscuro:      '#0B2046',
+  azulMedio:       '#1B3868',
+  rosa:            '#E51C6A',
+  amarelo:         '#FFC82C',
+  fundo:           '#F5F7FA',
+  branco:          '#FFFFFF',
+  cinzaClaro:      '#EAEFF4',
+  textoSec:        '#8D99AE',
+  preto:           '#1A1A2E',
+};
+
+const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const MESES_ABREV = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
 const DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+const gerarIdAleatorio = (prefix: string) => {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let id = prefix + '_';
+  for (let i = 0; i < 8; i++) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return id;
+};
 
 const TIPOS_EVENTO = ['Prova','Feriado','Aviso','Evento'];
 
-const TIPO_CONFIG: Record<string, { color: string; bg: string }> = {
-  lembrete: { color: '#2c3e50', bg: '#EBF0F5' },
-  Prova:    { color: '#e74c3c', bg: '#FDECEA' },
-  Feriado:  { color: '#27ae60', bg: '#E8F8EE' },
-  Aviso:    { color: '#e67e22', bg: '#FEF3E7' },
-  Evento:   { color: '#8e44ad', bg: '#F3E8FA' },
+const TIPO_CONFIG: Record<string, { color: string; bg: string; icon: any }> = {
+  lembrete: { color: '#2c3e50', bg: '#EBF0F5', icon: 'bookmark'      },
+  Prova:    { color: '#e74c3c', bg: '#FDECEA', icon: 'document-text' },
+  Feriado:  { color: '#27ae60', bg: '#E8F8EE', icon: 'sunny'         },
+  Aviso:    { color: '#e67e22', bg: '#FEF3E7', icon: 'megaphone'     },
+  Evento:   { color: '#8e44ad', bg: '#F3E8FA', icon: 'sparkles'      },
 };
 
-const CORES = {
-  azulEscuro: '#0B2046',
-  rosa:        '#E51C6A',
-  fundo:       '#F5F7FA',
-  branco:      '#FFFFFF',
-  cinzaClaro:  '#E2E8F0',
-  textoSec:    '#64748B',
-  preto:       '#1A1A2E',
+const TIPO_COLLECTION: Record<string, { sub: string; prefix: string }> = {
+  Prova:   { sub: 'provas',   prefix: 'prv' },
+  Feriado: { sub: 'feriados', prefix: 'fer' },
+  Aviso:   { sub: 'avisos',   prefix: 'avs' },
+  Evento:  { sub: 'eventos',  prefix: 'evt' },
 };
 
+// Path completo: eventos_admin/tipos/{sub}/{id}
+const PARENT_DOC = 'tipos';
+
+// ── Utils ──
 const formatarDataStr = (ano: number, mes: number, dia: number) =>
   `${ano}-${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
 
@@ -50,36 +83,126 @@ const extrairSerie = (turma: string) => {
 const capitalizarPrimeira = (s: string) =>
   s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 
-// ── Componente principal ────────────────────────────────────────
+const calcularDiasRestantes = (dataStr: string) => {
+  const [a, m, d] = dataStr.split('-').map(Number);
+  const alvo = new Date(a, m - 1, d);
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  alvo.setHours(0, 0, 0, 0);
+  const diff = Math.round((alvo.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+  if (diff === 0)  return { texto: 'É HOJE',           cor: '#e74c3c' };
+  if (diff === 1)  return { texto: 'É AMANHÃ',         cor: '#e67e22' };
+  if (diff === -1) return { texto: 'FOI ONTEM',        cor: CORES.textoSec };
+  if (diff > 0)    return { texto: `FALTAM ${diff} DIAS`, cor: CORES.azulEscuro };
+  return { texto: `HÁ ${Math.abs(diff)} DIAS`, cor: CORES.textoSec };
+};
+
+// ── Animação de entrada (fade + slide) ──
+const FadeInView = ({ children, delay = 0, style }: any) => {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 350,
+      delay,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+  return (
+    <Animated.View style={[
+      style,
+      {
+        opacity: anim,
+        transform: [{ translateY: anim.interpolate({ inputRange: [0,1], outputRange: [12, 0] }) }],
+      },
+    ]}>
+      {children}
+    </Animated.View>
+  );
+};
+
+// ── Componente principal ───────────────────────────────
 export default function Calendario({ navigation, route }: any) {
+  const insets = useSafeAreaInsets();
+  const { width: winW, height: winH } = useWindowDimensions();
+  const CEL_SIZE = Math.floor((winW - 32) / 7);
+
+  // ✅ NOVO — Pega configs globais do contexto
+  const { cores: C, fonteScale, modoEscuro } = useAppSettings();
+
+  // ✅ NOVO — Helper de fonte escalada (deixa o JSX mais limpo)
+  const fs = (size: number) => size * fonteScale;
+
   const uid     = route?.params?.uid;
+
+  const [userRA, setUserRA] = useState<string | null>(null);
+
+// Fetch do RA do usuário ao montar
+useEffect(() => {
+  const buscarRA = async () => {
+  if (!uid) return;
+  try {
+    const snap = await getDoc(doc(db, 'usuarios', uid));
+    if (snap.exists()) {
+      const dados = snap.data();
+      // ✅ Limpa RA inválido (admin com "N/A", barras, etc)
+      const raLimpo = dados.ra?.replace(/[\/\\]/g, '');
+      const raValido = raLimpo && raLimpo !== 'N/A' && raLimpo.length > 0;
+      setUserRA(raValido ? raLimpo : uid);
+    }
+  } catch (e) { console.error('Erro buscar RA:', e); }
+};
+  buscarRA();
+}, [uid]);
+
   const tipo    = route?.params?.tipo;
   const turma   = route?.params?.turma;
   const isAdmin = tipo?.toLowerCase() === 'administrador';
   const serie   = extrairSerie(turma || '');
 
   const hoje = new Date();
-  const [mes,  setMes]  = useState(hoje.getMonth());
-  const [ano,  setAno]  = useState(hoje.getFullYear());
+  const [mes, setMes] = useState(hoje.getMonth());
+  const [ano, setAno] = useState(hoje.getFullYear());
 
-  // Dados
+  // ── Dados ──
   const [lembretes,    setLembretes]    = useState<Map<string, any[]>>(new Map());
   const [eventosAdmin, setEventosAdmin] = useState<Map<string, any[]>>(new Map());
   const [adminTodos,   setAdminTodos]   = useState<any[]>([]);
+  const [lembretesTodos, setLembretesTodos] = useState<any[]>([]);
   const [loading,      setLoading]      = useState(true);
 
-  // Modais
-  const [modalDia,       setModalDia]       = useState(false);
-  const [modalAdminForm, setModalAdminForm] = useState(false);
-  const [modalLegenda,   setModalLegenda]   = useState(false);
-  const [diaSelecionado, setDiaSelecionado] = useState('');
+  // ── Modais ──
+  const [modalDia,        setModalDia]        = useState(false);
+  const [modalAdminForm,  setModalAdminForm]  = useState(false);
+  const [modalLegenda,    setModalLegenda]    = useState(false);
+  const [modalDetalhe,    setModalDetalhe]    = useState(false);
+  const [eventoDetalhe,   setEventoDetalhe]   = useState<any>(null);
+  const [diaSelecionado,  setDiaSelecionado]  = useState('');
 
-  // Form lembrete
+  // ✅ Modal de confirmação customizado (substitui Alert.alert)
+  const [confirm, setConfirm] = useState<{
+    titulo: string; msg: string; btn: string; onOk: () => void
+  } | null>(null);
+
+  // ✅ Toast de feedback
+  const [toast, setToast] = useState('');
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(''), 2400);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // ── Filtros ──
+  const [filtroTipo, setFiltroTipo] = useState<string>('todos');
+
+  // ── Form lembrete ──
   const [lembreTitulo, setLembreTitulo] = useState('');
   const [lembreDesc,   setLembreDesc]   = useState('');
   const [salvandoLemb, setSalvandoLemb] = useState(false);
+  // ✅ Edição de lembrete pessoal
+  const [lembEditandoId, setLembEditandoId] = useState<string | null>(null);
 
-  // Form admin
+  // ── Form admin ──
   const [adminTitulo,  setAdminTitulo]  = useState('');
   const [adminDesc,    setAdminDesc]    = useState('');
   const [adminData,    setAdminData]    = useState('');
@@ -88,9 +211,18 @@ export default function Calendario({ navigation, route }: any) {
   const [salvandoAdm,  setSalvandoAdm]  = useState(false);
   const [modalTipoEvt, setModalTipoEvt] = useState(false);
   const [modalDataEvt, setModalDataEvt] = useState(false);
+  // ✅ Edição de evento admin
+  const [admEditandoId, setAdmEditandoId] = useState<string | null>(null);
 
-  // ── Carregar dados ─────────────────────────────────────────────
-  useEffect(() => { carregar(); }, []);
+  // Seletor de data
+  const [selAno, setSelAno] = useState(ano);
+  const [selMes, setSelMes] = useState(mes + 1);
+  const [selDia, setSelDia] = useState(1);
+  const totalDiasSelMes = new Date(selAno, selMes, 0).getDate();
+
+  useEffect(() => {
+  if (userRA) carregar();
+}, [userRA]);
 
   const carregar = async () => {
     setLoading(true);
@@ -99,143 +231,277 @@ export default function Calendario({ navigation, route }: any) {
   };
 
   const carregarLembretes = async () => {
-    if (!uid) return;
-    try {
-      const snap = await getDocs(query(
-        collection(db, 'lembretes'), where('uid', '==', uid)
-      ));
-      const mapa = new Map<string, any[]>();
-      snap.forEach(d => {
-        const ev: any = { id: d.id, ...d.data() };
-        if (!mapa.has(ev.data)) mapa.set(ev.data, []);
-        mapa.get(ev.data)!.push(ev);
-      });
-      setLembretes(mapa);
-    } catch (e) { console.error('Erro lembretes:', e); }
-  };
+  if (!userRA) return;
+  try {
+    const snap = await getDocs(collection(db, 'lembretes', userRA, 'lembretes'));
+    const mapa = new Map<string, any[]>();
+    const todos: any[] = [];
+    snap.forEach(d => {
+      const ev: any = { id: d.id, ...d.data() };
+      todos.push(ev);
+      if (!mapa.has(ev.data)) mapa.set(ev.data, []);
+      mapa.get(ev.data)!.push(ev);
+    });
+    setLembretes(mapa);
+    setLembretesTodos(todos);
+  } catch (e) { console.error('Erro lembretes:', e); }
+};
 
   const carregarEventosAdmin = async () => {
-    try {
+  try {
+    const mapa = new Map<string, any[]>();
+    const todos: any[] = [];
+
+    for (const tipo of Object.keys(TIPO_COLLECTION)) {
+      const config = TIPO_COLLECTION[tipo];
       let snap;
+      
+      // Path: eventos_admin/tipos/{eventos|avisos|provas|feriados}
+      const subRef = collection(db, 'eventos_admin', PARENT_DOC, config.sub);
+
       if (isAdmin) {
-        snap = await getDocs(collection(db, 'eventos_admin'));
+        snap = await getDocs(subRef);
       } else if (serie) {
         snap = await getDocs(query(
-          collection(db, 'eventos_admin'),
+          subRef,
           where('series', 'array-contains', serie)
         ));
-      } else return;
+      } else continue;
 
-      const mapa = new Map<string, any[]>();
-      const todos: any[] = [];
       snap.forEach(d => {
-        const ev: any = { id: d.id, ...d.data() };
+        const ev: any = { 
+          id: d.id, 
+          _sub: config.sub,  // ← guarda de qual subcollection veio
+          ...d.data() 
+        };
         todos.push(ev);
         if (!mapa.has(ev.data)) mapa.set(ev.data, []);
         mapa.get(ev.data)!.push(ev);
       });
-      todos.sort((a, b) => a.data.localeCompare(b.data));
-      setEventosAdmin(mapa);
-      setAdminTodos(todos);
-    } catch (e) { console.error('Erro eventos_admin:', e); }
-  };
+    }
 
-  // ── Ações lembrete ─────────────────────────────────────────────
+    todos.sort((a, b) => a.data.localeCompare(b.data));
+    setEventosAdmin(mapa);
+    setAdminTodos(todos);
+  } catch (e) { console.error('Erro eventos admin:', e); }
+};
+
+  // ✅ Filtro: mês selecionado + tipo
+  const eventosFiltrados = useMemo(() => {
+    const doMes = adminTodos.filter(ev => {
+      const [a, m] = ev.data.split('-').map(Number);
+      return a === ano && m === mes + 1;
+    });
+    if (filtroTipo === 'todos') return doMes;
+    return doMes.filter(ev => ev.tipo === filtroTipo);
+  }, [adminTodos, mes, ano, filtroTipo]);
+
+  // ── Lembrete: salvar OU atualizar ──
   const salvarLembrete = async () => {
-    if (!lembreTitulo.trim()) { Alert.alert('Atenção', 'O título é obrigatório.'); return; }
-    setSalvandoLemb(true);
-    try {
-      const dados = {
-        uid,
-        data:      diaSelecionado,
-        titulo:    capitalizarPrimeira(lembreTitulo.trim()),
-        descricao: capitalizarPrimeira(lembreDesc.trim()),
-        criado_em: serverTimestamp(),
-      };
-      const ref = await addDoc(collection(db, 'lembretes'), dados);
-      const novoLemb = { id: ref.id, ...dados };
+  if (!lembreTitulo.trim()) {
+    setToast('Título obrigatório');
+    return;
+  }
+  if (!userRA) {
+    setToast('Aguarde carregar...');
+    return;
+  }
+  setSalvandoLemb(true);
+  try {
+    const dados = {
+      uid,
+      data:      diaSelecionado,
+      titulo:    capitalizarPrimeira(lembreTitulo.trim()),
+      descricao: capitalizarPrimeira(lembreDesc.trim()),
+    };
+    if (lembEditandoId) {
+      // ✅ Edição
+      await updateDoc(doc(db, 'lembretes', userRA, 'lembretes', lembEditandoId), dados);
+      setLembretes(prev => {
+        const nova = new Map(prev);
+        const lista = (nova.get(diaSelecionado) || []).map(e =>
+          e.id === lembEditandoId ? { ...e, ...dados } : e
+        );
+        nova.set(diaSelecionado, lista);
+        return nova;
+      });
+      setToast('Lembrete atualizado');
+    } else {
+      const ref = await addDoc(collection(db, 'lembretes', userRA, 'lembretes'), {
+        ...dados, criado_em: serverTimestamp(),
+      });
+      const novo = { id: ref.id, ...dados };
       setLembretes(prev => {
         const nova = new Map(prev);
         if (!nova.has(diaSelecionado)) nova.set(diaSelecionado, []);
-        nova.get(diaSelecionado)!.push(novoLemb);
+        nova.get(diaSelecionado)!.push(novo);
         return nova;
       });
-      setLembreTitulo(''); setLembreDesc('');
-    } catch { Alert.alert('Erro', 'Falha ao salvar lembrete.'); }
-    finally  { setSalvandoLemb(false); }
+      setToast('Lembrete salvo');
+    }
+    setLembreTitulo(''); setLembreDesc(''); setLembEditandoId(null);
+  } catch {
+    setToast('Falha ao salvar');
+  } finally {
+    setSalvandoLemb(false);
+  }
+};
+  const editarLembrete = (lemb: any) => {
+    setLembEditandoId(lemb.id);
+    setLembreTitulo(lemb.titulo);
+    setLembreDesc(lemb.descricao || '');
   };
 
-  const excluirLembrete = async (id: string) => {
-    Alert.alert('Excluir', 'Excluir este lembrete?', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Excluir', style: 'destructive', onPress: async () => {
-          await deleteDoc(doc(db, 'lembretes', id));
-          setLembretes(prev => {
-            const nova = new Map(prev);
-            const lista = (nova.get(diaSelecionado) || []).filter(e => e.id !== id);
-            if (lista.length) nova.set(diaSelecionado, lista);
-            else nova.delete(diaSelecionado);
-            return nova;
-          });
-        }
+  const cancelarEdicaoLembrete = () => {
+    setLembEditandoId(null);
+    setLembreTitulo(''); setLembreDesc('');
+  };
+
+  // ✅ Excluir com modal customizado
+  const pedirConfirmacaoExcluirLembrete = (id: string) => {
+  setConfirm({
+    titulo: 'Excluir lembrete?',
+    msg:    'Essa ação não pode ser desfeita.',
+    btn:    'Excluir',
+    onOk:   async () => {
+      if (!userRA) return;
+      try {
+        await deleteDoc(doc(db, 'lembretes', userRA, 'lembretes', id));
+        setLembretes(prev => {
+          const nova = new Map(prev);
+          const lista = (nova.get(diaSelecionado) || []).filter(e => e.id !== id);
+          if (lista.length) nova.set(diaSelecionado, lista);
+          else nova.delete(diaSelecionado);
+          return nova;
+        });
+        setToast('Lembrete excluído');
+      } catch {
+        setToast('Erro ao excluir');
       }
-    ]);
-  };
+    }
+  });
+};
 
-  // ── Ações admin ────────────────────────────────────────────────
+  // ── Admin: salvar OU atualizar ──
   const toggleSerie = (s: string) =>
     setAdminSeries(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
 
+  const abrirFormNovoEvento = () => {
+    setAdmEditandoId(null);
+    setSelAno(ano); setSelMes(mes + 1); setSelDia(1);
+    setAdminData(''); setAdminTitulo(''); setAdminDesc('');
+    setAdminTipo(''); setAdminSeries([]);
+    setModalAdminForm(true);
+  };
+
+  const editarEventoAdmin = (ev: any) => {
+    setAdmEditandoId(ev.id);
+    setAdminTitulo(ev.titulo);
+    setAdminDesc(ev.descricao || '');
+    setAdminData(ev.data);
+    setAdminTipo(ev.tipo);
+    setAdminSeries(ev.series || []);
+    setModalDetalhe(false);
+    setTimeout(() => setModalAdminForm(true), 200);
+  };
+
   const salvarEventoAdmin = async () => {
-    if (!adminTitulo.trim() || !adminData || !adminTipo || adminSeries.length === 0) {
-      Alert.alert('Atenção', 'Preencha todos os campos e selecione ao menos uma série.');
-      return;
-    }
-    setSalvandoAdm(true);
-    try {
-      const dados = {
-        titulo:    capitalizarPrimeira(adminTitulo.trim()),
-        descricao: capitalizarPrimeira(adminDesc.trim()),
-        data:      adminData,
-        tipo:      adminTipo,
-        series:    adminSeries,
-        criado_em: serverTimestamp(),
-      };
-      const ref = await addDoc(collection(db, 'eventos_admin'), dados);
-      const novoEv = { id: ref.id, ...dados };
+  if (!adminTitulo.trim() || !adminData || !adminTipo || adminSeries.length === 0) {
+    setToast('Preencha tudo + ao menos uma série');
+    return;
+  }
+  setSalvandoAdm(true);
+  try {
+    const dados = {
+      titulo:    capitalizarPrimeira(adminTitulo.trim()),
+      descricao: capitalizarPrimeira(adminDesc.trim()),
+      data:      adminData,
+      tipo:      adminTipo,
+      series:    adminSeries,
+    };
+
+    // ✅ Pega a collection correta baseada no tipo
+    const config = TIPO_COLLECTION[adminTipo];
+    if (!config) {
+    setToast('Tipo inválido');
+    setSalvandoAdm(false);
+    return;
+  }
+
+    if (admEditandoId) {
+      // Edição: usa a sub original
+      const eventoOriginal = adminTodos.find(e => e.id === admEditandoId);
+      const subOriginal = eventoOriginal?._sub || config.sub;
+      
+      await updateDoc(
+        doc(db, 'eventos_admin', PARENT_DOC, subOriginal, admEditandoId),
+        dados
+      );
+      await carregarEventosAdmin();
+      setToast('Evento atualizado');
+    } else {
+      // ✅ PRIMEIRO garante que o doc pai 'tipos' existe
+      await setDoc(doc(db, 'eventos_admin', PARENT_DOC), 
+        { _placeholder: true }, 
+        { merge: true }
+      );
+      const novoId = gerarIdAleatorio(config.prefix);
+      await setDoc(
+        doc(db, 'eventos_admin', PARENT_DOC, config.sub, novoId),
+        { ...dados, criado_em: serverTimestamp() }
+      );
+
+      const novo = { id: novoId, _sub: config.sub, ...dados };
+      setAdminTodos(prev => [...prev, novo].sort((a,b) => a.data.localeCompare(b.data)));
       setEventosAdmin(prev => {
         const nova = new Map(prev);
         if (!nova.has(adminData)) nova.set(adminData, []);
-        nova.get(adminData)!.push(novoEv);
+        nova.get(adminData)!.push(novo);
         return nova;
       });
-      setAdminTodos(prev => [...prev, novoEv].sort((a,b) => a.data.localeCompare(b.data)));
-      setModalAdminForm(false);
-      setAdminTitulo(''); setAdminDesc(''); setAdminData('');
-      setAdminTipo(''); setAdminSeries([]);
-    } catch { Alert.alert('Erro', 'Falha ao publicar evento.'); }
-    finally  { setSalvandoAdm(false); }
-  };
+      setToast('Evento publicado');
+    }
 
-  const excluirEventoAdmin = async (id: string, dataStr: string) => {
-    Alert.alert('Excluir', 'Excluir este evento para todos os alunos?', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Excluir', style: 'destructive', onPress: async () => {
-          await deleteDoc(doc(db, 'eventos_admin', id));
-          setEventosAdmin(prev => {
-            const nova = new Map(prev);
-            const lista = (nova.get(dataStr) || []).filter(e => e.id !== id);
-            if (lista.length) nova.set(dataStr, lista);
-            else nova.delete(dataStr);
-            return nova;
-          });
-          setAdminTodos(prev => prev.filter(e => e.id !== id));
-        }
+    setModalAdminForm(false);
+    setAdminTitulo(''); setAdminDesc(''); setAdminData('');
+    setAdminTipo(''); setAdminSeries([]); setAdmEditandoId(null);
+  } catch (e) {
+    console.error('Erro salvar admin:', e);
+    setToast('Falha ao salvar');
+  } finally {
+    setSalvandoAdm(false);
+  }
+};
+
+  const pedirConfirmacaoExcluirEvento = (id: string, dataStr: string) => {
+  setConfirm({
+    titulo: 'Excluir evento?',
+    msg:    'Será removido para todos os alunos das séries selecionadas.',
+    btn:    'Excluir',
+    onOk:   async () => {
+      try {
+        const evento = adminTodos.find(e => e.id === id);
+        const subOrigem = evento?._sub || 'eventos';
+
+        await deleteDoc(doc(db, 'eventos_admin', PARENT_DOC, subOrigem, id));
+        
+        setEventosAdmin(prev => {
+          const nova = new Map(prev);
+          const lista = (nova.get(dataStr) || []).filter(e => e.id !== id);
+          if (lista.length) nova.set(dataStr, lista);
+          else nova.delete(dataStr);
+          return nova;
+        });
+        setAdminTodos(prev => prev.filter(e => e.id !== id));
+        setModalDetalhe(false);
+        setToast('Evento excluído');
+      } catch {
+        setToast('Erro ao excluir');
       }
-    ]);
-  };
-
-  // ── Renderizar calendário ──────────────────────────────────────
+    }
+  });
+};
+  // ── Grade ──
   const primeiroDia = new Date(ano, mes, 1).getDay();
   const totalDias   = new Date(ano, mes + 1, 0).getDate();
   const celulas: (number | null)[] = [
@@ -243,11 +509,26 @@ export default function Calendario({ navigation, route }: any) {
     ...Array.from({ length: totalDias }, (_, i) => i + 1),
   ];
 
+  const noMesAtual = mes === hoje.getMonth() && ano === hoje.getFullYear();
+
   const renderCelula = (dia: number | null, idx: number) => {
-    if (!dia) return <View key={`v${idx}`} style={styles.celulaVazia} />;
+    if (!dia) return (
+      <View
+        key={`v${idx}`}
+        style={[
+          styles.celulaVazia,
+          {
+            width: CEL_SIZE,
+            height: CEL_SIZE * 0.95,
+            backgroundColor: modoEscuro ? C.fundo : '#FBFBFD',
+            borderColor: C.cinzaClaro,
+          }
+        ]}
+      />
+    );
 
     const dataStr   = formatarDataStr(ano, mes + 1, dia);
-    const eHoje     = dia === hoje.getDate() && mes === hoje.getMonth() && ano === hoje.getFullYear();
+    const eHoje     = dia === hoje.getDate() && noMesAtual;
     const diaSem    = new Date(ano, mes, dia).getDay();
     const eFimSem   = diaSem === 0 || diaSem === 6;
     const temLemb   = lembretes.has(dataStr);
@@ -257,18 +538,36 @@ export default function Calendario({ navigation, route }: any) {
     return (
       <TouchableOpacity
         key={dataStr}
-        style={[styles.celula, eFimSem && styles.celulaFimSem, (temLemb || temAdmin) && styles.celulaComEvento]}
+        style={[
+          styles.celula,
+          {
+            width: CEL_SIZE,
+            height: CEL_SIZE * 0.95,
+            backgroundColor: C.branco,
+            borderColor: C.cinzaClaro,
+          },
+          eFimSem && { backgroundColor: modoEscuro ? C.fundo : '#FAFAF8' },
+          (temLemb || temAdmin) && { backgroundColor: modoEscuro ? C.cinzaClaro : '#FAFFF9' },
+        ]}
         onPress={() => { setDiaSelecionado(dataStr); setModalDia(true); }}
         activeOpacity={0.7}
       >
-        <View style={[styles.numWrap, eHoje && styles.numHoje]}>
-          <Text style={[styles.numDia, eFimSem && { color: CORES.textoSec }, eHoje && { color: CORES.branco }]}>
+        <View style={[
+          styles.numWrap,
+          eHoje && { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
+        ]}>
+          <Text style={[
+            styles.numDia,
+            { color: C.azulEscuro, fontSize: fs(11) },
+            eFimSem && { color: C.textoSec },
+            eHoje && { color: modoEscuro ? CORES.azulEscuro : CORES.branco }
+          ]}>
             {dia}
           </Text>
         </View>
         <View style={styles.dotsRow}>
           {temLemb && <View style={[styles.dot, { backgroundColor: TIPO_CONFIG.lembrete.color }]} />}
-          {tiposAdm.map(t => (
+          {tiposAdm.slice(0, 3).map(t => (
             <View key={t} style={[styles.dot, { backgroundColor: TIPO_CONFIG[t]?.color || '#888' }]} />
           ))}
         </View>
@@ -276,7 +575,7 @@ export default function Calendario({ navigation, route }: any) {
     );
   };
 
-  // ── Modal dia: dados ───────────────────────────────────────────
+  // ── Modal dia ──
   const parseDia = (ds: string) => {
     if (!ds) return { dia: 0, mesNome: '', anoN: 0, diaSemNome: '' };
     const [a, m, d] = ds.split('-').map(Number);
@@ -288,249 +587,573 @@ export default function Calendario({ navigation, route }: any) {
   const evsAdmDia: any[] = eventosAdmin.get(diaSelecionado) || [];
   const lembDia:   any[] = lembretes.get(diaSelecionado)    || [];
 
-  // ── Seletor de data (simples: ano/mes/dia) ─────────────────────
-  const [selAno, setSelAno] = useState(ano);
-  const [selMes, setSelMes] = useState(mes + 1);
-  const [selDia, setSelDia] = useState(1);
-
-  const totalDiasSelMes = new Date(selAno, selMes, 0).getDate();
-
   const confirmarData = () => {
     setAdminData(formatarDataStr(selAno, selMes, selDia));
     setModalDataEvt(false);
   };
 
-  if (loading) return (
-    <View style={styles.centro}>
-      <ActivityIndicator size="large" color={CORES.rosa} />
+  
+
+  // ── Card de evento (com fade in) ──
+  const renderEventoCard = ({ item, index }: any) => {
+    const config   = TIPO_CONFIG[item.tipo] || TIPO_CONFIG.Evento;
+    const [, m, d] = item.data.split('-').map(Number);
+    const contagem = calcularDiasRestantes(item.data);
+
+    return (
+      <FadeInView delay={index * 60}>
+        <TouchableOpacity
+          style={[styles.evCard, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+          onPress={() => { setEventoDetalhe(item); setModalDetalhe(true); }}
+          activeOpacity={0.85}
+        >
+          <View style={[styles.evDataBox, { backgroundColor: config.bg }]}>
+            <Text style={[styles.evDataDia, { color: config.color, fontSize: fs(19) }]}>{d}</Text>
+            <Text style={[styles.evDataMes, { color: config.color, fontSize: fs(9) }]}>{MESES_ABREV[m - 1]}</Text>
+          </View>
+
+          <View style={styles.evConteudo}>
+            <View style={styles.evTopo}>
+              <View style={[styles.evIconWrap, { backgroundColor: config.bg }]}>
+                <Ionicons name={config.icon} size={11} color={config.color} />
+              </View>
+              <Text style={[styles.evTipoLabel, { color: config.color, fontSize: fs(9) }]}>
+                {item.tipo.toUpperCase()}
+              </Text>
+              <View style={[styles.evChipMini, { backgroundColor: contagem.cor + '18' }]}>
+                <Text style={[styles.evChipMiniText, { color: contagem.cor, fontSize: fs(8) }]}>
+                  {contagem.texto}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={[styles.evTitulo, { color: C.azulEscuro, fontSize: fs(13) }]} numberOfLines={1}>
+              {item.titulo}
+            </Text>
+
+            <View style={styles.evMetaRow}>
+              <Ionicons name="people-outline" size={10} color={C.textoSec} />
+              <Text style={[styles.evMeta, { color: C.textoSec, fontSize: fs(10) }]}>
+                {(item.series || []).join(' · ')}
+              </Text>
+            </View>
+          </View>
+
+          <Ionicons name="chevron-forward" size={16} color={C.cinzaClaro} />
+        </TouchableOpacity>
+      </FadeInView>
+    );
+  };
+
+   if (loading) return (
+    <View style={[styles.centro, { backgroundColor: C.fundo }]}>
+      <ActivityIndicator size="large" color={modoEscuro ? C.amarelo : CORES.azulEscuro} />
     </View>
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: C.fundo }]}>
+      {/* StatusBar continua azul fixo (identidade visual do header) */}
       <StatusBar barStyle="light-content" backgroundColor={CORES.azulEscuro} />
 
-      {/* HEADER */}
-      <View style={styles.header}>
+      {/* TOAST — mantém azul escuro fixo (overlay) */}
+      {toast !== '' && (
+        <View style={styles.toast}>
+          <Text style={[styles.toastText, { fontSize: fs(13) }]}>{toast}</Text>
+        </View>
+      )}
+
+      {/* HEADER — mantém azul escuro fixo (identidade visual) */}
+      <View style={[styles.header, { paddingTop: insets.top }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.btnVoltar}>
-          <Ionicons name="arrow-back" size={22} color={CORES.branco} />
+          <Ionicons name="arrow-back" size={20} color={CORES.branco} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerEyebrow}>AGENDA ESCOLAR</Text>
-          <Text style={styles.headerTitulo}>Calendário</Text>
+          <Text style={[styles.headerEyebrow, { fontSize: fs(9) }]}>AGENDA ESCOLAR</Text>
+          <Text style={[styles.headerTitulo, { fontSize: fs(18) }]}>Calendário</Text>
         </View>
         <TouchableOpacity onPress={() => setModalLegenda(true)} style={styles.btnIcone}>
-          <Ionicons name="information-circle-outline" size={24} color={CORES.branco} />
+          <Ionicons name="information-circle-outline" size={22} color={CORES.branco} />
         </TouchableOpacity>
         {isAdmin && (
-          <TouchableOpacity
-            onPress={() => {
-              setSelAno(ano); setSelMes(mes + 1); setSelDia(1);
-              setAdminData(''); setAdminTitulo(''); setAdminDesc('');
-              setAdminTipo(''); setAdminSeries([]);
-              setModalAdminForm(true);
-            }}
-            style={styles.btnAdd}
-          >
-            <Ionicons name="add" size={20} color={CORES.branco} />
-            <Text style={styles.btnAddText}>Evento</Text>
+          <TouchableOpacity onPress={abrirFormNovoEvento} style={styles.btnAdd}>
+            <Ionicons name="add" size={18} color={CORES.branco} />
+            <Text style={[styles.btnAddText, { fontSize: fs(12) }]}>Evento</Text>
           </TouchableOpacity>
         )}
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
         {/* NAV MÊS */}
-        <View style={styles.navMes}>
+        <View style={[styles.navMes, { backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
           <TouchableOpacity
-            style={styles.btnNavMes}
+            style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
             onPress={() => { if (mes === 0) { setMes(11); setAno(a => a - 1); } else setMes(m => m - 1); }}
           >
-            <Ionicons name="chevron-back" size={18} color={CORES.preto} />
+            <Ionicons name="chevron-back" size={16} color={C.azulEscuro} />
           </TouchableOpacity>
 
           <View style={{ alignItems: 'center' }}>
-            <Text style={styles.navMesNome}>{MESES[mes]}</Text>
-            <Text style={styles.navAno}>{ano}</Text>
+            <Text style={[styles.navMesNome, { color: C.azulEscuro, fontSize: fs(16) }]}>{MESES[mes]}</Text>
+            <Text style={[styles.navAno, { color: C.textoSec, fontSize: fs(11) }]}>{ano}</Text>
           </View>
 
           <TouchableOpacity
-            style={styles.btnNavMes}
+            style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
             onPress={() => { if (mes === 11) { setMes(0); setAno(a => a + 1); } else setMes(m => m + 1); }}
           >
-            <Ionicons name="chevron-forward" size={18} color={CORES.preto} />
+            <Ionicons name="chevron-forward" size={16} color={C.azulEscuro} />
           </TouchableOpacity>
         </View>
 
-        {/* BOTÃO HOJE */}
-        <TouchableOpacity
-          style={styles.btnHoje}
-          onPress={() => { setMes(hoje.getMonth()); setAno(hoje.getFullYear()); }}
-        >
-          <Text style={styles.btnHojeText}>Ir para hoje</Text>
-        </TouchableOpacity>
+        {/* BOTÃO IR PRA HOJE */}
+        {!noMesAtual && (
+          <TouchableOpacity
+            style={[styles.btnHoje, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+            onPress={() => { setMes(hoje.getMonth()); setAno(hoje.getFullYear()); }}
+          >
+            <Ionicons name="locate" size={12} color={C.azulEscuro} />
+            <Text style={[styles.btnHojeText, { color: C.azulEscuro, fontSize: fs(11) }]}>Ir para hoje</Text>
+          </TouchableOpacity>
+        )}
 
         {/* DIAS DA SEMANA */}
-        <View style={styles.semanaRow}>
+        <View style={[styles.semanaRow, { backgroundColor: C.branco, borderTopColor: C.cinzaClaro }]}>
           {DIAS_SEMANA.map(d => (
-            <Text key={d} style={styles.semanaLabel}>{d}</Text>
+            <Text
+              key={d}
+              style={[styles.semanaLabel, { width: CEL_SIZE, color: C.textoSec, fontSize: fs(10) }]}
+            >
+              {d}
+            </Text>
           ))}
         </View>
 
         {/* GRADE */}
-        <View style={styles.grade}>
+        <View style={[styles.grade, { backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
           {celulas.map((dia, idx) => renderCelula(dia, idx))}
         </View>
 
-        {/* LISTA EVENTOS ADMIN (só admin vê todos) */}
-        {isAdmin && adminTodos.length > 0 && (
-          <View style={styles.secaoAdmin}>
-            <Text style={styles.secaoAdminTitulo}>EVENTOS CADASTRADOS</Text>
-            {adminTodos.map(ev => (
-              <View key={ev.id} style={styles.adminEvCard}>
-                <View style={styles.adminEvTop}>
-                  <View style={[styles.tipoBadge, { backgroundColor: TIPO_CONFIG[ev.tipo]?.bg }]}>
-                    <Text style={[styles.tipoBadgeText, { color: TIPO_CONFIG[ev.tipo]?.color }]}>{ev.tipo}</Text>
-                  </View>
-                  <Text style={styles.adminEvData}>
-                    {ev.data?.split('-').reverse().join('/')}
-                  </Text>
-                  <TouchableOpacity onPress={() => excluirEventoAdmin(ev.id, ev.data)} style={styles.btnDel}>
-                    <Ionicons name="close" size={14} color={CORES.textoSec} />
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.adminEvTitulo}>{ev.titulo}</Text>
-                <Text style={styles.adminEvSeries}>{(ev.series || []).join(' · ')}</Text>
-              </View>
-            ))}
+        {/* SEÇÃO EVENTOS */}
+        <View style={[styles.secaoEventos, { backgroundColor: C.branco }]}>
+          <View style={styles.secaoHeader}>
+            <View>
+              <Text style={[styles.secaoEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
+                {MESES[mes].toUpperCase()} · {ano}
+              </Text>
+              <Text style={[styles.secaoTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>
+                {isAdmin ? 'Eventos cadastrados' : 'Eventos da sua turma'}
+              </Text>
+            </View>
+            <View style={[styles.secaoCount, { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }]}>
+              <Text style={[
+                styles.secaoCountText,
+                { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(12) }
+              ]}>
+                {eventosFiltrados.length}
+              </Text>
+            </View>
           </View>
-        )}
+
+          {/* CHIPS DE FILTRO */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipsRow}
+          >
+            <TouchableOpacity
+              style={[
+                styles.chip,
+                { backgroundColor: C.fundo, borderColor: C.cinzaClaro },
+                filtroTipo === 'todos' && { backgroundColor: C.azulEscuro, borderColor: C.azulEscuro }
+              ]}
+              onPress={() => setFiltroTipo('todos')}
+            >
+              <Text style={[
+                styles.chipText,
+                { color: C.textoSec, fontSize: fs(11) },
+                filtroTipo === 'todos' && { color: modoEscuro ? CORES.azulEscuro : CORES.branco }
+              ]}>
+                Todos
+              </Text>
+            </TouchableOpacity>
+            {TIPOS_EVENTO.map(t => {
+              const config = TIPO_CONFIG[t];
+              const ativo = filtroTipo === t;
+              return (
+                <TouchableOpacity
+                  key={t}
+                  style={[
+                    styles.chip,
+                    { backgroundColor: C.fundo, borderColor: C.cinzaClaro },
+                    ativo && { backgroundColor: config.color, borderColor: config.color }
+                  ]}
+                  onPress={() => setFiltroTipo(t)}
+                >
+                  <Ionicons
+                    name={config.icon}
+                    size={11}
+                    color={ativo ? CORES.branco : config.color}
+                  />
+                  <Text style={[
+                    styles.chipText,
+                    { fontSize: fs(11) },
+                    ativo && { color: CORES.branco },
+                    !ativo && { color: config.color }
+                  ]}>
+                    {t}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* LISTA */}
+          {eventosFiltrados.length === 0 ? (
+            <View style={[styles.listaVazia, { paddingTop: insets.top }]}>
+              <Ionicons name="calendar-outline" size={32} color={C.cinzaClaro} />
+              <Text style={[styles.listaVaziaText, { color: C.textoSec, fontSize: fs(12) }]}>
+                Nenhum evento{filtroTipo !== 'todos' ? ` do tipo ${filtroTipo}` : ''} em {MESES[mes]}.
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={eventosFiltrados}
+              keyExtractor={item => item.id}
+              renderItem={renderEventoCard}
+              ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+              scrollEnabled={eventosFiltrados.length > 3}
+              style={{ maxHeight: Math.max(220, winH * 0.32) }}
+              contentContainerStyle={{ paddingTop: 4, paddingBottom: 4 }}
+            />
+          )}
+        </View>
       </ScrollView>
 
-      {/* ══════════════════════════════════════════════════════════
-          MODAL DIA
-      ══════════════════════════════════════════════════════════ */}
-      <Modal visible={modalDia} transparent animationType="slide">
+
+      {/* ════════════════════════════════════════════════
+          MODAL DETALHE
+      ════════════════════════════════════════════════ */}
+      <Modal visible={modalDetalhe} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
+          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+            <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
 
-            {/* Cabeçalho dia */}
-            <View style={styles.diaHeader}>
-              <Text style={styles.diaSemLabel}>{diaSemNome}</Text>
-              <Text style={styles.diaTituloData}>{diaNum} de {mesNomeDia}, {anoN}</Text>
-            </View>
+            {eventoDetalhe && (() => {
+              const config   = TIPO_CONFIG[eventoDetalhe.tipo] || TIPO_CONFIG.Evento;
+              const [a,m,d]  = eventoDetalhe.data.split('-').map(Number);
+              const obj      = new Date(a, m - 1, d);
+              const diaSem   = DIAS_SEMANA[obj.getDay()];
+              const contagem = calcularDiasRestantes(eventoDetalhe.data);
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: '80%' }}>
+              return (
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <View style={[styles.detHero, { backgroundColor: config.bg }]}>
+                    <View style={[styles.detHeroIcon, { backgroundColor: config.color }]}>
+                      <Ionicons name={config.icon} size={26} color={CORES.branco} />
+                    </View>
+                    <Text style={[styles.detHeroTipo, { color: config.color, fontSize: fs(11) }]}>
+                      {eventoDetalhe.tipo.toUpperCase()}
+                    </Text>
+                    <Text style={[styles.detHeroTitulo, { color: CORES.azulEscuro, fontSize: fs(20) }]}>
+                      {eventoDetalhe.titulo}
+                    </Text>
+                    <View style={[styles.detContagem, { backgroundColor: contagem.cor }]}>
+                      <Ionicons name="time" size={12} color={CORES.branco} />
+                      <Text style={[styles.detContagemText, { fontSize: fs(11) }]}>{contagem.texto}</Text>
+                    </View>
+                  </View>
 
-              {/* Eventos admin */}
-              {evsAdmDia.length > 0 && (
-                <View style={styles.diaBloco}>
-                  <Text style={styles.diaBlocoTitulo}>
-                    <Ionicons name="school-outline" size={12} /> AGENDA ESCOLAR
-                  </Text>
-                  {evsAdmDia.map(ev => (
-                    <View key={ev.id} style={[styles.eventoItem, { borderLeftColor: TIPO_CONFIG[ev.tipo]?.color }]}>
-                      <View style={styles.eventoTop}>
-                        <View style={[styles.tipoBadge, { backgroundColor: TIPO_CONFIG[ev.tipo]?.bg }]}>
-                          <Text style={[styles.tipoBadgeText, { color: TIPO_CONFIG[ev.tipo]?.color }]}>{ev.tipo}</Text>
-                        </View>
-                        <Text style={styles.eventoTitulo}>{ev.titulo}</Text>
-                      </View>
-                      {ev.descricao ? <Text style={styles.eventoDesc}>{ev.descricao}</Text> : null}
-                      <Text style={styles.eventoMeta}>
-                        Séries: {(ev.series || []).join(', ')}
+                  <View style={styles.detInfoRow}>
+                    <View style={[styles.detInfoBox, { backgroundColor: C.fundo }]}>
+                      <Ionicons name="calendar" size={14} color={config.color} />
+                      <Text style={[styles.detInfoLabel, { color: C.textoSec, fontSize: fs(9) }]}>DATA</Text>
+                      <Text style={[styles.detInfoValor, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                        {d} de {MESES[m-1]}
+                      </Text>
+                      <Text style={[styles.detInfoSub, { color: C.textoSec, fontSize: fs(11) }]}>
+                        {diaSem}, {a}
                       </Text>
                     </View>
+                    <View style={[styles.detInfoBox, { backgroundColor: C.fundo }]}>
+                      <Ionicons name="people" size={14} color={config.color} />
+                      <Text style={[styles.detInfoLabel, { color: C.textoSec, fontSize: fs(9) }]}>SÉRIES</Text>
+                      <Text style={[styles.detInfoValor, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                        {(eventoDetalhe.series || []).length}
+                      </Text>
+                      <Text style={[styles.detInfoSub, { color: C.textoSec, fontSize: fs(11) }]}>
+                        {(eventoDetalhe.series || []).join(' · ')}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {eventoDetalhe.descricao ? (
+                    <View style={[styles.detDescBox, { backgroundColor: C.fundo }]}>
+                      <Text style={[styles.detDescLabel, { color: C.textoSec, fontSize: fs(9) }]}>DESCRIÇÃO</Text>
+                      <Text style={[styles.detDescTexto, { color: C.azulEscuro, fontSize: fs(13) }]}>
+                        {eventoDetalhe.descricao}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {isAdmin && (
+                    <View style={styles.detAcoesRow}>
+                      <TouchableOpacity
+                        style={[styles.detBtnEditar, { backgroundColor: C.fundo, borderColor: C.cinzaClaro }]}
+                        onPress={() => editarEventoAdmin(eventoDetalhe)}
+                      >
+                        <Ionicons name="pencil" size={14} color={C.azulEscuro} />
+                        <Text style={[styles.detBtnEditarText, { color: C.azulEscuro, fontSize: fs(12) }]}>
+                          Editar
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.detBtnExcluir}
+                        onPress={() => pedirConfirmacaoExcluirEvento(eventoDetalhe.id, eventoDetalhe.data)}
+                      >
+                        <Ionicons name="trash-outline" size={14} color="#e74c3c" />
+                        <Text style={[styles.detBtnExcluirText, { fontSize: fs(12) }]}>Excluir</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  <TouchableOpacity
+                    style={[styles.btnFecharModal, { backgroundColor: C.fundo }]}
+                    onPress={() => setModalDetalhe(false)}
+                  >
+                    <Text style={[styles.btnFecharModalText, { color: C.textoSec, fontSize: fs(13) }]}>
+                      Fechar
+                    </Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              );
+            })()}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ════════════════════════════════════════════════
+          MODAL DIA
+      ════════════════════════════════════════════════ */}
+      <Modal visible={modalDia} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+            <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
+
+            <View style={[styles.diaHeader, { borderBottomColor: C.cinzaClaro }]}>
+              <Text style={[styles.diaSemLabel, { color: C.rosa, fontSize: fs(10) }]}>{diaSemNome}</Text>
+              <Text style={[styles.diaTituloData, { color: C.azulEscuro, fontSize: fs(20) }]}>
+                {diaNum} de {mesNomeDia}, {anoN}
+              </Text>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: winH * 0.55 }}>
+
+              {/* EVENTOS ADMIN */}
+              {evsAdmDia.length > 0 && (
+                <View style={styles.diaBloco}>
+                  <Text style={[styles.diaBlocoTitulo, { color: C.textoSec, fontSize: fs(9) }]}>
+                    AGENDA ESCOLAR
+                  </Text>
+                  {evsAdmDia.map(ev => (
+                    <TouchableOpacity
+                      key={ev.id}
+                      style={[
+                        styles.eventoItem,
+                        { backgroundColor: C.fundo, borderLeftColor: TIPO_CONFIG[ev.tipo]?.color }
+                      ]}
+                      onPress={() => { setEventoDetalhe(ev); setModalDia(false); setTimeout(() => setModalDetalhe(true), 250); }}
+                    >
+                      <View style={styles.eventoTop}>
+                        <View style={[styles.tipoBadge, { backgroundColor: TIPO_CONFIG[ev.tipo]?.bg }]}>
+                          <Text style={[styles.tipoBadgeText, { color: TIPO_CONFIG[ev.tipo]?.color, fontSize: fs(9) }]}>
+                            {ev.tipo}
+                          </Text>
+                        </View>
+                        <Text
+                          style={[styles.eventoTitulo, { color: C.azulEscuro, fontSize: fs(13) }]}
+                          numberOfLines={1}
+                        >
+                          {ev.titulo}
+                        </Text>
+                      </View>
+                      {ev.descricao ? (
+                        <Text
+                          style={[styles.eventoDesc, { color: C.textoSec, fontSize: fs(11) }]}
+                          numberOfLines={2}
+                        >
+                          {ev.descricao}
+                        </Text>
+                      ) : null}
+                    </TouchableOpacity>
                   ))}
                 </View>
               )}
 
-              {/* Lembretes */}
+              {/* LEMBRETES */}
               <View style={styles.diaBloco}>
-                <Text style={styles.diaBlocoTitulo}>
-                  <Ionicons name="bookmark-outline" size={12} /> MEUS LEMBRETES
+                <Text style={[styles.diaBlocoTitulo, { color: C.textoSec, fontSize: fs(9) }]}>
+                  MEUS LEMBRETES
                 </Text>
-                {lembDia.length === 0
-                  ? <Text style={styles.diaVazio}>Nenhum lembrete para este dia.</Text>
-                  : lembDia.map(ev => (
-                    <View key={ev.id} style={[styles.eventoItem, { borderLeftColor: TIPO_CONFIG.lembrete.color }]}>
-                      <View style={styles.eventoTop}>
-                        <View style={[styles.tipoBadge, { backgroundColor: TIPO_CONFIG.lembrete.bg }]}>
-                          <Text style={[styles.tipoBadgeText, { color: TIPO_CONFIG.lembrete.color }]}>Lembrete</Text>
-                        </View>
-                        <Text style={styles.eventoTitulo}>{ev.titulo}</Text>
-                        <TouchableOpacity onPress={() => excluirLembrete(ev.id)} style={styles.btnDel}>
-                          <Ionicons name="trash-outline" size={14} color="#e74c3c" />
+                {lembDia.length === 0 ? (
+                  <Text style={[styles.diaVazio, { color: C.textoSec, fontSize: fs(12) }]}>
+                    Nenhum lembrete para este dia.
+                  </Text>
+                ) : lembDia.map(ev => (
+                  <View
+                    key={ev.id}
+                    style={[
+                      styles.eventoItem,
+                      { backgroundColor: C.fundo, borderLeftColor: TIPO_CONFIG.lembrete.color }
+                    ]}
+                  >
+                    <View style={styles.eventoTop}>
+                      <View style={[styles.tipoBadge, { backgroundColor: TIPO_CONFIG.lembrete.bg }]}>
+                        <Text style={[styles.tipoBadgeText, { color: TIPO_CONFIG.lembrete.color, fontSize: fs(9) }]}>
+                          Lembrete
+                        </Text>
+                      </View>
+                      <Text
+                        style={[styles.eventoTitulo, { color: C.azulEscuro, fontSize: fs(13) }]}
+                        numberOfLines={1}
+                      >
+                        {ev.titulo}
+                      </Text>
+                      <View style={{ flexDirection: 'row', gap: 4 }}>
+                        <TouchableOpacity
+                          onPress={() => editarLembrete(ev)}
+                          style={[styles.btnAcaoMini, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+                        >
+                          <Ionicons name="pencil" size={12} color={C.azulEscuro} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => pedirConfirmacaoExcluirLembrete(ev.id)}
+                          style={[styles.btnAcaoMini, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+                        >
+                          <Ionicons name="trash-outline" size={12} color="#e74c3c" />
                         </TouchableOpacity>
                       </View>
-                      {ev.descricao ? <Text style={styles.eventoDesc}>{ev.descricao}</Text> : null}
                     </View>
-                  ))
-                }
+                    {ev.descricao ? (
+                      <Text
+                        style={[styles.eventoDesc, { color: C.textoSec, fontSize: fs(11) }]}
+                        numberOfLines={2}
+                      >
+                        {ev.descricao}
+                      </Text>
+                    ) : null}
+                  </View>
+                ))}
               </View>
 
-              {/* Form lembrete */}
-              <View style={[styles.diaBloco, { borderTopWidth: 1, borderTopColor: CORES.cinzaClaro, paddingTop: 16 }]}>
-                <Text style={styles.diaBlocoTitulo}>
-                  <Ionicons name="add-circle-outline" size={12} /> ADICIONAR LEMBRETE
-                </Text>
+              {/* FORM LEMBRETE */}
+              <View style={[
+                styles.diaBloco,
+                { borderTopWidth: 1, borderTopColor: C.cinzaClaro, paddingTop: 16 }
+              ]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <Text style={[styles.diaBlocoTitulo, { color: C.textoSec, fontSize: fs(9) }]}>
+                    {lembEditandoId ? 'EDITANDO LEMBRETE' : 'ADICIONAR LEMBRETE'}
+                  </Text>
+                  {lembEditandoId && (
+                    <TouchableOpacity onPress={cancelarEdicaoLembrete}>
+                      <Text style={[styles.linkCancelar, { color: C.rosa, fontSize: fs(11) }]}>Cancelar</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
                 <TextInput
-                  style={styles.lembInput}
+                  style={[
+                    styles.lembInput,
+                    { backgroundColor: C.fundo, color: C.azulEscuro, borderColor: C.cinzaClaro, fontSize: fs(13) }
+                  ]}
                   placeholder="Título do lembrete *"
-                  placeholderTextColor={CORES.textoSec}
+                  placeholderTextColor={C.textoSec}
                   value={lembreTitulo}
                   onChangeText={setLembreTitulo}
                 />
                 <TextInput
-                  style={[styles.lembInput, { height: 70, textAlignVertical: 'top' }]}
+                  style={[
+                    styles.lembInput,
+                    { height: 70, textAlignVertical: 'top', backgroundColor: C.fundo, color: C.azulEscuro, borderColor: C.cinzaClaro, fontSize: fs(13) }
+                  ]}
                   placeholder="Descrição (opcional)"
-                  placeholderTextColor={CORES.textoSec}
+                  placeholderTextColor={C.textoSec}
                   value={lembreDesc}
                   onChangeText={setLembreDesc}
                   multiline
                 />
-                <TouchableOpacity style={styles.btnSalvarLemb} onPress={salvarLembrete} disabled={salvandoLemb}>
+                <TouchableOpacity
+                  style={[styles.btnSalvarLemb, { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }]}
+                  onPress={salvarLembrete}
+                  disabled={salvandoLemb}
+                >
                   {salvandoLemb
-                    ? <ActivityIndicator color="#FFF" size="small" />
-                    : <Text style={styles.btnSalvarLembText}>Salvar Lembrete</Text>
+                    ? <ActivityIndicator color={modoEscuro ? CORES.azulEscuro : '#FFF'} size="small" />
+                    : <Text style={[
+                        styles.btnSalvarLembText,
+                        { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(13) }
+                      ]}>
+                        {lembEditandoId ? 'Atualizar Lembrete' : 'Salvar Lembrete'}
+                      </Text>
                   }
                 </TouchableOpacity>
               </View>
             </ScrollView>
 
-            <TouchableOpacity style={styles.btnFecharModal} onPress={() => setModalDia(false)}>
-              <Text style={styles.btnFecharModalText}>Fechar</Text>
+            <TouchableOpacity
+              style={[styles.btnFecharModal, { backgroundColor: C.fundo }]}
+              onPress={() => { setModalDia(false); cancelarEdicaoLembrete(); }}
+            >
+              <Text style={[styles.btnFecharModalText, { color: C.textoSec, fontSize: fs(13) }]}>Fechar</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* ══════════════════════════════════════════════════════════
-          MODAL ADMIN — NOVO EVENTO
-      ══════════════════════════════════════════════════════════ */}
+
+      {/* ════════════════════════════════════════════════
+          MODAL ADMIN FORM (cria E edita)
+      ════════════════════════════════════════════════ */}
       <Modal visible={modalAdminForm} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end' }}>
-            <View style={[styles.modalSheet, { paddingBottom: Platform.OS === 'ios' ? 40 : 28 }]}>
-              <View style={styles.modalHandle} />
-              <Text style={styles.modalTitulo}>Novo Evento Escolar</Text>
-              <Text style={styles.modalSub}>Será visível para os alunos das séries selecionadas</Text>
+            <View style={[
+              styles.modalSheet,
+              { paddingBottom: Platform.OS === 'ios' ? 40 : 28, backgroundColor: C.branco }
+            ]}>
+              <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
+              <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>
+                {admEditandoId ? 'Editar Evento' : 'Novo Evento Escolar'}
+              </Text>
+              <Text style={[styles.modalSub, { color: C.textoSec, fontSize: fs(12) }]}>
+                {admEditandoId ? 'Edite as informações do evento.' : 'Será visível para os alunos das séries selecionadas'}
+              </Text>
 
-              <Text style={styles.formLabel}>TÍTULO *</Text>
+              <Text style={[styles.formLabel, { color: C.textoSec, fontSize: fs(10) }]}>TÍTULO *</Text>
               <TextInput
-                style={styles.formInput}
+                style={[
+                  styles.formInput,
+                  { backgroundColor: C.fundo, color: C.azulEscuro, borderColor: C.cinzaClaro, fontSize: fs(13) }
+                ]}
                 placeholder="Ex: Prova de Matemática"
-                placeholderTextColor={CORES.textoSec}
+                placeholderTextColor={C.textoSec}
                 value={adminTitulo}
                 onChangeText={setAdminTitulo}
               />
 
-              <Text style={styles.formLabel}>DESCRIÇÃO</Text>
+              <Text style={[styles.formLabel, { color: C.textoSec, fontSize: fs(10) }]}>DESCRIÇÃO</Text>
               <TextInput
-                style={[styles.formInput, { height: 72, textAlignVertical: 'top' }]}
+                style={[
+                  styles.formInput,
+                  { height: 72, textAlignVertical: 'top', backgroundColor: C.fundo, color: C.azulEscuro, borderColor: C.cinzaClaro, fontSize: fs(13) }
+                ]}
                 placeholder="Informações adicionais..."
-                placeholderTextColor={CORES.textoSec}
+                placeholderTextColor={C.textoSec}
                 value={adminDesc}
                 onChangeText={setAdminDesc}
                 multiline
@@ -538,61 +1161,93 @@ export default function Calendario({ navigation, route }: any) {
 
               <View style={styles.adminRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.formLabel}>DATA *</Text>
+                  <Text style={[styles.formLabel, { color: C.textoSec, fontSize: fs(10) }]}>DATA *</Text>
                   <TouchableOpacity
-                    style={styles.formSelect}
+                    style={[styles.formSelect, { backgroundColor: C.fundo, borderColor: C.cinzaClaro }]}
                     onPress={() => {
-                      setSelAno(ano); setSelMes(mes + 1); setSelDia(1);
+                      if (adminData) {
+                        const [a, m, d] = adminData.split('-').map(Number);
+                        setSelAno(a); setSelMes(m); setSelDia(d);
+                      } else {
+                        setSelAno(ano); setSelMes(mes + 1); setSelDia(1);
+                      }
                       setModalDataEvt(true);
                     }}
                   >
-                    <Text style={[styles.formSelectText, !adminData && { color: CORES.textoSec }]}>
+                    <Text style={[
+                      styles.formSelectText,
+                      { color: C.azulEscuro, fontSize: fs(13) },
+                      !adminData && { color: C.textoSec }
+                    ]}>
                       {adminData ? adminData.split('-').reverse().join('/') : 'Selecione...'}
                     </Text>
-                    <Ionicons name="calendar-outline" size={16} color={CORES.textoSec} />
+                    <Ionicons name="calendar-outline" size={14} color={C.textoSec} />
                   </TouchableOpacity>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.formLabel}>TIPO *</Text>
-                  <TouchableOpacity style={styles.formSelect} onPress={() => setModalTipoEvt(true)}>
-                    <Text style={[styles.formSelectText, !adminTipo && { color: CORES.textoSec }]}>
+                  <Text style={[styles.formLabel, { color: C.textoSec, fontSize: fs(10) }]}>TIPO *</Text>
+                  <TouchableOpacity
+                    style={[styles.formSelect, { backgroundColor: C.fundo, borderColor: C.cinzaClaro }]}
+                    onPress={() => setModalTipoEvt(true)}
+                  >
+                    <Text style={[
+                      styles.formSelectText,
+                      { color: C.azulEscuro, fontSize: fs(13) },
+                      !adminTipo && { color: C.textoSec }
+                    ]}>
                       {adminTipo || 'Selecione...'}
                     </Text>
-                    <Ionicons name="chevron-down" size={16} color={CORES.textoSec} />
+                    <Ionicons name="chevron-down" size={14} color={C.textoSec} />
                   </TouchableOpacity>
                 </View>
               </View>
 
-              <Text style={styles.formLabel}>SÉRIES *</Text>
+              <Text style={[styles.formLabel, { color: C.textoSec, fontSize: fs(10) }]}>SÉRIES *</Text>
               <View style={styles.seriesRow}>
-                {['1º','2º','3º'].map(s => (
-                  <TouchableOpacity
-                    key={s}
-                    style={[styles.serieBadge, adminSeries.includes(s) && styles.serieBadgeAtivo]}
-                    onPress={() => toggleSerie(s)}
-                  >
-                    <Text style={[styles.serieBadgeText, adminSeries.includes(s) && { color: CORES.branco }]}>
-                      {s} Ano
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {['1º','2º','3º'].map(s => {
+                  const ativo = adminSeries.includes(s);
+                  return (
+                    <TouchableOpacity
+                      key={s}
+                      style={[
+                        styles.serieBadge,
+                        { backgroundColor: C.fundo, borderColor: C.cinzaClaro },
+                        ativo && { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro, borderColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
+                      ]}
+                      onPress={() => toggleSerie(s)}
+                    >
+                      <Text style={[
+                        styles.serieBadgeText,
+                        { color: C.textoSec, fontSize: fs(12) },
+                        ativo && { color: modoEscuro ? CORES.azulEscuro : CORES.branco }
+                      ]}>
+                        {s} Ano
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
               <View style={styles.formBtns}>
                 <TouchableOpacity
-                  style={[styles.formBtn, { backgroundColor: CORES.cinzaClaro }]}
-                  onPress={() => setModalAdminForm(false)}
+                  style={[styles.formBtn, { backgroundColor: C.cinzaClaro }]}
+                  onPress={() => { setModalAdminForm(false); setAdmEditandoId(null); }}
                 >
-                  <Text style={[styles.formBtnText, { color: CORES.preto }]}>Cancelar</Text>
+                  <Text style={[styles.formBtnText, { color: C.preto, fontSize: fs(13) }]}>Cancelar</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.formBtn, { backgroundColor: CORES.azulEscuro }]}
+                  style={[styles.formBtn, { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }]}
                   onPress={salvarEventoAdmin}
                   disabled={salvandoAdm}
                 >
                   {salvandoAdm
-                    ? <ActivityIndicator color="#FFF" size="small" />
-                    : <Text style={[styles.formBtnText, { color: CORES.branco }]}>Publicar</Text>
+                    ? <ActivityIndicator color={modoEscuro ? CORES.azulEscuro : '#FFF'} size="small" />
+                    : <Text style={[
+                        styles.formBtnText,
+                        { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(13) }
+                      ]}>
+                        {admEditandoId ? 'Salvar' : 'Publicar'}
+                      </Text>
                   }
                 </TouchableOpacity>
               </View>
@@ -601,82 +1256,114 @@ export default function Calendario({ navigation, route }: any) {
         </View>
       </Modal>
 
-      {/* ── SELETOR TIPO EVENTO ── */}
+      {/* MODAL TIPO EVT */}
       <Modal visible={modalTipoEvt} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitulo}>Tipo de Evento</Text>
+          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+            <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
+            <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>Tipo de Evento</Text>
             {TIPOS_EVENTO.map(t => (
               <TouchableOpacity
                 key={t}
-                style={styles.seletorItem}
+                style={[styles.seletorItem, { borderBottomColor: C.cinzaClaro }]}
                 onPress={() => { setAdminTipo(t); setModalTipoEvt(false); }}
               >
                 <View style={[styles.dot, { backgroundColor: TIPO_CONFIG[t]?.color, width: 10, height: 10 }]} />
-                <Text style={styles.seletorItemText}>{t}</Text>
-                {adminTipo === t && <Ionicons name="checkmark" size={18} color={CORES.rosa} />}
+                <Text style={[styles.seletorItemText, { color: C.azulEscuro, fontSize: fs(14) }]}>{t}</Text>
+                {adminTipo === t && <Ionicons name="checkmark" size={18} color={C.azulEscuro} />}
               </TouchableOpacity>
             ))}
           </View>
         </View>
       </Modal>
 
-      {/* ── SELETOR DATA ── */}
+      {/* MODAL DATA EVT */}
       <Modal visible={modalDataEvt} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitulo}>Selecionar Data</Text>
+          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+            <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
+            <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>Selecionar Data</Text>
 
-            {/* Ano */}
             <View style={styles.dataPickerRow}>
-              <TouchableOpacity onPress={() => setSelAno(a => a - 1)} style={styles.btnNavMes}>
-                <Ionicons name="chevron-back" size={16} color={CORES.preto} />
+              <TouchableOpacity
+                onPress={() => setSelAno(a => a - 1)}
+                style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+              >
+                <Ionicons name="chevron-back" size={14} color={C.azulEscuro} />
               </TouchableOpacity>
-              <Text style={styles.dataPickerValor}>{selAno}</Text>
-              <TouchableOpacity onPress={() => setSelAno(a => a + 1)} style={styles.btnNavMes}>
-                <Ionicons name="chevron-forward" size={16} color={CORES.preto} />
+              <Text style={[styles.dataPickerValor, { color: C.azulEscuro, fontSize: fs(15) }]}>{selAno}</Text>
+              <TouchableOpacity
+                onPress={() => setSelAno(a => a + 1)}
+                style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+              >
+                <Ionicons name="chevron-forward" size={14} color={C.azulEscuro} />
               </TouchableOpacity>
             </View>
 
-            {/* Mês */}
             <View style={styles.dataPickerRow}>
-              <TouchableOpacity onPress={() => setSelMes(m => m === 1 ? 12 : m - 1)} style={styles.btnNavMes}>
-                <Ionicons name="chevron-back" size={16} color={CORES.preto} />
+              <TouchableOpacity
+                onPress={() => setSelMes(m => m === 1 ? 12 : m - 1)}
+                style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+              >
+                <Ionicons name="chevron-back" size={14} color={C.azulEscuro} />
               </TouchableOpacity>
-              <Text style={styles.dataPickerValor}>{MESES[selMes - 1]}</Text>
-              <TouchableOpacity onPress={() => setSelMes(m => m === 12 ? 1 : m + 1)} style={styles.btnNavMes}>
-                <Ionicons name="chevron-forward" size={16} color={CORES.preto} />
+              <Text style={[styles.dataPickerValor, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                {MESES[selMes - 1]}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setSelMes(m => m === 12 ? 1 : m + 1)}
+                style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+              >
+                <Ionicons name="chevron-forward" size={14} color={C.azulEscuro} />
               </TouchableOpacity>
             </View>
 
-            {/* Dia */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 12 }}>
-              {Array.from({ length: totalDiasSelMes }, (_, i) => i + 1).map(d => (
-                <TouchableOpacity
-                  key={d}
-                  style={[styles.diaPickerBtn, selDia === d && styles.diaPickerBtnAtivo]}
-                  onPress={() => setSelDia(d)}
-                >
-                  <Text style={[styles.diaPickerText, selDia === d && { color: CORES.branco }]}>{d}</Text>
-                </TouchableOpacity>
-              ))}
+              {Array.from({ length: totalDiasSelMes }, (_, i) => i + 1).map(d => {
+                const ativo = selDia === d;
+                return (
+                  <TouchableOpacity
+                    key={d}
+                    style={[
+                      styles.diaPickerBtn,
+                      { backgroundColor: C.fundo, borderColor: C.cinzaClaro },
+                      ativo && { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro, borderColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
+                    ]}
+                    onPress={() => setSelDia(d)}
+                  >
+                    <Text style={[
+                      styles.diaPickerText,
+                      { color: C.azulEscuro, fontSize: fs(12) },
+                      ativo && { color: modoEscuro ? CORES.azulEscuro : CORES.branco }
+                    ]}>
+                      {d}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
 
-            <TouchableOpacity style={[styles.formBtn, { backgroundColor: CORES.azulEscuro, marginTop: 8 }]} onPress={confirmarData}>
-              <Text style={[styles.formBtnText, { color: CORES.branco }]}>Confirmar</Text>
+            <TouchableOpacity
+              style={[styles.formBtn, { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro, marginTop: 8 }]}
+              onPress={confirmarData}
+            >
+              <Text style={[
+                styles.formBtnText,
+                { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(13) }
+              ]}>
+                Confirmar
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* ── MODAL LEGENDA ── */}
+      {/* MODAL LEGENDA */}
       <Modal visible={modalLegenda} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitulo}>Legenda</Text>
+          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+            <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
+            <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>Legenda</Text>
             {[
               { key: 'lembrete', label: 'Meu lembrete' },
               { key: 'Prova',    label: 'Prova'         },
@@ -686,122 +1373,208 @@ export default function Calendario({ navigation, route }: any) {
             ].map(item => (
               <View key={item.key} style={styles.legendaItem}>
                 <View style={[styles.dot, { backgroundColor: TIPO_CONFIG[item.key]?.color, width: 10, height: 10 }]} />
-                <Text style={styles.legendaText}>{item.label}</Text>
+                <Text style={[styles.legendaText, { color: C.azulEscuro, fontSize: fs(13) }]}>{item.label}</Text>
               </View>
             ))}
-            <TouchableOpacity style={styles.btnFecharModal} onPress={() => setModalLegenda(false)}>
-              <Text style={styles.btnFecharModalText}>Fechar</Text>
+            <TouchableOpacity
+              style={[styles.btnFecharModal, { backgroundColor: C.fundo }]}
+              onPress={() => setModalLegenda(false)}
+            >
+              <Text style={[styles.btnFecharModalText, { color: C.textoSec, fontSize: fs(13) }]}>Fechar</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
+
+      {/* MODAL DE CONFIRMAÇÃO */}
+      <Modal visible={confirm !== null} transparent animationType="fade">
+        <View style={styles.confirmOverlay}>
+          <View style={[styles.confirmBox, { backgroundColor: C.branco }]}>
+            <View style={styles.confirmIcon}>
+              <Ionicons name="alert-circle" size={28} color="#e74c3c" />
+            </View>
+            <Text style={[styles.confirmTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>
+              {confirm?.titulo}
+            </Text>
+            <Text style={[styles.confirmMsg, { color: C.textoSec, fontSize: fs(13) }]}>
+              {confirm?.msg}
+            </Text>
+            <View style={styles.confirmBtns}>
+              <TouchableOpacity
+                style={[styles.confirmBtn, { backgroundColor: C.cinzaClaro }]}
+                onPress={() => setConfirm(null)}
+              >
+                <Text style={[styles.confirmBtnText, { color: C.preto, fontSize: fs(13) }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmBtn, { backgroundColor: '#e74c3c' }]}
+                onPress={() => { confirm?.onOk(); setConfirm(null); }}
+              >
+                <Text style={[styles.confirmBtnText, { color: CORES.branco, fontSize: fs(13) }]}>
+                  {confirm?.btn}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
 
-const CEL_SIZE = Math.floor((require('react-native').Dimensions.get('window').width - 32) / 7);
-
 const styles = StyleSheet.create({
-  container:         { flex: 1, backgroundColor: CORES.fundo },
+  container:         { flex: 1 },
   centro:            { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  // HEADER
-  header:            { backgroundColor: CORES.azulEscuro, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, gap: 12 },
+  // TOAST — fixo
+  toast:             { position: 'absolute', top: Platform.OS === 'ios' ? 50 : 18, alignSelf: 'center', backgroundColor: CORES.azulEscuro, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 24, zIndex: 9999, elevation: 10 },
+  toastText:         { color: CORES.branco, fontFamily: F.bold },
+
+  // HEADER — fixo (identidade visual)
+  header:            { backgroundColor: CORES.azulEscuro, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 14, gap: 10 },
   btnVoltar:         { padding: 4 },
-  headerEyebrow:     { color: 'rgba(255,255,255,0.45)', fontSize: 10, fontWeight: '800', letterSpacing: 2 },
-  headerTitulo:      { color: CORES.branco, fontSize: 20, fontWeight: '900', letterSpacing: -0.5 },
+  headerEyebrow:     { color: 'rgba(255,255,255,0.5)', fontFamily: F.black, letterSpacing: 1.6 },
+  headerTitulo:      { color: CORES.branco, fontFamily: F.black, letterSpacing: -0.4 },
   btnIcone:          { padding: 4 },
-  btnAdd:            { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: CORES.rosa, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
-  btnAddText:        { color: CORES.branco, fontWeight: '800', fontSize: 13 },
+  btnAdd:            { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: CORES.rosa, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10 },
+  btnAddText:        { color: CORES.branco, fontFamily: F.bold },
 
   // NAV MÊS
-  navMes:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: CORES.branco, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
-  btnNavMes:         { width: 34, height: 34, borderRadius: 8, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: CORES.cinzaClaro },
-  navMesNome:        { fontSize: 16, fontWeight: '800', color: CORES.preto, textAlign: 'center' },
-  navAno:            { fontSize: 12, color: CORES.textoSec, textAlign: 'center', fontWeight: '600' },
-  btnHoje:           { alignSelf: 'center', marginVertical: 8, paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: CORES.cinzaClaro, backgroundColor: CORES.branco },
-  btnHojeText:       { fontSize: 12, fontWeight: '700', color: CORES.textoSec },
+  navMes:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1 },
+  btnNavMes:         { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+  navMesNome:        { fontFamily: F.black, textAlign: 'center', letterSpacing: -0.3 },
+  navAno:            { textAlign: 'center', fontFamily: F.semibold },
+
+  btnHoje:           { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'center', marginVertical: 8, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 18, borderWidth: 1 },
+  btnHojeText:       { fontFamily: F.bold },
 
   // GRADE
-  semanaRow:         { flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
-  semanaLabel:       { width: CEL_SIZE, textAlign: 'center', fontSize: 10, fontWeight: '800', color: CORES.textoSec, letterSpacing: 0.8 },
-  grade:             { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, paddingTop: 4 },
-  celula:            { width: CEL_SIZE, height: CEL_SIZE + 10, borderWidth: 0.5, borderColor: CORES.cinzaClaro, padding: 4, backgroundColor: CORES.branco },
-  celulaVazia:       { width: CEL_SIZE, height: CEL_SIZE + 10, backgroundColor: '#F9FAFB', borderWidth: 0.5, borderColor: CORES.cinzaClaro },
-  celulaFimSem:      { backgroundColor: '#FAFAF8' },
-  celulaComEvento:   { backgroundColor: '#FAFFF9' },
-  numWrap:           { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  numHoje:           { backgroundColor: CORES.preto },
-  numDia:            { fontSize: 12, fontWeight: '600', color: CORES.preto },
+  semanaRow:         { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 6, borderTopWidth: 1 },
+  semanaLabel:       { textAlign: 'center', fontFamily: F.black, letterSpacing: 0.6 },
+  grade:             { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, paddingTop: 4, borderBottomWidth: 1 },
+  celula:            { borderWidth: 0.5, padding: 4 },
+  celulaVazia:       { borderWidth: 0.5 },
+  numWrap:           { width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
+  numDia:            { fontFamily: F.bold },
   dotsRow:           { flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginTop: 2 },
-  dot:               { width: 6, height: 6, borderRadius: 3 },
+  dot:               { width: 5, height: 5, borderRadius: 3 },
 
-  // SEÇÃO ADMIN
-  secaoAdmin:        { margin: 16, backgroundColor: CORES.branco, borderRadius: 16, padding: 16, elevation: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4 },
-  secaoAdminTitulo:  { fontSize: 11, fontWeight: '800', color: CORES.textoSec, letterSpacing: 1, marginBottom: 12 },
-  adminEvCard:       { marginBottom: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
-  adminEvTop:        { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  adminEvData:       { fontSize: 11, color: CORES.textoSec, marginLeft: 'auto' as any },
-  btnDel:            { padding: 4 },
-  adminEvTitulo:     { fontSize: 14, fontWeight: '700', color: CORES.preto },
-  adminEvSeries:     { fontSize: 11, color: CORES.textoSec, marginTop: 2 },
+  // SEÇÃO EVENTOS
+  secaoEventos:      { marginHorizontal: 16, marginTop: 18, borderRadius: 20, padding: 16, elevation: 3, shadowColor: CORES.azulEscuro, shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
+  secaoHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  secaoEyebrow:      { fontFamily: F.black, letterSpacing: 1.4, marginBottom: 2 },
+  secaoTitulo:       { fontFamily: F.black, letterSpacing: -0.3 },
+  secaoCount:        { minWidth: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 10 },
+  secaoCountText:    { fontFamily: F.black },
 
-  // MODAIS
+  // CHIPS
+  chipsRow:          { gap: 8, paddingVertical: 8, paddingHorizontal: 2, flexDirection: 'row' },
+  chip:              { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
+  chipText:          { fontFamily: F.bold },
+
+  // CARD
+  evCard:            { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, padding: 10, borderWidth: 0.5 },
+  evDataBox:         { width: 48, height: 54, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  evDataDia:         { fontFamily: F.black, lineHeight: 22 },
+  evDataMes:         { fontFamily: F.black, letterSpacing: 0.8, marginTop: 2 },
+  evConteudo:        { flex: 1, gap: 3 },
+  evTopo:            { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
+  evIconWrap:        { width: 18, height: 18, borderRadius: 9, justifyContent: 'center', alignItems: 'center' },
+  evTipoLabel:       { fontFamily: F.black, letterSpacing: 0.6 },
+  evChipMini:        { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginLeft: 'auto' as any },
+  evChipMiniText:    { fontFamily: F.black, letterSpacing: 0.4 },
+  evTitulo:          { fontFamily: F.bold },
+  evMetaRow:         { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  evMeta:            { fontFamily: F.semibold },
+
+  listaVazia:        { alignItems: 'center', paddingVertical: 28, gap: 8 },
+  listaVaziaText:    { fontFamily: F.medium, textAlign: 'center' },
+
+  // MODAL DETALHE
+  detHero:           { borderRadius: 18, padding: 22, alignItems: 'center', marginBottom: 12 },
+  detHeroIcon:       { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
+  detHeroTipo:       { fontFamily: F.black, letterSpacing: 1.4, marginBottom: 6 },
+  detHeroTitulo:     { fontFamily: F.black, textAlign: 'center', letterSpacing: -0.3, lineHeight: 26 },
+  detContagem:       { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginTop: 12 },
+  detContagemText:   { color: CORES.branco, fontFamily: F.black, letterSpacing: 0.7 },
+  detInfoRow:        { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  detInfoBox:        { flex: 1, borderRadius: 14, padding: 12, gap: 3 },
+  detInfoLabel:      { fontFamily: F.black, letterSpacing: 1.1, marginTop: 4 },
+  detInfoValor:      { fontFamily: F.black },
+  detInfoSub:        { fontFamily: F.semibold },
+  detDescBox:        { borderRadius: 14, padding: 12, marginBottom: 12 },
+  detDescLabel:      { fontFamily: F.black, letterSpacing: 1.1, marginBottom: 5 },
+  detDescTexto:      { lineHeight: 19, fontFamily: F.regular },
+  detAcoesRow:       { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  detBtnEditar:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: 12, borderWidth: 1 },
+  detBtnEditarText:  { fontFamily: F.bold },
+  detBtnExcluir:     { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: 12, backgroundColor: '#FFF5F5', borderWidth: 1, borderColor: '#FDECEA' },
+  detBtnExcluirText: { color: '#e74c3c', fontFamily: F.bold },
+
+  // MODAIS GERAL
   modalOverlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalSheet:        { backgroundColor: CORES.branco, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 36, maxHeight: '92%' },
-  modalHandle:       { width: 40, height: 4, backgroundColor: CORES.cinzaClaro, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  modalTitulo:       { fontSize: 18, fontWeight: '900', color: CORES.preto, marginBottom: 4 },
-  modalSub:          { fontSize: 12, color: CORES.textoSec, marginBottom: 16 },
+  modalSheet:        { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 22, paddingBottom: 32, maxHeight: '92%' },
+  modalHandle:       { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  modalTitulo:       { fontFamily: F.black, marginBottom: 4, letterSpacing: -0.3 },
+  modalSub:          { marginBottom: 14, fontFamily: F.regular },
 
   // MODAL DIA
-  diaHeader:         { marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: CORES.preto },
-  diaSemLabel:       { fontSize: 11, fontWeight: '800', letterSpacing: 1.5, color: CORES.textoSec, textTransform: 'uppercase' },
-  diaTituloData:     { fontSize: 22, fontWeight: '900', color: CORES.preto },
-  diaBloco:          { marginBottom: 16 },
-  diaBlocoTitulo:    { fontSize: 10, fontWeight: '800', color: CORES.textoSec, letterSpacing: 1, marginBottom: 10, textTransform: 'uppercase' },
-  diaVazio:          { fontSize: 13, color: CORES.cinzaClaro, fontStyle: 'italic' },
-  eventoItem:        { borderLeftWidth: 3, borderLeftColor: CORES.cinzaClaro, paddingLeft: 10, paddingVertical: 6, backgroundColor: '#F8FAFC', marginBottom: 8, borderRadius: 4 },
-  eventoTop:         { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  eventoTitulo:      { fontSize: 13, fontWeight: '700', color: CORES.preto, flex: 1 },
-  eventoDesc:        { fontSize: 12, color: CORES.textoSec, lineHeight: 18 },
-  eventoMeta:        { fontSize: 11, color: CORES.textoSec, marginTop: 4 },
+  diaHeader:         { marginBottom: 14, paddingBottom: 14, borderBottomWidth: 1 },
+  diaSemLabel:       { fontFamily: F.black, letterSpacing: 1.4, textTransform: 'uppercase' },
+  diaTituloData:     { fontFamily: F.black, letterSpacing: -0.4 },
+  diaBloco:          { marginBottom: 14 },
+  diaBlocoTitulo:    { fontFamily: F.black, letterSpacing: 1.2, marginBottom: 8, textTransform: 'uppercase' },
+  diaVazio:          { fontFamily: F.medium, fontStyle: 'italic' },
+  eventoItem:        { borderLeftWidth: 3, paddingLeft: 10, paddingVertical: 8, paddingRight: 8, marginBottom: 6, borderRadius: 8 },
+  eventoTop:         { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  eventoTitulo:      { fontFamily: F.bold, flex: 1 },
+  eventoDesc:        { lineHeight: 16, fontFamily: F.regular },
+  btnAcaoMini:       { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 0.5 },
+  linkCancelar:      { fontFamily: F.bold },
 
   tipoBadge:         { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
-  tipoBadgeText:     { fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
+  tipoBadgeText:     { fontFamily: F.black, letterSpacing: 0.4 },
 
-  lembInput:         { backgroundColor: CORES.fundo, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: CORES.preto, borderWidth: 1, borderColor: CORES.cinzaClaro, marginBottom: 10 },
-  btnSalvarLemb:     { backgroundColor: CORES.preto, borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 4 },
-  btnSalvarLembText: { color: CORES.branco, fontWeight: '800', fontSize: 14 },
+  lembInput:         { borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, marginBottom: 8, fontFamily: F.regular },
+  btnSalvarLemb:     { borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 4 },
+  btnSalvarLembText: { fontFamily: F.black },
 
   // FORM ADMIN
-  formLabel:         { fontSize: 11, fontWeight: '800', color: CORES.textoSec, letterSpacing: 0.8, marginBottom: 7, marginTop: 12 },
-  formInput:         { backgroundColor: CORES.fundo, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: CORES.preto, borderWidth: 1, borderColor: CORES.cinzaClaro },
-  formSelect:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: CORES.fundo, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: CORES.cinzaClaro },
-  formSelectText:    { fontSize: 14, fontWeight: '600', color: CORES.preto },
+  formLabel:         { fontFamily: F.black, letterSpacing: 0.8, marginBottom: 6, marginTop: 12 },
+  formInput:         { borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, fontFamily: F.regular },
+  formSelect:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1 },
+  formSelectText:    { fontFamily: F.bold },
   adminRow:          { flexDirection: 'row', gap: 10 },
   seriesRow:         { flexDirection: 'row', gap: 10, marginTop: 4 },
-  serieBadge:        { flex: 1, paddingVertical: 11, borderRadius: 12, borderWidth: 1.5, borderColor: CORES.cinzaClaro, alignItems: 'center', backgroundColor: CORES.fundo },
-  serieBadgeAtivo:   { backgroundColor: CORES.azulEscuro, borderColor: CORES.azulEscuro },
-  serieBadgeText:    { fontSize: 13, fontWeight: '800', color: CORES.textoSec },
-  formBtns:          { flexDirection: 'row', gap: 10, marginTop: 20 },
-  formBtn:           { flex: 1, borderRadius: 14, paddingVertical: 15, alignItems: 'center' },
-  formBtnText:       { fontWeight: '800', fontSize: 14 },
+  serieBadge:        { flex: 1, paddingVertical: 11, borderRadius: 12, borderWidth: 1.5, alignItems: 'center' },
+  serieBadgeText:    { fontFamily: F.black },
+  formBtns:          { flexDirection: 'row', gap: 10, marginTop: 18 },
+  formBtn:           { flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  formBtnText:       { fontFamily: F.black },
 
   // SELETOR DATA
-  dataPickerRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  dataPickerValor:   { fontSize: 16, fontWeight: '800', color: CORES.preto, flex: 1, textAlign: 'center' },
-  diaPickerBtn:      { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: CORES.cinzaClaro, backgroundColor: CORES.fundo },
-  diaPickerBtnAtivo: { backgroundColor: CORES.azulEscuro, borderColor: CORES.azulEscuro },
-  diaPickerText:     { fontSize: 13, fontWeight: '700', color: CORES.preto },
+  dataPickerRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  dataPickerValor:   { fontFamily: F.black, flex: 1, textAlign: 'center' },
+  diaPickerBtn:      { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+  diaPickerText:     { fontFamily: F.bold },
 
-  // SELETOR GENÉRICO
-  seletorItem:       { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
-  seletorItemText:   { flex: 1, fontSize: 15, fontWeight: '700', color: CORES.preto },
+  seletorItem:       { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, borderBottomWidth: 1 },
+  seletorItemText:   { flex: 1, fontFamily: F.bold },
 
-  // LEGENDA
-  legendaItem:       { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
-  legendaText:       { fontSize: 14, fontWeight: '600', color: CORES.preto },
+  legendaItem:       { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9 },
+  legendaText:       { fontFamily: F.semibold },
 
-  btnFecharModal:    { backgroundColor: CORES.fundo, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 12 },
-  btnFecharModalText:{ fontWeight: '800', fontSize: 14, color: CORES.textoSec },
+  btnFecharModal:    { borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 10 },
+  btnFecharModalText:{ fontFamily: F.bold },
+
+  // MODAL CONFIRMAÇÃO
+  confirmOverlay:    { flex: 1, backgroundColor: 'rgba(11, 32, 70, 0.65)', justifyContent: 'center', alignItems: 'center', padding: 28 },
+  confirmBox:        { width: '100%', maxWidth: 320, borderRadius: 22, padding: 24, alignItems: 'center', elevation: 12, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 20 },
+  confirmIcon:       { width: 56, height: 56, borderRadius: 28, backgroundColor: '#FFF5F5', justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
+  confirmTitulo:     { fontFamily: F.black, marginBottom: 6, textAlign: 'center' },
+  confirmMsg:        { fontFamily: F.regular, textAlign: 'center', lineHeight: 19, marginBottom: 18 },
+  confirmBtns:       { flexDirection: 'row', gap: 8, width: '100%' },
+  confirmBtn:        { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  confirmBtnText:    { fontFamily: F.black },
 });

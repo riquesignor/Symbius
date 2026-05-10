@@ -10,6 +10,7 @@ import {
   addDoc, updateDoc, setDoc, serverTimestamp, onSnapshot
 } from 'firebase/firestore';
 import { Ionicons, FontAwesome5, MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 
@@ -67,20 +68,18 @@ function useConversas(meuUid: string | undefined, matchIds: string[]) {
 }
 
 export default function Match({ navigation, route }: any) {
-  const [abaAtiva,      setAbaAtiva]      = useState<Aba>('descobrir');
-  const [modo,          setModo]          = useState<Modo>('aprender');
-  const [materiasFiltro, setMateriasFiltro] = useState<string[]>([]);
-  const [candidatos,    setCandidatos]    = useState<any[]>([]);
-  const [solicitacoes,  setSolicitacoes]  = useState<any[]>([]);
-  const [matches,       setMatches]       = useState<any[]>([]);
-  const [meusDados,     setMeusDados]     = useState<any>(null);
-  const [carregando,    setCarregando]    = useState(false);
-  const [popupInfo,     setPopupInfo]     = useState(false);
-  const [popupMateria,  setPopupMateria]  = useState(false);
-  const [cardAtual,     setCardAtual]     = useState(0);
-
-  const uidsInteragidosRef     = useRef<Set<string>>(new Set());
-  const [interagidosCarregado, setInteragidosCarregado] = useState(false);
+  const insets = useSafeAreaInsets();
+  const [abaAtiva,       setAbaAtiva]       = useState<Aba>('descobrir');
+  const [modo,           setModo]           = useState<Modo>('aprender');
+  const [materiaFiltro,  setMateriaFiltro]  = useState('');
+  const [candidatos,     setCandidatos]     = useState<any[]>([]);
+  const [solicitacoes,   setSolicitacoes]   = useState<any[]>([]);
+  const [matches,        setMatches]        = useState<any[]>([]);
+  const [meusDados,      setMeusDados]      = useState<any>(null);
+  const [carregando,     setCarregando]     = useState(false);
+  const [popupInfo,      setPopupInfo]      = useState(false);
+  const [popupMateria,   setPopupMateria]   = useState(false);
+  const [cardAtual,      setCardAtual]      = useState(0);
 
   const meuUid = route?.params?.uid;
 
@@ -449,7 +448,7 @@ export default function Match({ navigation, route }: any) {
       <StatusBar barStyle="dark-content" backgroundColor={CORES.branco} />
 
       {/* NAVBAR */}
-      <View style={styles.navbar}>
+      <View style={[styles.navbar, { paddingTop: insets.top }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color={CORES.azulEscuro} />
         </TouchableOpacity>
