@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   Platform, StyleSheet, Image, ActivityIndicator,
-  Dimensions, KeyboardAvoidingView, Alert
+  Dimensions, KeyboardAvoidingView, Alert, Vibration
 } from "react-native";
 import { db } from "../config/firebaseConfig";
 import {
@@ -13,6 +13,9 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+// ✅ ADICIONAR NOTIFICAÇÕES
+import * as Notifications from 'expo-notifications';
+import { useAppSettings } from '../contexts/AppSettingsContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const IMG_MAX = 220;
@@ -203,10 +206,14 @@ export default function Chat({ route, navigation }: any) {
   const insets = useSafeAreaInsets();
   const { outroUid, outroNome } = route.params || {};
 
+  // ✅ ADICIONAR: pegar settings de notificação
+  const { notifGeral, somNotif, vibracao } = useAppSettings();
+
   const scrollRef        = useRef<ScrollView>(null);
   const fileInputRef     = useRef<HTMLInputElement | null>(null);
   const docIdMap         = useRef<Record<string, string>>({});
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ultimaMsgIdRef   = useRef<string | null>(null); // ✅ ADICIONAR: rastrear última msg
 
   const [uidAtual,         setUidAtual]         = useState<string | null>(null);
   const [conversaId,       setConversaId]        = useState<string | null>(null);
@@ -316,12 +323,23 @@ export default function Chat({ route, navigation }: any) {
       orderBy("data_postagem", "asc")
     );
 
-    const unsub = onSnapshot(q, (snapshot) => {
+    const unsub = onSnapshot(q, async (snapshot) => {
       const msgs = snapshot.docs.map(d => {
         docIdMap.current[d.id] = d.id;
         return { docId: d.id, id: d.id, ...d.data() };
       });
       setMessages(msgs);
+
+      // ✅ ADICIONAR: NOTIFICAR SE NOVA MENSAGEM
+      // Verificar se há mensagem nova (comparar com última conhecida)
+      if (msgs.length > 0) {
+        const ultimaMsg = msgs[msgs.length - 1] as any;
+  
+      if (ultimaMsg && ultimaMsg.remetenteUid && ultimaMsg.remetenteUid !== uidAtual && ultimaMsg.id !== ultimaMsgIdRef.current) {
+        await notificarNovaMsg(ultimaMsg);
+        ultimaMsgIdRef.current = ultimaMsg.id;
+      }
+    }
       setLoading(false);
     }, (e) => {
       console.log("Erro onSnapshot mensagens:", e.message);
@@ -329,7 +347,61 @@ export default function Chat({ route, navigation }: any) {
     });
 
     return () => unsub();
-  }, [conversaId]);
+  }, [conversaId, uidAtual, notifGeral, somNotif, vibracao]);
+
+  // ✅ ADICIONAR: FUNÇÃO DE NOTIFICAR
+  const notificarNovaMsg = async (msg: any) => {
+    // 1. Notificações desligadas?
+    if (!notifGeral) {
+      console.log('📵 Notificações desligadas');
+      return;
+    }
+
+    // 2. Já notificou essa msg?
+    const chaveDedup = `notif_${msg.id}`;
+    const jaNotificou = await AsyncStorage.getItem(chaveDedup);
+    if (jaNotificou) return;
+
+    // 3. Vibrar
+    if (vibracao) {
+      if (somNotif === 'Leve') {
+        Vibration.vibrate(20);
+      } else if (somNotif === 'Normal') {
+        Vibration.vibrate([30, 10, 30]);
+      } else if (somNotif === 'Forte') {
+        Vibration.vibrate([50, 20, 50, 20, 50]);
+      }
+    }
+
+    // 4. Enviar notificação
+    try {
+      const corpo = msg.tipo === 'imagem' ? '📷 Imagem' : msg.mensagem?.substring(0, 100) || '';
+      const hora = msg.data_postagem?.toDate?.()?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) || '';
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: msg.nome_remetente || 'Mensagem',
+          body: corpo,
+          subtitle: hora,
+          sound: somNotif !== 'Nenhum' ? 'default' : undefined,
+          badge: 1,
+          data: {
+            tipo: 'mensagem',
+            conversaId,
+            outroUid,
+          },
+        },
+        trigger: null,
+      });
+
+      console.log(`✅ Notif: ${msg.nome_remetente}`);
+      
+      // Marcar como notificado
+      await AsyncStorage.setItem(chaveDedup, '1');
+    } catch (e) {
+      console.log('❌ Erro notif:', e);
+    }
+  };
 
   // ── Scroll para o fim ao chegar nova mensagem ────────────
   useEffect(() => {

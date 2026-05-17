@@ -4,13 +4,15 @@ import {
   ScrollView, SafeAreaView, KeyboardAvoidingView, 
   Platform, Modal, FlatList, ActivityIndicator
 } from 'react-native';
-import { cadastrarNoJumo } from '../services/authService'; 
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { auth, db } from '../config/firebaseConfig';
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 
 // Paleta JUMO
 const CORES = {
-  azulEscuro:      '#1A1A2E',
+  azulEscuro:      '#0B2046',
   rosa:            '#E91E63',
   amarelo:         '#FFC107',
   fundo:           '#EFEFEF',
@@ -114,7 +116,37 @@ export default function Cadastro({ navigation }: any) {
     }
 
     try {
-      await cadastrarNoJumo(email, senha, nome, ra, turmaFormatada, perfilTipo);
+      // 1. Criar usuário no Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email.trim().toLowerCase(),
+        senha
+      );
+      const user = userCredential.user;
+
+      // 2. Enviar email de verificação
+      await sendEmailVerification(user);
+
+      // 3. Gravar dados adicionais no Firestore
+      await setDoc(doc(db, 'usuarios', user.uid), {
+        uid: user.uid,
+        nome_completo: nome,
+        email_escolar: email.trim().toLowerCase(),
+        ra: ra || 'N/A',
+        turma: turmaFormatada,
+        tipo: perfilTipo,
+        status: 0, // 0 = aguardando verificação de email
+        data_criacao: new Date().toISOString(),
+        posso_ensinar: [],
+        quer_aprender: [],
+        foto_url: '',
+        bio: '',
+        medalhas_visiveis: [],
+        ajudas: 0,
+        statusOnline: false,
+        visibilidade: true,
+      });
+
       setLoading(false);
       setPopupOk(true);
       setTimeout(() => {
@@ -123,7 +155,18 @@ export default function Cadastro({ navigation }: any) {
       }, 1800);
     } catch (error: any) {
       setLoading(false);
-      setToastMsg(error?.message || 'Erro ao cadastrar. Tente novamente.');
+      console.error('Erro ao cadastrar:', error);
+      
+      // Tratamento de erros específicos
+      if (error.code === 'auth/email-already-in-use') {
+        setToastMsg('Este e-mail já está registrado.');
+      } else if (error.code === 'auth/weak-password') {
+        setToastMsg('Senha fraca. Use pelo menos 6 caracteres.');
+      } else if (error.code === 'auth/invalid-email') {
+        setToastMsg('E-mail inválido.');
+      } else {
+        setToastMsg(error?.message || 'Erro ao cadastrar. Tente novamente.');
+      }
     }
   };
 
@@ -345,56 +388,63 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     backgroundColor: CORES.cardCinza,
-    borderRadius: 24,
-    padding: 24,
+    borderRadius: 32,
+    padding: 28,
     shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
 
   // CAMPOS
-  fieldLabel: { fontSize: 15, fontWeight: '700', color: CORES.azulEscuro, marginBottom: 6, marginTop: 4 },
+  fieldLabel: { fontSize: 15, fontWeight: '700', color: CORES.azulEscuro, marginBottom: 8 },
   input: {
     backgroundColor: CORES.inputBranco,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: CORES.borda,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     fontSize: 15,
     color: CORES.azulEscuro,
-    marginBottom: 14,
+    marginBottom: 18,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
-  selectInput: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  selectInput: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16 },
   selectText:  { fontSize: 15, color: CORES.azulEscuro },
-  statusText:  { fontSize: 12, fontWeight: '700', marginTop: -10, marginBottom: 12, marginLeft: 4 },
+  statusText:  { fontSize: 12, fontWeight: '700', marginTop: -12, marginBottom: 12, marginLeft: 4, color: CORES.sucesso },
 
   // BOTÃO
   btnCriar: {
-    backgroundColor: CORES.fundo,
-    borderRadius: 14,
-    paddingVertical: 15,
+    backgroundColor: CORES.azulEscuro,
+    borderRadius: 18,
+    paddingVertical: 16,
     alignItems: 'center',
-    marginTop: 10,
-    borderWidth: 1.5,
-    borderColor: '#D0D0D0',
+    marginTop: 16,
+    elevation: 3,
+    shadowColor: CORES.azulEscuro,
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
-  btnCriarText: { color: CORES.azulEscuro, fontSize: 16, fontWeight: '700' },
+  btnCriarText: { color: '#FFF', fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
 
   loginLink: { marginTop: 20, alignItems: 'center' },
   loginText: { color: '#8D99AE', fontSize: 14, fontWeight: '500' },
 
   // POPUP SUCESSO
-  popupOverlay: { flex: 1, backgroundColor: 'rgba(26,26,46,0.6)', justifyContent: 'center', alignItems: 'center' },
+  popupOverlay: { flex: 1, backgroundColor: 'rgba(11,32,70,0.6)', justifyContent: 'center', alignItems: 'center' },
   popupBox:     { backgroundColor: '#FFF', borderRadius: 24, padding: 30, alignItems: 'center', width: 260 },
   popupIcon:    { width: 70, height: 70, borderRadius: 35, backgroundColor: CORES.sucesso, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
   popupTitle:   { fontSize: 18, fontWeight: '900', color: CORES.azulEscuro, marginBottom: 6 },
   popupSub:     { fontSize: 13, color: '#8D99AE', textAlign: 'center' },
 
   // MODAIS DE SELEÇÃO
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(26,26,46,0.5)', justifyContent: 'flex-end' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(11,32,70,0.5)', justifyContent: 'flex-end' },
   modalSheet:   { backgroundColor: '#FFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24, maxHeight: '60%' },
   modalHandle:  { width: 40, height: 4, backgroundColor: '#E0E0E0', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
   modalTitle:   { fontSize: 18, fontWeight: '900', textAlign: 'center', color: CORES.azulEscuro, marginBottom: 12 },

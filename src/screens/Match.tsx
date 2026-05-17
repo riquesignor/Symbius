@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity,
   Image, SafeAreaView, StatusBar, Dimensions, Modal,
-  ActivityIndicator, FlatList
+  ActivityIndicator, FlatList, Vibration
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
 import {
@@ -11,6 +11,10 @@ import {
 } from 'firebase/firestore';
 import { Ionicons, FontAwesome5, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+// ✅ ADICIONAR: Notificações
+import * as Notifications from 'expo-notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAppSettings } from '../contexts/AppSettingsContext';
 
 const { width, height } = Dimensions.get('window');
 
@@ -71,7 +75,9 @@ export default function Match({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const [abaAtiva,       setAbaAtiva]       = useState<Aba>('descobrir');
   const [modo,           setModo]           = useState<Modo>('aprender');
-  const [materiaFiltro,  setMateriaFiltro]  = useState('');
+  const [materiasFiltro, setMateriasFiltro] = useState<string[]>([]);
+  const [interagidosCarregado, setInteragidosCarregado] = useState(false);
+  const uidsInteragidosRef = useRef<Set<string>>(new Set());  
   const [candidatos,     setCandidatos]     = useState<any[]>([]);
   const [solicitacoes,   setSolicitacoes]   = useState<any[]>([]);
   const [matches,        setMatches]        = useState<any[]>([]);
@@ -80,6 +86,11 @@ export default function Match({ navigation, route }: any) {
   const [popupInfo,      setPopupInfo]      = useState(false);
   const [popupMateria,   setPopupMateria]   = useState(false);
   const [cardAtual,      setCardAtual]      = useState(0);
+
+  // ✅ ADICIONAR: pegar settings de notificação
+  const { notifGeral, notifMatch, somNotif, vibracao } = useAppSettings();
+
+  const ultimasSolicitacoesRef = useRef<Set<string>>(new Set()); // ✅ ADICIONAR: rastrear solicitações notificadas
 
   const meuUid = route?.params?.uid;
 
@@ -123,6 +134,7 @@ export default function Match({ navigation, route }: any) {
   }, [meusDados, modo, materiasFiltro.join(','), interagidosCarregado]);
 
   // ── Ouve solicitações pendentes recebidas ──
+  // ✅ ADICIONAR: notificação de nova solicitação
   useEffect(() => {
     if (!meuUid) return;
     const q = query(
@@ -137,10 +149,75 @@ export default function Match({ navigation, route }: any) {
         if (!rSnap.exists()) return null;
         return { id: d.id, ...data, remetente: rSnap.data() };
       }))).filter(Boolean);
+      
+      // ✅ ADICIONAR: Verificar se há nova solicitação e notificar
+      if (lista.length > 0) {
+        lista.forEach(async (sol: any) => {
+          // É uma solicitação nova (não estava antes)?
+          if (!ultimasSolicitacoesRef.current.has(sol.id)) {
+            await notificarSolicitacao(sol);
+            ultimasSolicitacoesRef.current.add(sol.id);
+          }
+        });
+      }
+      
       setSolicitacoes(lista);
     });
     return () => unsub();
-  }, [meuUid]);
+  }, [meuUid, notifGeral, notifMatch, somNotif, vibracao]);
+
+  // ✅ ADICIONAR: FUNÇÃO DE NOTIFICAR SOLICITAÇÃO
+  const notificarSolicitacao = async (sol: any) => {
+    // 1. Notificações desligadas?
+    if (!notifGeral || !notifMatch) {
+      console.log('Notificações de match desligadas');
+      return;
+    }
+
+    // 2. Já notificou essa solicitação?
+    const chaveDedup = `notif_sol_${sol.id}`;
+    const jaNotificou = await AsyncStorage.getItem(chaveDedup);
+    if (jaNotificou) return;
+
+    // 3. Vibrar
+    if (vibracao) {
+      if (somNotif === 'Leve') {
+        Vibration.vibrate(20);
+      } else if (somNotif === 'Normal') {
+        Vibration.vibrate([30, 10, 30]);
+      } else if (somNotif === 'Forte') {
+        Vibration.vibrate([50, 20, 50, 20, 50]);
+      }
+    }
+
+    // 4. Enviar notificação
+    try {
+      const nomeRemetente = sol.remetente?.nome_completo || 'Alguém';
+      const corpo = `${nomeRemetente} quer estudar com você!`;
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '🎓 Nova solicitação de match',
+          body: corpo,
+          sound: somNotif !== 'Nenhum' ? 'default' : undefined,
+          badge: 1,
+          data: {
+            tipo: 'solicitacao_match',
+            solicitacaoId: sol.id,
+            deUid: sol.deUid,
+          },
+        },
+        trigger: null,
+      });
+
+      console.log(`✅ Notif match: ${nomeRemetente}`);
+      
+      // Marcar como notificado
+      await AsyncStorage.setItem(chaveDedup, '1');
+    } catch (e) {
+      console.log('Erro notif match:', e);
+    }
+  };
 
   // ── Ouve matches confirmados ──
   useEffect(() => {

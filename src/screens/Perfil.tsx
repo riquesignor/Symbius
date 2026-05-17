@@ -11,7 +11,6 @@ import {
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { RefreshControl } from 'react-native';
 import Svg, { Polygon, Circle, Line, Text as SvgText, G } from 'react-native-svg';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 
@@ -191,7 +190,6 @@ const RadarChart = ({ scores, size, modoEscuro }: any) => {
 export default function Perfil({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const uid = route?.params?.uid;
-  const [refreshing, setRefreshing] = useState(false);
 
   const { cores: C, fonteScale, modoEscuro } = useAppSettings();
   const fs = (size: number) => size * fonteScale;
@@ -304,24 +302,6 @@ export default function Perfil({ navigation, route }: any) {
     </View>
   );
 
-  const handleRefresh = async () => {
-  setRefreshing(true);
-  try {
-    // Recarregar dados do usuário
-    if (uid) {
-      const docSnap = await getDoc(doc(db, 'usuarios', uid));
-      if (docSnap.exists()) setUsuario({ uid: docSnap.id, ...docSnap.data() });
-    }
-    
-    // Recarregar medalhas
-    await carregarMedalhas();
-  } catch (error) {
-    console.error('Erro ao recarregar:', error);
-  } finally {
-    setRefreshing(false);
-  }
-};
-
   const isTutor = usuario.tipo?.toLowerCase() === 'gremista' || usuario.tipo?.toLowerCase() === 'administrador';
   const ensina  = usuario.posso_ensinar || [];
   const aprende = usuario.quer_aprender  || [];
@@ -367,15 +347,6 @@ export default function Perfil({ navigation, route }: any) {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          tintColor={modoEscuro ? C.amarelo : CORES.azulEscuro}
-          title="Puxe para recarregar"
-          titleColor={C.textoSec}
-        />
-      }
         contentContainerStyle={{ paddingBottom: insets.bottom + 50, paddingTop: 6 }}
       >
         {/* ════════════════════════════════════════════════
@@ -384,8 +355,8 @@ export default function Perfil({ navigation, route }: any) {
         <FadeInView delay={0}>
           <View style={[styles.heroCard, { backgroundColor: C.branco }]}>
             <View style={styles.fotoWrap}>
-              {usuario.foto_url ? (
-                <Image source={{ uri: usuario.foto_url }} style={styles.foto} />
+              {usuario.foto ? (
+                <Image source={{ uri: usuario.foto }} style={styles.foto} />
               ) : (
                 <View style={[styles.fotoPlaceholder, { backgroundColor: CORES.rosa + '20' }]}>
                   <Text style={[styles.fotoLetra, { fontSize: fs(34) }]}>

@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -7,7 +7,8 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from './src/config/firebaseConfig';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppSettingsProvider } from './src/contexts/AppSettingsContext'; // ajusta o caminho
+import { AppSettingsProvider } from './src/contexts/AppSettingsContext'; 
+import * as Notifications from 'expo-notifications';
 
 
 import {
@@ -26,24 +27,79 @@ import Perfil          from './src/screens/Perfil';
 import EditorPost      from './src/screens/EditorPost';
 import Chat            from './src/screens/Chat';
 import Homechat        from './src/screens/Homechat';
-import RedefinirSenha  from './src/screens/RecuperarSenha';
 import Calendario      from './src/screens/Calendario';
 import Admin           from './src/screens/Admin';
 import Match           from './src/screens/Match';
 import Configuracoes from './src/screens/Configuracoes';
+
 const Stack = createStackNavigator();
 
+// ✅ ADICIONAR: Setup de notificações
+Notifications.setNotificationHandler({
+  handleNotification: async () => {
+    return {
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    } as any;
+  },
+});
+
 export default function App() {
+  const navigationRef = useRef(null);
   const [initialRoute, setInitialRoute] = useState<string | null>(null);
   const [initialUid,   setInitialUid]   = useState<string | null>(null);
 
   const [fontsLoaded] = useFonts({
-  Poppins_400Regular,
-  Poppins_500Medium,
-  Poppins_600SemiBold,
-  Poppins_700Bold,
-  Poppins_800ExtraBold,
-});
+    Poppins_400Regular,
+    Poppins_500Medium,
+    Poppins_600SemiBold,
+    Poppins_700Bold,
+    Poppins_800ExtraBold,
+  });
+
+  // ✅ ADICIONAR: Tornar navigator global (pra notificação saber abrir chat)
+  useEffect(() => {
+  if (navigationRef && navigationRef.current) {
+    (globalThis as any).navigationRef = navigationRef.current;
+    console.log('✅ navigationRef setado global');
+  }
+}, [navigationRef]);
+
+  // ✅ ADICIONAR: Pedir permissão de notificações
+  useEffect(() => {
+    const pedirPermissaoNotif = async () => {
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== 'granted') {
+          console.log('⚠️ Permissão de notificações foi negada');
+        }
+      } catch (e) {
+        console.log('Erro ao pedir permissão notif:', e);
+      }
+    };
+
+    pedirPermissaoNotif();
+  }, []);
+
+  // ✅ ADICIONAR: Lidar quando user toca em notificação
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data;
+      
+      console.log('👆 User tocou notificação:', data);
+
+      // Se for mensagem de chat, abrir a tela de chat
+      if (data?.tipo === 'mensagem' && navigationRef.current) {
+        (navigationRef.current as any).navigate('Chat', {
+          outroUid: data.outroUid,
+          outroNome: data.outroNome,
+        });
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     // ✅ Verifica se existe sessão salva no AsyncStorage ("lembrar login")
@@ -103,39 +159,37 @@ export default function App() {
   }
 
   if (!fontsLoaded) {
-  return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF' }}>
-      <ActivityIndicator size="large" color="#E91E63" />
-    </View>
-  );
-}
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF' }}>
+        <ActivityIndicator size="large" color="#E91E63" />
+      </View>
+    );
+  }
 
   return (
-  <AppSettingsProvider>
-    <NavigationContainer>
-      <Stack.Navigator
-        initialRouteName={initialRoute}
-        screenOptions={{ headerShown: false }}
-      >
-        <Stack.Screen name="Login"           component={Login} />
-        <Stack.Screen name="Cadastro"        component={Cadastro} />
-        <Stack.Screen name="RedefinirSenha"  component={RedefinirSenha} />
-        <Stack.Screen
-          name="Index"
-          component={Index}
-          initialParams={initialUid ? { uid: initialUid } : undefined}
-        />
-        <Stack.Screen name="Perfil"          component={Perfil} />
-        <Stack.Screen name="EditorPost"      component={EditorPost} />
-        <Stack.Screen name="Chat"            component={Chat} />
-        <Stack.Screen name="Hall"            component={Homechat} />
-        <Stack.Screen name="Calendario"      component={Calendario} />
-        <Stack.Screen name="Admin"           component={Admin} />
-        <Stack.Screen name="Match"           component={Match} />
-        <Stack.Screen name="Configuracoes" component={Configuracoes} />
-
-      </Stack.Navigator>
-    </NavigationContainer>
+    <AppSettingsProvider>
+      <NavigationContainer ref={navigationRef}>
+        <Stack.Navigator
+          initialRouteName={initialRoute}
+          screenOptions={{ headerShown: false }}
+        >
+          <Stack.Screen name="Login"           component={Login} />
+          <Stack.Screen name="Cadastro"        component={Cadastro} />
+          <Stack.Screen
+            name="Index"
+            component={Index}
+            initialParams={initialUid ? { uid: initialUid } : undefined}
+          />
+          <Stack.Screen name="Perfil"          component={Perfil} />
+          <Stack.Screen name="EditorPost"      component={EditorPost} />
+          <Stack.Screen name="Chat"            component={Chat} />
+          <Stack.Screen name="Hall"            component={Homechat} />
+          <Stack.Screen name="Calendario"      component={Calendario} />
+          <Stack.Screen name="Admin"           component={Admin} />
+          <Stack.Screen name="Match"           component={Match} />
+          <Stack.Screen name="Configuracoes"   component={Configuracoes} />
+        </Stack.Navigator>
+      </NavigationContainer>
     </AppSettingsProvider>
   );
 }

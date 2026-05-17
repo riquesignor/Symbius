@@ -3,17 +3,20 @@ import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
   SafeAreaView, StatusBar, Modal, TextInput,
   ActivityIndicator, Platform, FlatList,
-  useWindowDimensions, Animated
+  useWindowDimensions, Animated, Vibration
 } from 'react-native';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { db } from '../config/firebaseConfig';
 import {
   collection, query, where, getDocs, addDoc, updateDoc,
-  deleteDoc, doc, setDoc, getDoc, serverTimestamp
+  deleteDoc, doc, setDoc, getDoc, serverTimestamp, onSnapshot
 } from 'firebase/firestore';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RefreshControl } from 'react-native';
+// ✅ ADICIONAR: Notificações
+import * as Notifications from 'expo-notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
 
@@ -132,6 +135,9 @@ export default function Calendario({ navigation, route }: any) {
 
   // ✅ NOVO — Pega configs globais do contexto
   const { cores: C, fonteScale, modoEscuro } = useAppSettings();
+  
+  // ✅ ADICIONAR: pegar settings de notificação
+  const { notifGeral, notifEventos, somNotif, vibracao } = useAppSettings();
 
   // ✅ NOVO — Helper de fonte escalada (deixa o JSX mais limpo)
   const fs = (size: number) => size * fonteScale;
@@ -139,6 +145,8 @@ export default function Calendario({ navigation, route }: any) {
   const uid     = route?.params?.uid;
 
   const [userRA, setUserRA] = useState<string | null>(null);
+
+  const ultimosEventosRef = useRef<Set<string>>(new Set()); // ✅ ADICIONAR: rastrear eventos notificados
 
 // Fetch do RA do usuário ao montar
 useEffect(() => {
@@ -250,6 +258,7 @@ useEffect(() => {
   } catch (e) { console.error('Erro lembretes:', e); }
 };
 
+  // ✅ ADICIONAR: Listener de novos eventos (Opção A)
   const carregarEventosAdmin = async () => {
   try {
     const mapa = new Map<string, any[]>();
@@ -274,7 +283,7 @@ useEffect(() => {
       snap.forEach(d => {
         const ev: any = { 
           id: d.id, 
-          _sub: config.sub,  // ← guarda de qual subcollection veio
+          _sub: config.sub,
           ...d.data() 
         };
         todos.push(ev);
@@ -288,6 +297,90 @@ useEffect(() => {
     setAdminTodos(todos);
   } catch (e) { console.error('Erro eventos admin:', e); }
 };
+
+  // ✅ ADICIONAR: Ouvir novos eventos em tempo real
+  useEffect(() => {
+    if (isAdmin || !serie) return;
+
+    const unsubs: (() => void)[] = [];
+
+    for (const tipo of Object.keys(TIPO_COLLECTION)) {
+      const config = TIPO_COLLECTION[tipo];
+      const subRef = collection(db, 'eventos_admin', PARENT_DOC, config.sub);
+
+      const q = query(subRef, where('series', 'array-contains', serie));
+
+      const unsub = onSnapshot(q, async (snap) => {
+        snap.docs.forEach(async (d) => {
+          const ev: any = { id: d.id, _sub: config.sub, ...d.data() };
+
+          // É novo? (não estava antes)
+          if (!ultimosEventosRef.current.has(ev.id)) {
+            await notificarNovoEvento(ev);
+            ultimosEventosRef.current.add(ev.id);
+          }
+        });
+      });
+
+      unsubs.push(unsub);
+    }
+
+    return () => unsubs.forEach(u => u());
+  }, [serie, isAdmin, notifGeral, notifEventos, somNotif, vibracao]);
+
+  // ✅ ADICIONAR: FUNÇÃO DE NOTIFICAR NOVO EVENTO
+  const notificarNovoEvento = async (ev: any) => {
+    // 1. Notificações desligadas?
+    if (!notifGeral || !notifEventos) {
+      console.log('📵 Notificações de eventos desligadas');
+      return;
+    }
+
+    // 2. Já notificou esse evento?
+    const chaveDedup = `notif_evt_${ev.id}`;
+    const jaNotificou = await AsyncStorage.getItem(chaveDedup);
+    if (jaNotificou) return;
+
+    // 3. Vibrar
+    if (vibracao) {
+      if (somNotif === 'Leve') {
+        Vibration.vibrate(20);
+      } else if (somNotif === 'Normal') {
+        Vibration.vibrate([30, 10, 30]);
+      } else if (somNotif === 'Forte') {
+        Vibration.vibrate([50, 20, 50, 20, 50]);
+      }
+    }
+
+    // 4. Enviar notificação
+    try {
+      const [, m, d] = ev.data.split('-').map(Number);
+      const contagem = calcularDiasRestantes(ev.data);
+      const corpo = `${ev.titulo} • ${d} de ${MESES[m - 1]}`;
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `📅 ${ev.tipo.toUpperCase()}`,
+          body: corpo,
+          subtitle: contagem.texto,
+          sound: somNotif !== 'Nenhum' ? 'default' : undefined,
+          badge: 1,
+          data: {
+            tipo: 'evento_admin',
+            eventoId: ev.id,
+          },
+        },
+        trigger: null,
+      });
+
+      console.log(`✅ Notif evento: ${ev.titulo}`);
+      
+      // Marcar como notificado
+      await AsyncStorage.setItem(chaveDedup, '1');
+    } catch (e) {
+      console.log('❌ Erro notif evento:', e);
+    }
+  };
 
   // ✅ Filtro: mês selecionado + tipo
   const eventosFiltrados = useMemo(() => {
@@ -534,7 +627,7 @@ useEffect(() => {
           {
             width: CEL_SIZE,
             height: CEL_SIZE * 0.95,
-            backgroundColor: modoEscuro ? C.fundo : '#FBFBFD',
+            backgroundColor: modoEscuro ? C.cinzaClaro : C.branco,
             borderColor: C.cinzaClaro,
           }
         ]}
@@ -562,8 +655,7 @@ useEffect(() => {
             backgroundColor: C.branco,
             borderColor: C.cinzaClaro,
           },
-          eFimSem && { backgroundColor: modoEscuro ? C.fundo : '#FAFAF8' },
-          (temLemb || temAdmin) && { backgroundColor: modoEscuro ? C.cinzaClaro : '#FAFFF9' },
+          
         ]}
         onPress={() => { setDiaSelecionado(dataStr); setModalDia(true); }}
         activeOpacity={0.7}
@@ -792,8 +884,8 @@ useEffect(() => {
             <TouchableOpacity
               style={[
                 styles.chip,
-                { backgroundColor: C.fundo, borderColor: C.cinzaClaro },
-                filtroTipo === 'todos' && { backgroundColor: C.azulEscuro, borderColor: C.azulEscuro }
+                { backgroundColor: modoEscuro ? C.cinzaClaro : C.fundo, borderColor: C.cinzaClaro },
+                filtroTipo === 'todos' && { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro, borderColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
               ]}
               onPress={() => setFiltroTipo('todos')}
             >
@@ -879,7 +971,7 @@ useEffect(() => {
               return (
                 <ScrollView showsVerticalScrollIndicator={false}>
                   <View style={[styles.detHero, { backgroundColor: config.bg }]}>
-                    <View style={[styles.detHeroIcon, { backgroundColor: config.color }]}>
+                    <View style={[styles.detHero, { backgroundColor: modoEscuro ? C.cinzaClaro : config.bg }]}>
                       <Ionicons name={config.icon} size={26} color={CORES.branco} />
                     </View>
                     <Text style={[styles.detHeroTipo, { color: config.color, fontSize: fs(11) }]}>
@@ -948,7 +1040,7 @@ useEffect(() => {
                   )}
 
                   <TouchableOpacity
-                    style={[styles.btnFecharModal, { backgroundColor: C.fundo }]}
+                  style={[styles.btnFecharModal, { backgroundColor: modoEscuro ? C.cinzaClaro : C.fundo }]}
                     onPress={() => setModalDetalhe(false)}
                   >
                     <Text style={[styles.btnFecharModalText, { color: C.textoSec, fontSize: fs(13) }]}>
