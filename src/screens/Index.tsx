@@ -4,6 +4,7 @@ import {
   Image, SafeAreaView, StatusBar, Dimensions,
   Modal, TouchableWithoutFeedback, Platform, FlatList
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient'; // ✅ NOVO — gradiente p/ contraste nos cards
 import { db } from '../config/firebaseConfig';
 import {
   doc, getDoc, collection, onSnapshot, query, orderBy,
@@ -21,6 +22,12 @@ const DESTAQUE_W = (width - 18 * 2 - 10) / 2;
 
 // ✅ Tempo (em dias) que um post fica visível na home após ser publicado
 const DIAS_VALIDADE_POST = 30;
+
+// ✅ Acessibilidade — hitSlop expande a área de toque sem mudar o visual.
+// Padrão WCAG 2.5.5: alvo mínimo de 44×44 pt.
+const HIT_SLOP_SM  = { top: 10, bottom: 10, left: 10, right: 10 }; // botões 34→54
+const HIT_SLOP_MD  = { top: 14, bottom: 14, left: 14, right: 14 }; // botões 30→58
+const HIT_SLOP_DOT = { top: 18, bottom: 18, left: 14, right: 14 }; // pontos do carrossel
 
 // ✅ Fonte padrão — funciona com Poppins (se instalada) ou cai no system
 const F = {
@@ -131,6 +138,11 @@ export default function Index({ navigation, route }: any) {
 
   const catBg = (cfg: any) => modoEscuro ? cfg.color + '25' : cfg.bg;
 
+  // ✅ Acessibilidade #1 — cor de texto secundário com contraste mínimo de ~5:1
+  // O `C.textoSec` original (#8D99AE) falhava no WCAG AA para textos pequenos.
+  // Usamos esta cor reforçada nos rótulos de seção e metadados pequenos.
+  const textoSecAcc = modoEscuro ? '#B8C0CC' : '#5C6678';
+
   const carrosselRef = useRef<FlatList>(null);
 
   // ── Permissões ──
@@ -143,23 +155,23 @@ export default function Index({ navigation, route }: any) {
 
 
   const handleRefresh = async () => {
-  setRefreshing(true);
-  try {
-    // Recarregar dados do perfil
-    const uid = route?.params?.uid;
-    if (uid) {
-      const docSnap = await getDoc(doc(db, 'usuarios', uid));
-      if (docSnap.exists()) setUserData({ ...docSnap.data(), uid });
+    setRefreshing(true);
+    try {
+      // Recarregar dados do perfil
+      const uid = route?.params?.uid;
+      if (uid) {
+        const docSnap = await getDoc(doc(db, 'usuarios', uid));
+        if (docSnap.exists()) setUserData({ ...docSnap.data(), uid });
+      }
+
+      // Recarregar agenda
+      await carregarAgenda();
+    } catch (error) {
+      console.error('Erro ao recarregar:', error);
+    } finally {
+      setRefreshing(false);
     }
-    
-    // Recarregar agenda
-    await carregarAgenda();
-  } catch (error) {
-    console.error('Erro ao recarregar:', error);
-  } finally {
-    setRefreshing(false);
-  }
-};
+  };
 
   // ── Carregar perfil + posts ──
   useEffect(() => {
@@ -187,77 +199,77 @@ export default function Index({ navigation, route }: any) {
     carregarAgenda();
   }, [userData?.uid, serieFiltroAdm, isAdmin]);
 
- const carregarAgenda = async () => {
-  try {
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-    const limite = new Date(hoje);
-    limite.setDate(limite.getDate() + 7);
+  const carregarAgenda = async () => {
+    try {
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+      const limite = new Date(hoje);
+      limite.setDate(limite.getDate() + 7);
 
-    const itens: any[] = [];
+      const itens: any[] = [];
 
-    // ✅ LEMBRETES — agora buscamos da subcollection do RA
-    if (userData?.uid) {
-      // ✅ Não usa RA se for inválido (admin com "N/A", etc)
-      const raLimpo = userData.ra?.replace(/[\/\\]/g, '');
-      const raValido = raLimpo && raLimpo !== 'N/A' && raLimpo.length > 0;
-      const userIdentifier = raValido ? raLimpo : userData.uid;
-      try {
-        const snapL = await getDocs(collection(db, 'lembretes', userIdentifier, 'lembretes'));
-        snapL.forEach(d => {
-          itens.push({ id: d.id, fonte: 'lembrete', tipo: 'lembrete', ...d.data() });
-        });
-      } catch (e) { console.error('Erro lembretes:', e); }
-    }
-
-    // ✅ EVENTOS ADMIN — busca de todas as 4 collections
-  for (const tipo of Object.keys(TIPO_COLLECTION)) {
-  const subName = TIPO_COLLECTION[tipo];
-  const subRef = collection(db, 'eventos_admin', 'tipos', subName);
-
-  try {
-    const snapE = await getDocs(subRef);
-
-    snapE.forEach((d: any) => {
-      const ev = { id: d.id, fonte: 'admin', ...d.data() };
-      const series: string[] = ev.series || [];
-
-      // ✅ Normaliza: pega só o primeiro dígito de cada série
-      const seriesNumeros = series.map(s => String(s).match(/\d/)?.[0] || '');
-
-      let incluir = false;
-
-      if (isAdmin) {
-        if (serieFiltroAdm === 'todas') {
-          incluir = true;
-        } else {
-          // Pega só o número do filtro (ex: '1º' → '1')
-          const filtroNumero = serieFiltroAdm.match(/\d/)?.[0] || '';
-          incluir = seriesNumeros.includes(filtroNumero);
-        }
-      } else {
-        const serie = extrairSerie(userData?.turma || '');
-        if (serie) {
-          const serieNumero = serie.match(/\d/)?.[0] || '';
-          incluir = seriesNumeros.includes(serieNumero);
-        }
+      // ✅ LEMBRETES — agora buscamos da subcollection do RA
+      if (userData?.uid) {
+        // ✅ Não usa RA se for inválido (admin com "N/A", etc)
+        const raLimpo = userData.ra?.replace(/[\/\\]/g, '');
+        const raValido = raLimpo && raLimpo !== 'N/A' && raLimpo.length > 0;
+        const userIdentifier = raValido ? raLimpo : userData.uid;
+        try {
+          const snapL = await getDocs(collection(db, 'lembretes', userIdentifier, 'lembretes'));
+          snapL.forEach(d => {
+            itens.push({ id: d.id, fonte: 'lembrete', tipo: 'lembrete', ...d.data() });
+          });
+        } catch (e) { console.error('Erro lembretes:', e); }
       }
 
-      if (incluir) itens.push(ev);
-    });
-  } catch (e) { console.error(`Erro ${subName}:`, e); }
-}
+      // ✅ EVENTOS ADMIN — busca de todas as 4 collections
+      for (const tipo of Object.keys(TIPO_COLLECTION)) {
+        const subName = TIPO_COLLECTION[tipo];
+        const subRef = collection(db, 'eventos_admin', 'tipos', subName);
 
-    // Filtra próximos 7 dias e ordena
-    const proximos = itens.filter(ev => {
-      if (!ev.data) return false;
-      const [a, m, dd] = ev.data.split('-').map(Number);
-      const dt = new Date(a, m - 1, dd);
-      dt.setHours(0, 0, 0, 0);
-      return dt >= hoje && dt <= limite;
-    }).sort((a, b) => a.data.localeCompare(b.data));
+        try {
+          const snapE = await getDocs(subRef);
 
-    // ✅ NOTIFICAÇÕES — lembretes vencidos + provas próximas
+          snapE.forEach((d: any) => {
+            const ev = { id: d.id, fonte: 'admin', ...d.data() };
+            const series: string[] = ev.series || [];
+
+            // ✅ Normaliza: pega só o primeiro dígito de cada série
+            const seriesNumeros = series.map(s => String(s).match(/\d/)?.[0] || '');
+
+            let incluir = false;
+
+            if (isAdmin) {
+              if (serieFiltroAdm === 'todas') {
+                incluir = true;
+              } else {
+                // Pega só o número do filtro (ex: '1º' → '1')
+                const filtroNumero = serieFiltroAdm.match(/\d/)?.[0] || '';
+                incluir = seriesNumeros.includes(filtroNumero);
+              }
+            } else {
+              const serie = extrairSerie(userData?.turma || '');
+              if (serie) {
+                const serieNumero = serie.match(/\d/)?.[0] || '';
+                incluir = seriesNumeros.includes(serieNumero);
+              }
+            }
+
+            if (incluir) itens.push(ev);
+          });
+        } catch (e) { console.error(`Erro ${subName}:`, e); }
+      }
+
+      // Filtra próximos 7 dias e ordena
+      const proximos = itens.filter(ev => {
+        if (!ev.data) return false;
+        const [a, m, dd] = ev.data.split('-').map(Number);
+        const dt = new Date(a, m - 1, dd);
+        dt.setHours(0, 0, 0, 0);
+        return dt >= hoje && dt <= limite;
+      }).sort((a, b) => a.data.localeCompare(b.data));
+
+      // ✅ NOTIFICAÇÕES — lembretes vencidos + provas próximas
       const notifs: any[] = [];
 
       // Lembretes vencidos
@@ -293,11 +305,11 @@ export default function Index({ navigation, route }: any) {
 
       setNotificacoes(notifs);
 
-    setAgendaItens(proximos);
-  } catch (e) {
-    console.error('Erro ao carregar agenda:', e);
-  }
-};
+      setAgendaItens(proximos);
+    } catch (e) {
+      console.error('Erro ao carregar agenda:', e);
+    }
+  };
 
   // ✅ Posts válidos (todas categorias, dentro da validade)
   const postsValidos = useMemo(
@@ -344,9 +356,18 @@ export default function Index({ navigation, route }: any) {
   };
 
   // ── Card de destaque (capa real + categoria como badge) ──
-   const renderDestaqueCard = (post: any) => {
+  const renderDestaqueCard = (post: any) => {
     const config = CATEGORIA_CONFIG[post.categoria] || CATEGORIA_CONFIG.avisos;
     const novo   = ehNovo(post);
+
+    // ✅ Acessibilidade #5 e #9 — label completa lida pelo leitor de tela.
+    // Inclui categoria (badge), título, contagem e flag "novo".
+    const a11yLabel = [
+      config.label,
+      post.titulo,
+      `${post.visualizacoes || 0} visualizações`,
+      novo ? 'publicação nova' : null,
+    ].filter(Boolean).join('. ');
 
     return (
       <TouchableOpacity
@@ -357,20 +378,49 @@ export default function Index({ navigation, route }: any) {
           : visualizarPost(post)
         }
         activeOpacity={0.85}
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={a11yLabel}
+        accessibilityHint={
+          modoEdicao && isSuperAdmin
+            ? 'Toque duplo para editar este post'
+            : 'Toque duplo para abrir o post'
+        }
       >
         {post.capa
-          ? <Image source={{ uri: post.capa }} style={StyleSheet.absoluteFillObject} />
+          ? <Image
+              source={{ uri: post.capa }}
+              style={StyleSheet.absoluteFillObject}
+              // ✅ Acessibilidade #5 — imagem decorativa (título já lido pelo card)
+              accessible={false}
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            />
           : <View style={[StyleSheet.absoluteFillObject, { backgroundColor: CORES.azulEscuro }]} />
         }
-        <View style={[
-          styles.destOverlay,
-          modoEscuro && { backgroundColor: 'rgba(0,0,0,0.55)' }
-        ]} />
+
+        {/* ✅ Acessibilidade #2 — gradiente garante contraste do texto */}
+        {/* sobre qualquer imagem de capa, independente do conteúdo dela. */}
+        <LinearGradient
+          colors={
+            modoEscuro
+              ? ['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.92)']
+              : ['rgba(11,32,70,0.10)', 'rgba(11,32,70,0.55)', 'rgba(11,32,70,0.92)']
+          }
+          locations={[0, 0.45, 1]}
+          style={StyleSheet.absoluteFillObject}
+          pointerEvents="none"
+        />
 
         <View style={styles.destTopo}>
           <View style={[styles.destBadge, { backgroundColor: catBg(config) }]}>
             <MaterialIcons name={config.icon} size={9} color={config.color} />
-            <Text style={[styles.destBadgeText, { color: config.color, fontSize: fs(8) }]}>
+            <Text
+              style={[styles.destBadgeText, { color: config.color, fontSize: fs(8) }]}
+              // ✅ #9 — badge é apenas reforço visual; label já é lido no card
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            >
               {config.label}
             </Text>
           </View>
@@ -408,6 +458,14 @@ export default function Index({ navigation, route }: any) {
     const [, m, d] = item.data.split('-').map(Number);
     const cont    = calcDias(item.data);
 
+    // ✅ Acessibilidade — leitor de tela anuncia o card completo
+    const a11yLabel = [
+      config.label,
+      item.titulo,
+      `dia ${d} de ${MESES[m - 1]}`,
+      cont.texto || null,
+    ].filter(Boolean).join('. ');
+
     return (
       <TouchableOpacity
         style={[
@@ -416,8 +474,16 @@ export default function Index({ navigation, route }: any) {
         ]}
         onPress={() => { setEventoSelecionado(item); setModalEvento(true); }}
         activeOpacity={0.85}
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={a11yLabel}
+        accessibilityHint="Toque duplo para ver detalhes do evento"
       >
-        <View style={[styles.agData, { backgroundColor: catBg(config) }]}>
+        <View
+          style={[styles.agData, { backgroundColor: catBg(config) }]}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
           <Text style={[styles.agDataDia, { color: config.color, fontSize: fs(17) }]}>
             {String(d).padStart(2,'0')}
           </Text>
@@ -444,20 +510,35 @@ export default function Index({ navigation, route }: any) {
           <Text style={[styles.agTitulo, { color: C.azulEscuro, fontSize: fs(13) }]} numberOfLines={1}>
             {item.titulo}
           </Text>
-          <Text style={[styles.agMeta, { color: C.textoSec, fontSize: fs(10) }]}>
+          {/* ✅ #1 — texto secundário com contraste reforçado */}
+          <Text style={[styles.agMeta, { color: textoSecAcc, fontSize: fs(10) }]}>
             {item.fonte === 'lembrete'
               ? 'Meu lembrete pessoal'
               : `Agenda escolar · ${(item.series || []).join(' · ')}`}
           </Text>
         </View>
 
-        <Ionicons name="chevron-forward" size={14} color={C.cinzaClaro} />
+        <Ionicons
+          name="chevron-forward"
+          size={14}
+          color={C.cinzaClaro}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        />
       </TouchableOpacity>
     );
   };
 
-  const TabItem = ({ icon, label, onPress, ativo }: any) => (
-    <TouchableOpacity style={styles.tabItem} onPress={onPress}>
+  // ── Tab item (com label visível para todas as abas, inclusive central) ──
+  const TabItem = ({ icon, label, onPress, ativo, accessibilityHint }: any) => (
+    <TouchableOpacity
+      style={styles.tabItem}
+      onPress={onPress}
+      accessibilityRole="tab"
+      accessibilityLabel={label}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ selected: !!ativo }}
+    >
       <Ionicons
         name={icon}
         size={22}
@@ -485,10 +566,19 @@ export default function Index({ navigation, route }: any) {
         styles.navbar,
         { paddingTop: insets.top, backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }
       ]}>
-        <View style={styles.logoWrap}>
-          <View style={styles.dotAmarelo} />
+        <View
+          style={styles.logoWrap}
+          accessible
+          accessibilityRole="header"
+          accessibilityLabel="JUMO"
+        >
+          <View
+            style={styles.dotAmarelo}
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+          />
           {/* Logo: cor da identidade — JU adapta, MO sempre rosa */}
-          <Text style={[styles.logoText, { fontSize: fs(26) }]}>
+          <Text style={[styles.logoText, { fontSize: fs(26) }]} importantForAccessibility="no">
             <Text style={{ color: C.azulEscuro }}>JU</Text>
             <Text style={{ color: CORES.rosa }}>MO</Text>
           </Text>
@@ -498,6 +588,10 @@ export default function Index({ navigation, route }: any) {
           {temPermissaoDeStaff && (
             <TouchableOpacity
               onPress={() => setModoEdicao(!modoEdicao)}
+              hitSlop={HIT_SLOP_SM}
+              accessibilityRole="switch"
+              accessibilityLabel={modoEdicao ? 'Desativar modo editor' : 'Ativar modo editor'}
+              accessibilityState={{ checked: modoEdicao }}
               style={[
                 styles.btnEdit,
                 { backgroundColor: C.branco, borderColor: C.cinzaClaro },
@@ -519,15 +613,27 @@ export default function Index({ navigation, route }: any) {
             </TouchableOpacity>
           )}
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.btnSino, { backgroundColor: C.fundo }]}
             onPress={() => setModalNotif(true)}
+            hitSlop={HIT_SLOP_SM}
+            accessibilityRole="button"
+            accessibilityLabel={
+              notificacoes.length > 0
+                ? `Notificações, ${notificacoes.length} ${notificacoes.length === 1 ? 'nova' : 'novas'}`
+                : 'Notificações'
+            }
+            accessibilityHint="Toque duplo para ver suas notificações"
           >
             <Ionicons name="notifications-outline" size={18} color={C.azulEscuro} />
             {notificacoes.length > 0 && (
-              <View style={[styles.dotNotif, { borderColor: C.branco, backgroundColor: CORES.rosa }]}>
-                <Text style={{ color: '#FFF', fontSize: 8, fontFamily: F.bold, textAlign: 'center' }}>
-                  {notificacoes.length}
+              <View
+                style={[styles.dotNotifBadge, { borderColor: C.branco, backgroundColor: CORES.rosa }]}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+              >
+                <Text style={styles.dotNotifText}>
+                  {notificacoes.length > 9 ? '9+' : notificacoes.length}
                 </Text>
               </View>
             )}
@@ -539,9 +645,19 @@ export default function Index({ navigation, route }: any) {
               { borderColor: C.azulEscuro, backgroundColor: C.cinzaClaro }
             ]}
             onPress={() => navigation.navigate('Perfil', { uid: userData?.uid })}
+            hitSlop={HIT_SLOP_SM}
+            accessibilityRole="button"
+            accessibilityLabel={`Perfil de ${primeiroNome}`}
+            accessibilityHint="Toque duplo para abrir seu perfil"
           >
             {userData?.foto
-              ? <Image source={{ uri: userData.foto }} style={styles.avatarImg} />
+              ? <Image
+                  source={{ uri: userData.foto }}
+                  style={styles.avatarImg}
+                  accessible={false}
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
+                />
               : <View style={styles.avatarPlaceholder}>
                   <MaterialIcons name="person" size={20} color={C.azulEscuro} />
                 </View>
@@ -566,18 +682,28 @@ export default function Index({ navigation, route }: any) {
       >
 
         {/* SAUDAÇÃO */}
-        <View style={styles.saudacaoWrap}>
-          <Text style={[styles.saudacaoTexto, { color: C.azulEscuro, fontSize: fs(22) }]}>
+        <View
+          style={styles.saudacaoWrap}
+          accessible
+          accessibilityRole="header"
+          accessibilityLabel={`Olá, ${primeiroNome}. O que você vai explorar hoje?`}
+        >
+          <Text style={[styles.saudacaoTexto, { color: C.azulEscuro, fontSize: fs(22) }]} importantForAccessibility="no">
             O que você vai explorar hoje,{'\n'}
             <Text style={[styles.saudacaoNome, { color: C.azulEscuro }]}>{primeiroNome}?</Text>
           </Text>
         </View>
 
         {modoEdicao && (
-          <View style={[
-            styles.alertEdicao,
-            { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
-          ]}>
+          <View
+            style={[
+              styles.alertEdicao,
+              { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
+            ]}
+            accessible
+            accessibilityRole="alert"
+            accessibilityLabel="Modo editor ativado"
+          >
             <Ionicons
               name="alert-circle"
               size={15}
@@ -594,8 +720,9 @@ export default function Index({ navigation, route }: any) {
 
         {/* ═══ DESTAQUES ═══ */}
         <View style={styles.secaoHeader}>
-          <View>
-            <Text style={[styles.secaoEyebrow, { color: C.textoSec, fontSize: fs(10) }]}>
+          <View accessible accessibilityRole="header">
+            {/* ✅ #1 — eyebrow com contraste reforçado */}
+            <Text style={[styles.secaoEyebrow, { color: textoSecAcc, fontSize: fs(10) }]}>
               EM DESTAQUE
             </Text>
             <Text style={[styles.secaoTituloPequeno, { color: C.azulEscuro, fontSize: fs(16) }]}>
@@ -608,6 +735,9 @@ export default function Index({ navigation, route }: any) {
               <TouchableOpacity
                 style={styles.btnNovoPost}
                 onPress={() => navigation.navigate('EditorPost', { categoria: 'destaque' })}
+                hitSlop={HIT_SLOP_MD}
+                accessibilityRole="button"
+                accessibilityLabel="Criar novo post"
               >
                 <MaterialIcons name="add" size={16} color="#FFF" />
               </TouchableOpacity>
@@ -616,6 +746,11 @@ export default function Index({ navigation, route }: any) {
               style={[styles.navDestBtn, { backgroundColor: C.fundo, borderColor: C.cinzaClaro }]}
               onPress={() => irParaSlide(destaqueIdx - 1)}
               disabled={slidesDestaque.length <= 1}
+              // ✅ Acessibilidade #4 — área de toque expandida pra 44+px sem mudar o visual
+              hitSlop={HIT_SLOP_MD}
+              accessibilityRole="button"
+              accessibilityLabel="Slide anterior"
+              accessibilityState={{ disabled: slidesDestaque.length <= 1 }}
             >
               <Ionicons name="chevron-back" size={14} color={C.textoSec} />
             </TouchableOpacity>
@@ -629,6 +764,10 @@ export default function Index({ navigation, route }: any) {
               ]}
               onPress={() => irParaSlide(destaqueIdx + 1)}
               disabled={slidesDestaque.length <= 1}
+              hitSlop={HIT_SLOP_MD}
+              accessibilityRole="button"
+              accessibilityLabel="Próximo slide"
+              accessibilityState={{ disabled: slidesDestaque.length <= 1 }}
             >
               <Ionicons
                 name="chevron-forward"
@@ -660,20 +799,38 @@ export default function Index({ navigation, route }: any) {
               )}
             />
 
-            <View style={styles.indicadores}>
-              {slidesDestaque.map((_, i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.indicador,
-                    { backgroundColor: C.cinzaClaro },
-                    i === destaqueIdx && {
-                      width: 18,
-                      backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro
-                    }
-                  ]}
-                />
-              ))}
+            {/* ✅ Acessibilidade #3 — indicadores tappáveis com área de toque ≥44px */}
+            <View
+              style={styles.indicadores}
+              accessibilityRole="tablist"
+              accessibilityLabel="Navegação do carrossel"
+            >
+              {slidesDestaque.map((_, i) => {
+                const ativo = i === destaqueIdx;
+                return (
+                  <TouchableOpacity
+                    key={i}
+                    onPress={() => irParaSlide(i)}
+                    hitSlop={HIT_SLOP_DOT}
+                    activeOpacity={0.7}
+                    style={styles.indicadorTouch}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Slide ${i + 1} de ${slidesDestaque.length}`}
+                    accessibilityState={{ selected: ativo }}
+                  >
+                    <View
+                      style={[
+                        styles.indicador,
+                        { backgroundColor: C.cinzaClaro },
+                        ativo && {
+                          width: 18,
+                          backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro
+                        }
+                      ]}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </>
         ) : (
@@ -681,14 +838,22 @@ export default function Index({ navigation, route }: any) {
             styles.destEmpty,
             { backgroundColor: C.branco, borderColor: C.cinzaClaro }
           ]}>
-            <Ionicons name="newspaper-outline" size={32} color={C.cinzaClaro} />
-            <Text style={[styles.destEmptyText, { color: C.textoSec, fontSize: fs(13) }]}>
+            <Ionicons
+              name="newspaper-outline"
+              size={32}
+              color={C.cinzaClaro}
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            />
+            <Text style={[styles.destEmptyText, { color: textoSecAcc, fontSize: fs(13) }]}>
               Nenhum post recente.
             </Text>
             {modoEdicao && isSuperAdmin && (
               <TouchableOpacity
                 style={styles.btnPrimeiroPost}
                 onPress={() => navigation.navigate('EditorPost', { categoria: 'destaque' })}
+                accessibilityRole="button"
+                accessibilityLabel="Criar primeiro post"
               >
                 <MaterialIcons name="add" size={14} color="#FFF" />
                 <Text style={[styles.btnPrimeiroPostText, { fontSize: fs(12) }]}>
@@ -701,12 +866,17 @@ export default function Index({ navigation, route }: any) {
 
         {/* ═══ AGENDA ═══ */}
         <View style={[styles.secaoHeader, { marginTop: 28 }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={[styles.iconAgendaWrap, { backgroundColor: C.cinzaClaro }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }} accessible accessibilityRole="header">
+            <View
+              style={[styles.iconAgendaWrap, { backgroundColor: C.cinzaClaro }]}
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            >
               <Ionicons name="calendar" size={14} color={C.azulEscuro} />
             </View>
             <View>
-              <Text style={[styles.secaoEyebrow, { color: C.textoSec, fontSize: fs(10) }]}>
+              {/* ✅ #1 — eyebrow com contraste reforçado */}
+              <Text style={[styles.secaoEyebrow, { color: textoSecAcc, fontSize: fs(10) }]}>
                 PRÓXIMOS 7 DIAS
               </Text>
               <Text style={[styles.secaoTituloPequeno, { color: C.azulEscuro, fontSize: fs(16) }]}>
@@ -716,10 +886,14 @@ export default function Index({ navigation, route }: any) {
           </View>
 
           {agendaItens.length > 0 && (
-            <View style={[
-              styles.contagemBadge,
-              { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
-            ]}>
+            <View
+              style={[
+                styles.contagemBadge,
+                { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
+              ]}
+              accessible
+              accessibilityLabel={`${agendaItens.length} ${agendaItens.length === 1 ? 'evento' : 'eventos'} nos próximos 7 dias`}
+            >
               <Text style={[
                 styles.contagemBadgeText,
                 { color: modoEscuro ? CORES.azulEscuro : '#FFF', fontSize: fs(11) }
@@ -732,9 +906,10 @@ export default function Index({ navigation, route }: any) {
 
         {/* Filtro admin */}
         {isAdmin && (
-          <View style={styles.filtroSerieRow}>
+          <View style={styles.filtroSerieRow} accessibilityRole="tablist">
             {['todas','1º','2º','3º'].map(s => {
               const ativo = serieFiltroAdm === s;
+              const label = s === 'todas' ? 'Todas' : `${s} Ano`;
               return (
                 <TouchableOpacity
                   key={s}
@@ -747,13 +922,16 @@ export default function Index({ navigation, route }: any) {
                     }
                   ]}
                   onPress={() => setSerieFiltroAdm(s)}
+                  accessibilityRole="tab"
+                  accessibilityLabel={`Filtro: ${label}`}
+                  accessibilityState={{ selected: ativo }}
                 >
                   <Text style={[
                     styles.filtroSerieText,
-                    { color: C.textoSec, fontSize: fs(12) },
+                    { color: textoSecAcc, fontSize: fs(12) },
                     ativo && { color: modoEscuro ? CORES.azulEscuro : '#FFF' }
                   ]}>
-                    {s === 'todas' ? 'Todas' : `${s} Ano`}
+                    {label}
                   </Text>
                 </TouchableOpacity>
               );
@@ -779,13 +957,18 @@ export default function Index({ navigation, route }: any) {
             styles.agEmpty,
             { backgroundColor: C.branco, borderColor: C.cinzaClaro }
           ]}>
-            <View style={[styles.agEmptyIcon, { backgroundColor: C.fundo }]}>
+            {/* ✅ Acessibilidade #7 — emoji decorativo, oculto do leitor de tela */}
+            <View
+              style={[styles.agEmptyIcon, { backgroundColor: C.fundo }]}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
               <Text style={{ fontSize: 28 }}>😎</Text>
             </View>
             <Text style={[styles.agEmptyTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
               Nada agendado por aqui
             </Text>
-            <Text style={[styles.agEmptySub, { color: C.textoSec, fontSize: fs(12) }]}>
+            <Text style={[styles.agEmptySub, { color: textoSecAcc, fontSize: fs(12) }]}>
               Aproveite a folga ou adicione um lembrete no calendário!
             </Text>
             <TouchableOpacity
@@ -793,6 +976,9 @@ export default function Index({ navigation, route }: any) {
               onPress={() => navigation.navigate('Calendario', {
                 uid: userData?.uid, tipo: userData?.tipo, turma: userData?.turma
               })}
+              accessibilityRole="button"
+              accessibilityLabel="Abrir calendário"
+              accessibilityHint="Vai para a tela completa da agenda"
             >
               <Text style={[styles.btnAbrirCalendarioText, { color: C.azulEscuro, fontSize: fs(12) }]}>
                 Abrir calendário
@@ -806,47 +992,102 @@ export default function Index({ navigation, route }: any) {
       </ScrollView>
 
       {/* ═══ TAB BAR ═══ */}
-      <View style={[
-        styles.tabBar,
-        { paddingBottom: insets.bottom, backgroundColor: C.branco, borderTopColor: C.cinzaClaro }
-      ]}>
-        <TabItem icon="home"             label="Início"  ativo onPress={() => {}} />
-        <TabItem icon="calendar-outline" label="Agenda"        onPress={() => navigation.navigate('Calendario', { uid: userData?.uid, tipo: userData?.tipo, turma: userData?.turma })} />
+      <View
+        style={[
+          styles.tabBar,
+          { paddingBottom: insets.bottom, backgroundColor: C.branco, borderTopColor: C.cinzaClaro }
+        ]}
+        accessibilityRole="tablist"
+        accessibilityLabel="Navegação principal"
+      >
+        <TabItem
+          icon="home"
+          label="Início"
+          ativo
+          onPress={() => {}}
+          accessibilityHint="Você está na tela inicial"
+        />
+        <TabItem
+          icon="calendar-outline"
+          label="Agenda"
+          onPress={() => navigation.navigate('Calendario', { uid: userData?.uid, tipo: userData?.tipo, turma: userData?.turma })}
+          accessibilityHint="Abre o calendário completo"
+        />
 
+        {/* ✅ Acessibilidade #6 — botão central agora tem label visível + accessibilityLabel */}
         <View style={styles.centerTab}>
           <TouchableOpacity
             style={[styles.centerBtn, { borderColor: C.branco }]}
             onPress={() => navigation.navigate('Match', { uid: userData?.uid })}
+            accessibilityRole="button"
+            accessibilityLabel="Match"
+            accessibilityHint="Abre a tela do Match"
           >
             <Ionicons name="heart" size={22} color="#FFF" />
           </TouchableOpacity>
+          <Text style={[styles.tabLabel, styles.centerLabel, { color: CORES.rosa, fontSize: fs(10) }]}>
+            Match
+          </Text>
         </View>
 
-        <TabItem icon="document-text-outline" label="Resumos" onPress={() => navigation.navigate('Resumos', { uid: userData?.uid })} />
-        <TabItem icon="ellipsis-horizontal" label="Mais"    onPress={() => setMiniMenuAberto(true)} />
+        <TabItem
+          icon="document-text-outline"
+          label="Resumos"
+          onPress={() => navigation.navigate('Resumos', { uid: userData?.uid })}
+          accessibilityHint="Abre a tela de resumos"
+        />
+        <TabItem
+          icon="ellipsis-horizontal"
+          label="Mais"
+          onPress={() => setMiniMenuAberto(true)}
+          accessibilityHint="Abre o menu com mais opções"
+        />
       </View>
 
       {/* MENU MAIS */}
-      <Modal visible={miniMenuAberto} transparent animationType="fade">
-        <TouchableWithoutFeedback onPress={() => setMiniMenuAberto(false)}>
+      <Modal
+        visible={miniMenuAberto}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMiniMenuAberto(false)}
+      >
+        <TouchableWithoutFeedback
+          onPress={() => setMiniMenuAberto(false)}
+          accessibilityLabel="Fechar menu"
+        >
           <View style={styles.menuOverlay}>
             <TouchableWithoutFeedback>
-              <View style={[styles.menuPopup, { backgroundColor: C.branco }]}>
-                <TouchableOpacity style={styles.menuItem} onPress={() => { setMiniMenuAberto(false); navigation.navigate('Contatos'); }}>
+              <View style={[styles.menuPopup, { backgroundColor: C.branco }]} accessibilityRole="menu">
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => { setMiniMenuAberto(false); navigation.navigate('Contatos'); }}
+                  accessibilityRole="menuitem"
+                  accessibilityLabel="Contatos"
+                >
                   <Ionicons name="call" size={17} color={C.azulEscuro} />
                   <Text style={[styles.menuItemText, { color: C.azulEscuro, fontSize: fs(14) }]}>
                     Contatos
                   </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.menuItem} onPress={() => { setMiniMenuAberto(false); navigation.navigate('Ajuda'); }}>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => { setMiniMenuAberto(false); navigation.navigate('Ajuda'); }}
+                  accessibilityRole="menuitem"
+                  accessibilityLabel="Ajuda"
+                >
                   <Ionicons name="help-circle" size={17} color={C.azulEscuro} />
                   <Text style={[styles.menuItemText, { color: C.azulEscuro, fontSize: fs(14) }]}>
                     Ajuda
                   </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.menuItem} onPress={() => { setMiniMenuAberto(false); navigation.navigate('Configuracoes', { uid: userData?.uid }); }}>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => { setMiniMenuAberto(false); navigation.navigate('Configuracoes', { uid: userData?.uid }); }}
+                  accessibilityRole="menuitem"
+                  accessibilityLabel="Configurações"
+                >
                   <Ionicons name="settings" size={17} color={C.azulEscuro} />
                   <Text style={[styles.menuItemText, { color: C.azulEscuro, fontSize: fs(14) }]}>
                     Configurações
@@ -856,7 +1097,12 @@ export default function Index({ navigation, route }: any) {
                 {isAdmin && (
                   <>
                     <View style={[styles.menuDivider, { backgroundColor: C.cinzaClaro }]} />
-                    <TouchableOpacity style={styles.menuItem} onPress={() => { setMiniMenuAberto(false); navigation.navigate('Admin', { uid: userData?.uid }); }}>
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={() => { setMiniMenuAberto(false); navigation.navigate('Admin', { uid: userData?.uid }); }}
+                      accessibilityRole="menuitem"
+                      accessibilityLabel="Painel Admin"
+                    >
                       <Ionicons name="shield-checkmark" size={17} color={C.azulEscuro} />
                       <Text style={[styles.menuItemText, { color: C.azulEscuro, fontSize: fs(14) }]}>
                         Painel Admin
@@ -866,7 +1112,12 @@ export default function Index({ navigation, route }: any) {
                 )}
 
                 <View style={[styles.menuDivider, { backgroundColor: C.cinzaClaro }]} />
-                <TouchableOpacity style={styles.menuItem} onPress={handleSair}>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={handleSair}
+                  accessibilityRole="menuitem"
+                  accessibilityLabel="Sair da conta"
+                >
                   <Ionicons name="log-out" size={17} color="#FF5252" />
                   <Text style={[styles.menuItemText, { color: '#FF5252', fontSize: fs(14) }]}>
                     Sair
@@ -879,10 +1130,19 @@ export default function Index({ navigation, route }: any) {
       </Modal>
 
       {/* ═══ MINI MODAL EVENTO ═══ */}
-      <Modal visible={modalEvento} transparent animationType="slide">
+      <Modal
+        visible={modalEvento}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalEvento(false)}
+      >
         <View style={styles.evModalOverlay}>
           <View style={[styles.evModalSheet, { backgroundColor: C.branco }]}>
-            <View style={[styles.evModalHandle, { backgroundColor: C.cinzaClaro }]} />
+            <View
+              style={[styles.evModalHandle, { backgroundColor: C.cinzaClaro }]}
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            />
 
             {eventoSelecionado && (() => {
               const config   = TIPO_CONFIG[eventoSelecionado.tipo] || TIPO_CONFIG.Evento;
@@ -894,18 +1154,29 @@ export default function Index({ navigation, route }: any) {
               return (
                 <ScrollView showsVerticalScrollIndicator={false}>
                   <View style={[styles.evHero, { backgroundColor: catBg(config) }]}>
-                    <View style={[styles.evHeroIcon, { backgroundColor: config.color }]}>
+                    <View
+                      style={[styles.evHeroIcon, { backgroundColor: config.color }]}
+                      accessibilityElementsHidden
+                      importantForAccessibility="no"
+                    >
                       <Ionicons name={config.icon} size={26} color="#FFF" />
                     </View>
                     <Text style={[styles.evHeroTipo, { color: config.color, fontSize: fs(11) }]}>
                       {config.label}
                     </Text>
-                    <Text style={[styles.evHeroTitulo, { color: C.azulEscuro, fontSize: fs(20) }]}>
+                    <Text
+                      style={[styles.evHeroTitulo, { color: C.azulEscuro, fontSize: fs(20) }]}
+                      accessibilityRole="header"
+                    >
                       {eventoSelecionado.titulo}
                     </Text>
 
                     {cont.texto !== '' && (
-                      <View style={[styles.evContagem, { backgroundColor: cont.cor }]}>
+                      <View
+                        style={[styles.evContagem, { backgroundColor: cont.cor }]}
+                        accessible
+                        accessibilityLabel={cont.texto}
+                      >
                         <Ionicons name="time" size={12} color="#FFF" />
                         <Text style={[styles.evContagemText, { fontSize: fs(11) }]}>
                           {cont.texto}
@@ -917,11 +1188,11 @@ export default function Index({ navigation, route }: any) {
                   <View style={styles.evInfoRow}>
                     <View style={[styles.evInfoBox, { backgroundColor: C.fundo }]}>
                       <Ionicons name="calendar" size={15} color={config.color} />
-                      <Text style={[styles.evInfoLabel, { color: C.textoSec, fontSize: fs(9) }]}>DATA</Text>
+                      <Text style={[styles.evInfoLabel, { color: textoSecAcc, fontSize: fs(9) }]}>DATA</Text>
                       <Text style={[styles.evInfoValor, { color: C.azulEscuro, fontSize: fs(15) }]}>
                         {d} de {MESES[m-1]}
                       </Text>
-                      <Text style={[styles.evInfoSub, { color: C.textoSec, fontSize: fs(11) }]}>
+                      <Text style={[styles.evInfoSub, { color: textoSecAcc, fontSize: fs(11) }]}>
                         {diaSem}, {a}
                       </Text>
                     </View>
@@ -931,13 +1202,13 @@ export default function Index({ navigation, route }: any) {
                         size={15}
                         color={config.color}
                       />
-                      <Text style={[styles.evInfoLabel, { color: C.textoSec, fontSize: fs(9) }]}>
+                      <Text style={[styles.evInfoLabel, { color: textoSecAcc, fontSize: fs(9) }]}>
                         {eventoSelecionado.fonte === 'lembrete' ? 'TIPO' : 'SÉRIES'}
                       </Text>
                       <Text style={[styles.evInfoValor, { color: C.azulEscuro, fontSize: fs(15) }]}>
                         {eventoSelecionado.fonte === 'lembrete' ? 'Pessoal' : (eventoSelecionado.series || []).length}
                       </Text>
-                      <Text style={[styles.evInfoSub, { color: C.textoSec, fontSize: fs(11) }]}>
+                      <Text style={[styles.evInfoSub, { color: textoSecAcc, fontSize: fs(11) }]}>
                         {eventoSelecionado.fonte === 'lembrete'
                           ? 'Meu lembrete'
                           : (eventoSelecionado.series || []).join(' · ')}
@@ -947,7 +1218,7 @@ export default function Index({ navigation, route }: any) {
 
                   {eventoSelecionado.descricao ? (
                     <View style={[styles.evDescBox, { backgroundColor: C.fundo }]}>
-                      <Text style={[styles.evDescLabel, { color: C.textoSec, fontSize: fs(9) }]}>
+                      <Text style={[styles.evDescLabel, { color: textoSecAcc, fontSize: fs(9) }]}>
                         DESCRIÇÃO
                       </Text>
                       <Text style={[styles.evDescTexto, { color: C.azulEscuro, fontSize: fs(13) }]}>
@@ -965,6 +1236,8 @@ export default function Index({ navigation, route }: any) {
                           uid: userData?.uid, tipo: userData?.tipo, turma: userData?.turma
                         }), 200);
                       }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Ver no calendário"
                     >
                       <Ionicons name="calendar-outline" size={14} color={C.azulEscuro} />
                       <Text style={[styles.evBtnSecundarioText, { color: C.azulEscuro, fontSize: fs(12) }]}>
@@ -977,6 +1250,8 @@ export default function Index({ navigation, route }: any) {
                         { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
                       ]}
                       onPress={() => setModalEvento(false)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Fechar"
                     >
                       <Text style={[
                         styles.evBtnPrimarioText,
@@ -994,19 +1269,40 @@ export default function Index({ navigation, route }: any) {
       </Modal>
 
       {/* MODAL POST */}
-      <Modal visible={modalVisible} transparent animationType="slide">
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalVisible(false)}
+      >
         <View style={[styles.modalWrap, { backgroundColor: C.fundo }]}>
           <View style={styles.modalCover}>
             {selectedPost?.capa
-              ? <Image source={{ uri: selectedPost.capa }} style={StyleSheet.absoluteFillObject} />
+              ? <Image
+                  source={{ uri: selectedPost.capa }}
+                  style={StyleSheet.absoluteFillObject}
+                  accessible={false}
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
+                />
               : <View style={[StyleSheet.absoluteFillObject, { backgroundColor: CORES.azulEscuro, justifyContent: 'center', alignItems: 'center' }]}>
-                  <Text style={[styles.logoMini, { fontSize: fs(36) }]}>
+                  <Text style={[styles.logoMini, { fontSize: fs(36) }]} importantForAccessibility="no">
                     JU<Text style={{ color: CORES.rosa }}>MO</Text>
                   </Text>
                 </View>
             }
-            <View style={styles.modalCoverOverlay} />
-            <TouchableOpacity style={styles.btnFechar} onPress={() => setModalVisible(false)}>
+            <View
+              style={styles.modalCoverOverlay}
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            />
+            <TouchableOpacity
+              style={styles.btnFechar}
+              onPress={() => setModalVisible(false)}
+              hitSlop={HIT_SLOP_SM}
+              accessibilityRole="button"
+              accessibilityLabel="Fechar post"
+            >
               <Ionicons name="chevron-down" size={26} color="#FFF" />
             </TouchableOpacity>
           </View>
@@ -1028,11 +1324,14 @@ export default function Index({ navigation, route }: any) {
                   ))}
                 </View>
               )}
-              <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(26) }]}>
+              <Text
+                style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(26) }]}
+                accessibilityRole="header"
+              >
                 {selectedPost?.titulo}
               </Text>
               {selectedPost?.subtitulo && (
-                <Text style={[styles.modalSub, { color: C.textoSec, fontSize: fs(15) }]}>
+                <Text style={[styles.modalSub, { color: textoSecAcc, fontSize: fs(15) }]}>
                   {selectedPost.subtitulo}
                 </Text>
               )}
@@ -1052,7 +1351,7 @@ export default function Index({ navigation, route }: any) {
                     <Text style={[styles.autorNome, { color: C.azulEscuro, fontSize: fs(14) }]}>
                       {selectedPost?.autor || 'Gestão JUMO'}
                     </Text>
-                    <Text style={[styles.autorRole, { color: C.textoSec, fontSize: fs(11) }]}>
+                    <Text style={[styles.autorRole, { color: textoSecAcc, fontSize: fs(11) }]}>
                       Autor(a)
                     </Text>
                   </View>
@@ -1077,18 +1376,36 @@ export default function Index({ navigation, route }: any) {
       </Modal>
 
       {/* MODAL NOTIFICAÇÕES */}
-      <Modal visible={modalNotif} transparent animationType="slide">
+      <Modal
+        visible={modalNotif}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalNotif(false)}
+      >
         <View style={[styles.evModalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
           <View style={[styles.evModalSheet, { backgroundColor: C.branco }]}>
-            <View style={[styles.evModalHandle, { backgroundColor: C.cinzaClaro }]} />
-            <Text style={[styles.evHeroTitulo, { color: C.azulEscuro, fontSize: fs(18), marginBottom: 16 }]}>
+            <View
+              style={[styles.evModalHandle, { backgroundColor: C.cinzaClaro }]}
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            />
+            <Text
+              style={[styles.evHeroTitulo, { color: C.azulEscuro, fontSize: fs(18), marginBottom: 16 }]}
+              accessibilityRole="header"
+            >
               Notificações ({notificacoes.length})
             </Text>
 
             {notificacoes.length === 0 ? (
               <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-                <Ionicons name="notifications-off" size={40} color={C.cinzaClaro} />
-                <Text style={[{ color: C.textoSec, fontSize: fs(14), marginTop: 12 }]}>
+                <Ionicons
+                  name="notifications-off"
+                  size={40}
+                  color={C.cinzaClaro}
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
+                />
+                <Text style={[{ color: textoSecAcc, fontSize: fs(14), marginTop: 12 }]}>
                   Nenhuma notificação
                 </Text>
               </View>
@@ -1097,19 +1414,24 @@ export default function Index({ navigation, route }: any) {
                 data={notificacoes}
                 keyExtractor={item => item.id}
                 renderItem={({ item }) => (
-                  <View style={[styles.agCard, { backgroundColor: C.fundo, borderColor: C.cinzaClaro, borderLeftColor: item.tipo === 'lembrete_vencido' ? '#e74c3c' : '#e67e22', marginBottom: 8 }]}>
+                  <View
+                    style={[styles.agCard, { backgroundColor: C.fundo, borderColor: C.cinzaClaro, borderLeftColor: item.tipo === 'lembrete_vencido' ? '#e74c3c' : '#e67e22', marginBottom: 8 }]}
+                    accessible
+                    accessibilityRole="text"
+                    accessibilityLabel={`${item.tipo === 'lembrete_vencido' ? 'Lembrete vencido' : 'Prova próxima'}: ${item.titulo}`}
+                  >
                     <View style={[styles.agData, { backgroundColor: item.tipo === 'lembrete_vencido' ? '#FDECEA' : '#FEF3E7' }]}>
-                      <Ionicons 
-                        name={item.icon} 
-                        size={18} 
-                        color={item.tipo === 'lembrete_vencido' ? '#e74c3c' : '#e67e22'} 
+                      <Ionicons
+                        name={item.icon}
+                        size={18}
+                        color={item.tipo === 'lembrete_vencido' ? '#e74c3c' : '#e67e22'}
                       />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.agTitulo, { color: C.azulEscuro, fontSize: fs(13) }]}>
                         {item.titulo}
                       </Text>
-                      <Text style={[styles.agMeta, { color: C.textoSec, fontSize: fs(10) }]}>
+                      <Text style={[styles.agMeta, { color: textoSecAcc, fontSize: fs(10) }]}>
                         {item.tipo === 'lembrete_vencido' ? '⚠️ Vencido' : '📅 Próximo'}
                       </Text>
                     </View>
@@ -1123,6 +1445,8 @@ export default function Index({ navigation, route }: any) {
             <TouchableOpacity
               style={[styles.evBtnPrimario, { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro, marginTop: 16 }]}
               onPress={() => setModalNotif(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Fechar notificações"
             >
               <Text style={[styles.evBtnPrimarioText, { color: modoEscuro ? CORES.azulEscuro : '#FFF', fontSize: fs(13) }]}>
                 Fechar
@@ -1150,7 +1474,11 @@ const styles = StyleSheet.create({
   navRight:      { flexDirection: 'row', alignItems: 'center', gap: 8 },
   btnEdit:       { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5 },
   btnSino:       { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center', position: 'relative' },
-  dotNotif:      { position: 'absolute', top: 7, right: 7, width: 8, height: 8, borderRadius: 4, backgroundColor: CORES.rosa, borderWidth: 1.5 },
+
+  // ✅ Badge de notificação agora cabe o número (era 8x8 com texto dentro — quebrado)
+  dotNotifBadge: { position: 'absolute', top: -2, right: -2, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 4, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5 },
+  dotNotifText:  { color: '#FFF', fontSize: 9, fontFamily: F.bold, textAlign: 'center', lineHeight: 11 },
+
   avatarBtn:     { width: 36, height: 36, borderRadius: 18, overflow: 'hidden', borderWidth: 2 },
   avatarImg:     { width: '100%', height: '100%' },
   avatarPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center' },
@@ -1181,18 +1509,20 @@ const styles = StyleSheet.create({
 
   slideWrap:     { width, paddingHorizontal: 18, flexDirection: 'row', gap: 10 },
   destCard:      { aspectRatio: 1, borderRadius: 20, padding: 14, justifyContent: 'space-between', overflow: 'hidden', elevation: 4, shadowColor: CORES.azulEscuro, shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
-  destOverlay:   { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(11, 32, 70, 0.45)' },
+  // 🗑 destOverlay removido — substituído por <LinearGradient> dentro do card (correção #2)
   destTopo:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   destBadge:     { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   destBadgeText: { fontFamily: F.black, letterSpacing: 0.6 },
   destNovoBadge: { backgroundColor: CORES.amarelo, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   destNovoText:  { fontFamily: F.black, color: CORES.azulEscuro, letterSpacing: 0.6 },
-  destTitulo:    { fontFamily: F.bold, color: CORES.branco, lineHeight: 18, letterSpacing: -0.2 },
+  destTitulo:    { fontFamily: F.bold, color: CORES.branco, lineHeight: 18, letterSpacing: -0.2, textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   destMeta:      { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  destMetaText:  { color: 'rgba(255,255,255,0.85)', fontFamily: F.semibold },
+  destMetaText:  { color: 'rgba(255,255,255,0.92)', fontFamily: F.semibold, textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   destEditBadge: { position: 'absolute', top: 8, right: 8, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
 
-  indicadores:    { flexDirection: 'row', justifyContent: 'center', gap: 4, marginTop: 12 },
+  indicadores:    { flexDirection: 'row', justifyContent: 'center', gap: 4, marginTop: 12, paddingHorizontal: 18 },
+  // ✅ Wrapper tappável dos pontos — área real >= 44pt (correção #3)
+  indicadorTouch: { width: 44, height: 30, alignItems: 'center', justifyContent: 'center' },
   indicador:      { width: 5, height: 5, borderRadius: 3 },
 
   destEmpty:      { alignItems: 'center', paddingVertical: 40, gap: 10, marginHorizontal: 18, borderRadius: 18, borderWidth: 0.5 },
@@ -1202,7 +1532,7 @@ const styles = StyleSheet.create({
 
   // FILTRO ADMIN
   filtroSerieRow:     { flexDirection: 'row', gap: 8, paddingHorizontal: 18, marginBottom: 10 },
-  filtroSerieBtn:     { flex: 1, paddingVertical: 8, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
+  filtroSerieBtn:     { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1, alignItems: 'center' }, // 8→10 p/ folga vertical
   filtroSerieText:    { fontFamily: F.bold },
 
   // AGENDA
@@ -1224,7 +1554,7 @@ const styles = StyleSheet.create({
   agEmptyIcon:    { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center' },
   agEmptyTitulo:  { fontFamily: F.black },
   agEmptySub:     { textAlign: 'center', lineHeight: 18, fontFamily: F.regular },
-  btnAbrirCalendario:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, marginTop: 4 },
+  btnAbrirCalendario:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, marginTop: 4 }, // 8→10
   btnAbrirCalendarioText: { fontFamily: F.bold },
 
   // TAB BAR
@@ -1233,6 +1563,8 @@ const styles = StyleSheet.create({
   tabLabel:      { fontFamily: F.semibold, marginTop: 3 },
   centerTab:     { flex: 1, alignItems: 'center', justifyContent: 'center' },
   centerBtn:     { width: 54, height: 54, borderRadius: 27, backgroundColor: CORES.rosa, justifyContent: 'center', alignItems: 'center', marginTop: -22, borderWidth: 4, elevation: 6, shadowColor: CORES.rosa, shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
+  // ✅ Label visível abaixo do botão central, alinhada com o padrão das outras abas (correção #6)
+  centerLabel:   { marginTop: -2, fontFamily: F.bold },
 
   // MENU MAIS
   menuOverlay:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.08)' },

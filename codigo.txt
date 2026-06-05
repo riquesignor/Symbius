@@ -2,3 +2,15 @@ git stash ; git fetch origin ; git merge origin/João ; git stash pop ; npm inst
 git add .
 git commit -m "feat: atualizando minha branch com as melhorias"
 git push origin master
+
+# 1. Instalar a ferramenta de build do Expo (só precisa se não tiver na máquina)
+npm install -g eas-cli
+
+# 2. Fazer login na sua conta do Expo
+eas login
+
+# 3. Configurar o projeto para Android (só precisa rodar uma vez por projeto)
+eas build:configure
+
+# 4. O comando sagrado para gerar o arquivo APK instalável
+eas build -p android --profile preview
