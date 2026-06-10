@@ -15,6 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppSettings } from '../contexts/AppSettingsContext';
+// ✅ GAMIFICAÇÃO — Import do service
+import { awardXpMatch } from '../services/gamificationService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -276,6 +278,21 @@ export default function Match({ navigation, route }: any) {
     setMateriasFiltro(prev =>
       prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]
     );
+  };
+
+  // ✅ GAMIFICAÇÃO — Finalizar match com avaliação 5⭐
+  const finalizarMatchComAvaliacao = async (outroUid: string, avaliacao: number) => {
+    if (avaliacao === 5 && meuUid) {
+      // Quando o usuário avalia com 5 ⭐, award XP
+      const sucesso = await awardXpMatch(meuUid);
+      if (sucesso) {
+        // Mostrar toast de sucesso
+        console.log('✅ Match concluído com sucesso! +50 XP, +15 Moedas');
+        // TODO: Adicionar toast visual aqui
+      } else {
+        console.warn('⚠️ Não foi possível registrar XP (limite diário atingido?)');
+      }
+    }
   };
 
   // ── Matches ordenados pela última mensagem ──

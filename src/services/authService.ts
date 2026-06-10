@@ -29,14 +29,20 @@ export const cadastrarNoJumo = async (
       // mesmo quando a senha for redefinida manualmente no banco.
       senha: senha,
       ra: ra.toUpperCase().trim() || null,
-      tipo: perfilTipo, 
+      tipo: perfilTipo,
       turma: turmaFormatada,
       status: 0,
       ensinar: eAluno ? [] : null,
       melhorar: eAluno ? [] : null,
       ajudas_realizadas: eAluno ? 0 : null,
-      foto: null, 
+      foto: null,
       bio: "",
+      // ✅ GAMIFICAÇÃO — Inicializa XP, Moedas e tracker diário
+      xp_total: 0,
+      moedas_saldo: 0,
+      matches_bonificados_hoje: 0,
+      ultimo_reset_diario: new Date(),
+      ultimo_acesso: new Date(),
     };
 
     await setDoc(doc(db, "usuarios", user.uid), dadosUsuario);

@@ -13,6 +13,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Polygon, Circle, Line, Text as SvgText, G } from 'react-native-svg';
 import { useAppSettings } from '../contexts/AppSettingsContext';
+// ✅ GAMIFICAÇÃO
+import { calcularFaseCoruja, calcularProgressoXp } from '../utils/gamification';
 
 // ── Fonte Poppins ──
 const F = {
@@ -383,6 +385,90 @@ export default function Perfil({ navigation, route }: any) {
                 </View>
               )}
             </View>
+          </View>
+        </FadeInView>
+
+        {/* ════════════════════════════════════════════════
+            XP & MOEDAS (GAMIFICAÇÃO MVP)
+        ════════════════════════════════════════════════ */}
+        <FadeInView delay={100}>
+          <View style={styles.secao}>
+            <Text style={[styles.secaoTituloPrincipal, { color: C.azulEscuro, fontSize: fs(15) }]}>
+              Progresso
+            </Text>
+
+            {usuario ? (
+              <View style={[styles.xpCard, { backgroundColor: C.branco }]}>
+                {/* Fase Coruja + XP */}
+                <View style={styles.xpCardTop}>
+                  <View style={styles.corujhBox}>
+                    <Text style={[styles.corujaEmoji, { fontSize: fs(48) }]}>
+                      {calcularFaseCoruja(usuario.xp_total || 0).icone}
+                    </Text>
+                    <Text style={[styles.corujaLabel, { color: C.azulEscuro, fontSize: fs(12) }]}>
+                      {calcularFaseCoruja(usuario.xp_total || 0).label}
+                    </Text>
+                  </View>
+
+                  {/* XP Info */}
+                  <View style={styles.xpInfo}>
+                    <View style={styles.xpRow}>
+                      <Text style={[styles.xpLabel, { color: C.textoSec, fontSize: fs(11) }]}>
+                        EXPERIÊNCIA
+                      </Text>
+                      <Text style={[styles.xpNumero, { color: C.azulEscuro, fontSize: fs(16) }]}>
+                        {usuario.xp_total || 0}
+                      </Text>
+                    </View>
+
+                    {/* Progress Bar */}
+                    <View style={[styles.xpBarBg, { backgroundColor: C.fundo }]}>
+                      <View
+                        style={[
+                          styles.xpBarFill,
+                          {
+                            backgroundColor: CORES.amarelo,
+                            width: `${calcularProgressoXp(usuario.xp_total || 0).percentual}%`,
+                          },
+                        ]}
+                      />
+                    </View>
+
+                    <Text style={[styles.xpFaltam, { color: C.textoSec, fontSize: fs(10) }]}>
+                      {calcularProgressoXp(usuario.xp_total || 0).faltam} XP até próximo nível
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Moedas */}
+                <View style={[styles.xpCardDivisor, { backgroundColor: C.cinzaClaro }]} />
+                <View style={styles.xpCardBottom}>
+                  <View style={styles.moedaItem}>
+                    <Text style={{ fontSize: fs(24) }}>🌱</Text>
+                    <View>
+                      <Text style={[styles.moedaLabel, { color: C.textoSec, fontSize: fs(11) }]}>
+                        Sementes
+                      </Text>
+                      <Text style={[styles.moedaNumero, { color: C.azulEscuro, fontSize: fs(18) }]}>
+                        {usuario.moedas_saldo || 0}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.moedaItem}>
+                    <Text style={{ fontSize: fs(24) }}>📍</Text>
+                    <View>
+                      <Text style={[styles.moedaLabel, { color: C.textoSec, fontSize: fs(11) }]}>
+                        Matches Hoje
+                      </Text>
+                      <Text style={[styles.moedaNumero, { color: C.azulEscuro, fontSize: fs(18) }]}>
+                        {usuario.matches_bonificados_hoje || 0}/3
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            ) : null}
           </View>
         </FadeInView>
 
@@ -974,4 +1060,23 @@ const styles = StyleSheet.create({
   confirmBtns: { flexDirection: 'row', gap: 8, width: '100%' },
   confirmBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
   confirmBtnText: { fontFamily: F.black },
+
+  // XP & GAMIFICAÇÃO
+  xpCard: { borderRadius: 18, overflow: 'hidden', elevation: 2, shadowColor: CORES.azulEscuro, shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
+  xpCardTop: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 14 },
+  corujhBox: { alignItems: 'center', gap: 6 },
+  corujaEmoji: { lineHeight: 60 },
+  corujaLabel: { fontFamily: F.bold, letterSpacing: -0.2 },
+  xpInfo: { flex: 1, gap: 8 },
+  xpRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  xpLabel: { fontFamily: F.black, letterSpacing: 0.6 },
+  xpNumero: { fontFamily: F.black },
+  xpBarBg: { height: 8, borderRadius: 4, overflow: 'hidden' },
+  xpBarFill: { height: 8, borderRadius: 4 },
+  xpFaltam: { fontFamily: F.regular },
+  xpCardDivisor: { height: 1 },
+  xpCardBottom: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12, gap: 16 },
+  moedaItem: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  moedaLabel: { fontFamily: F.medium },
+  moedaNumero: { fontFamily: F.black },
 });
