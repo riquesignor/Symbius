@@ -29,7 +29,8 @@ import Chat            from './src/screens/Chat';
 import Calendario      from './src/screens/Calendario';
 import Admin           from './src/screens/Admin';
 import Match           from './src/screens/Match';
-import Configuracoes from './src/screens/Configuracoes';
+import Configuracoes   from './src/screens/Configuracoes';
+import PerfilPublico   from 'src/screens/Perfilpublico';
 
 const Stack = createStackNavigator();
 
@@ -186,6 +187,7 @@ export default function App() {
           <Stack.Screen name="Admin"           component={Admin} />
           <Stack.Screen name="Match"           component={Match} />
           <Stack.Screen name="Configuracoes"   component={Configuracoes} />
+          <Stack.Screen name="PerfilPublico" component=  {PerfilPublico} />
         </Stack.Navigator>
       </NavigationContainer>
     </AppSettingsProvider>

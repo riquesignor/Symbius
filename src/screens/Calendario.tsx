@@ -135,9 +135,6 @@ export default function Calendario({ navigation, route }: any) {
 
   // ✅ NOVO — Pega configs globais do contexto
   const { cores: C, fonteScale, modoEscuro } = useAppSettings();
-  
-  // ✅ ADICIONAR: pegar settings de notificação
-  const { notifGeral, notifEventos, somNotif, vibracao } = useAppSettings();
 
   // ✅ NOVO — Helper de fonte escalada (deixa o JSX mais limpo)
   const fs = (size: number) => size * fonteScale;
@@ -145,8 +142,6 @@ export default function Calendario({ navigation, route }: any) {
   const uid     = route?.params?.uid;
 
   const [userRA, setUserRA] = useState<string | null>(null);
-
-  const ultimosEventosRef = useRef<Set<string>>(new Set()); // ✅ ADICIONAR: rastrear eventos notificados
 
 // Fetch do RA do usuário ao montar
 useEffect(() => {
@@ -298,89 +293,8 @@ useEffect(() => {
   } catch (e) { console.error('Erro eventos admin:', e); }
 };
 
-  // ✅ ADICIONAR: Ouvir novos eventos em tempo real
-  useEffect(() => {
-    if (isAdmin || !serie) return;
-
-    const unsubs: (() => void)[] = [];
-
-    for (const tipo of Object.keys(TIPO_COLLECTION)) {
-      const config = TIPO_COLLECTION[tipo];
-      const subRef = collection(db, 'eventos_admin', PARENT_DOC, config.sub);
-
-      const q = query(subRef, where('series', 'array-contains', serie));
-
-      const unsub = onSnapshot(q, async (snap) => {
-        snap.docs.forEach(async (d) => {
-          const ev: any = { id: d.id, _sub: config.sub, ...d.data() };
-
-          // É novo? (não estava antes)
-          if (!ultimosEventosRef.current.has(ev.id)) {
-            await notificarNovoEvento(ev);
-            ultimosEventosRef.current.add(ev.id);
-          }
-        });
-      });
-
-      unsubs.push(unsub);
-    }
-
-    return () => unsubs.forEach(u => u());
-  }, [serie, isAdmin, notifGeral, notifEventos, somNotif, vibracao]);
-
-  // ✅ ADICIONAR: FUNÇÃO DE NOTIFICAR NOVO EVENTO
-  const notificarNovoEvento = async (ev: any) => {
-    // 1. Notificações desligadas?
-    if (!notifGeral || !notifEventos) {
-      console.log('📵 Notificações de eventos desligadas');
-      return;
-    }
-
-    // 2. Já notificou esse evento?
-    const chaveDedup = `notif_evt_${ev.id}`;
-    const jaNotificou = await AsyncStorage.getItem(chaveDedup);
-    if (jaNotificou) return;
-
-    // 3. Vibrar
-    if (vibracao) {
-      if (somNotif === 'Leve') {
-        Vibration.vibrate(20);
-      } else if (somNotif === 'Normal') {
-        Vibration.vibrate([30, 10, 30]);
-      } else if (somNotif === 'Forte') {
-        Vibration.vibrate([50, 20, 50, 20, 50]);
-      }
-    }
-
-    // 4. Enviar notificação
-    try {
-      const [, m, d] = ev.data.split('-').map(Number);
-      const contagem = calcularDiasRestantes(ev.data);
-      const corpo = `${ev.titulo} • ${d} de ${MESES[m - 1]}`;
-
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: `📅 ${ev.tipo.toUpperCase()}`,
-          body: corpo,
-          subtitle: contagem.texto,
-          sound: somNotif !== 'Nenhum' ? 'default' : undefined,
-          badge: 1,
-          data: {
-            tipo: 'evento_admin',
-            eventoId: ev.id,
-          },
-        },
-        trigger: null,
-      });
-
-      console.log(`✅ Notif evento: ${ev.titulo}`);
-      
-      // Marcar como notificado
-      await AsyncStorage.setItem(chaveDedup, '1');
-    } catch (e) {
-      console.log('❌ Erro notif evento:', e);
-    }
-  };
+  // 🔔 Notificações de novos eventos agora são tratadas globalmente pelo
+  // NotificacaoProvider (funciona em qualquer tela, sem duplicar).
 
   // ✅ Filtro: mês selecionado + tipo
   const eventosFiltrados = useMemo(() => {

@@ -1,817 +1,929 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from "react";
 import {
-  StyleSheet, Text, View, ScrollView, TouchableOpacity,
-  Image, SafeAreaView, StatusBar, Dimensions, Modal,
-  ActivityIndicator, FlatList, Vibration
-} from 'react-native';
-import { db } from '../config/firebaseConfig';
+  View, Text, TextInput, TouchableOpacity, ScrollView,
+  Platform, StyleSheet, Image, ActivityIndicator,
+  Dimensions, KeyboardAvoidingView, Alert, Vibration
+} from "react-native";
+import { db } from "../config/firebaseConfig";
 import {
-  collection, doc, getDoc, getDocs, query, where,
-  addDoc, updateDoc, setDoc, serverTimestamp, onSnapshot
-} from 'firebase/firestore';
-import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+  collection, addDoc, query, where,
+  orderBy, serverTimestamp, setDoc, updateDoc,
+  doc as firestoreDoc, getDoc, deleteDoc, onSnapshot
+} from "firebase/firestore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+// ✅ ADICIONAR NOTIFICAÇÕES
 import * as Notifications from 'expo-notifications';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppSettings } from '../contexts/AppSettingsContext';
+import { useNotificacao } from '../contexts/NotificacaoProvider';
 
-const { width, height } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+const IMG_MAX = 220;
+const IMG_MIN = 80;
 
-const CORES = {
-  azulEscuro:      '#0B2046',
-  rosa:            '#E51C6A',
-  amarelo:         '#FFC82C',
-  fundo:           '#F5F7FA',
-  cinzaClaro:      '#EAEFF4',
-  textoSecundario: '#8D99AE',
-  branco:          '#FFFFFF',
-  verde:           '#10B981',
-};
-
-const CORES_DARK = {
-  azulEscuro:      '#E0E0E0',
-  rosa:            '#FF5C97',
-  amarelo:         '#FFC82C',
-  fundo:           '#0F1419',
-  cinzaClaro:      '#2A2F36',
-  textoSecundario: '#7A8595',
-  branco:          '#1A1F26',
-  verde:           '#10B981',
-};
-
-const MATERIAS = [
-  'Português', 'Redação', 'Matemática', 'Física', 'Química', 'Biologia',
-  'História', 'Geografia', 'Inglês', 'Filosofia', 'Sociologia',
-];
-
-const getImageUri = (foto: any) => {
-  const padrao = 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
-  if (!foto) return padrao;
-  if (typeof foto === 'string') {
-    if (foto.startsWith('http') || foto.startsWith('data:image')) return foto;
-    if (foto.length > 100) return `data:image/jpeg;base64,${foto}`;
+// ── Cria ou busca conversa ─────────────────────────────────
+const getOrCreateConversa = async (uid1: string, uid2: string): Promise<string> => {
+  const conversaId = [uid1, uid2].sort().join("_");
+  const docRef = firestoreDoc(db, "conversas", conversaId);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) {
+    await setDoc(docRef, {
+      membros: [uid1, uid2],
+      ultimaMensagem: "",
+      data_postagem: serverTimestamp(),
+      visto: false,
+    });
   }
-  return padrao;
+  return conversaId;
 };
 
-type Aba = 'descobrir' | 'solicitacoes' | 'matches';
+// ── Estilos globais web (scrollbar, animação digitando) ────
+const injectStyles = () => {
+  if (Platform.OS !== "web") return;
+  const id = "chat-global-style";
+  if (document.getElementById(id)) return;
+  const style = document.createElement("style");
+  style.id = id;
+  style.textContent = `
+    .chat-scroll::-webkit-scrollbar { width: 0px; background: transparent; }
+    .chat-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+    html, body, #root { height: 100%; overflow: hidden; }
+    @keyframes typingBounce {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+      30% { transform: translateY(-5px); opacity: 1; }
+    }
+    .typing-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: rgba(255,255,255,0.7); display: inline-block;
+      margin: 0 2px; animation: typingBounce 1.2s infinite ease-in-out;
+    }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  `;
+  document.head.appendChild(style);
+};
 
-function useConversas(meuUid: string | undefined, matchIds: string[]) {
-  const [conversas, setConversas] = useState<Record<string, any>>({});
-
-  useEffect(() => {
-    if (!meuUid || matchIds.length === 0) return;
-    const unsubs: (() => void)[] = [];
-
-    matchIds.forEach(outroUid => {
-      const conversaId = [meuUid, outroUid].sort().join('_');
-      const unsub = onSnapshot(doc(db, 'conversas', conversaId), snap => {
-        if (snap.exists()) {
-          setConversas(prev => ({ ...prev, [outroUid]: snap.data() }));
-        }
-      });
-      unsubs.push(unsub);
-    });
-
-    return () => unsubs.forEach(u => u());
-  }, [meuUid, matchIds.join(',')]);
-
-  return conversas;
-}
-
-export default function Match({ navigation, route }: any) {
-  const insets = useSafeAreaInsets();
-  const { modoEscuro, notifGeral, notifMatch, somNotif, vibracao } = useAppSettings();
-  const C = modoEscuro ? CORES_DARK : CORES;
-
-  const [abaAtiva,       setAbaAtiva]       = useState<Aba>('descobrir');
-  const [materiasFiltro, setMateriasFiltro] = useState<string[]>([]);
-  const [candidatos,     setCandidatos]     = useState<any[]>([]);
-  const [solicitacoes,   setSolicitacoes]   = useState<any[]>([]);
-  const [matches,        setMatches]        = useState<any[]>([]);
-  const [meusDados,      setMeusDados]      = useState<any>(null);
-  const [carregando,     setCarregando]     = useState(false);
-  const [popupInfo,      setPopupInfo]      = useState(false);
-  const [popupMateria,   setPopupMateria]   = useState(false);
-  const [cardAtual,      setCardAtual]      = useState(0);
-
-  const uidsInteragidosRef     = useRef<Set<string>>(new Set());
-  const [interagidosCarregado, setInteragidosCarregado] = useState(false);
-  const ultimasSolicitacoesRef = useRef<Set<string>>(new Set());
-
-  const meuUid = route?.params?.uid;
-
-  const matchUids = matches.map(m => m.outro?.uid).filter(Boolean);
-  const conversas = useConversas(meuUid, matchUids);
-
-  useEffect(() => {
-    if (!meuUid) return;
-    getDoc(doc(db, 'usuarios', meuUid)).then(snap => {
-      if (snap.exists()) setMeusDados({ ...snap.data(), uid: meuUid });
-    });
-  }, [meuUid]);
-
-  useEffect(() => {
-    if (!meuUid) return;
-    const qEnv = query(collection(db, 'match_solicitacoes'), where('deUid',   '==', meuUid));
-    const qRec = query(collection(db, 'match_solicitacoes'), where('paraUid', '==', meuUid));
-
-    let envSnap: any = null, recSnap: any = null;
-    let envOk = false, recOk = false;
-
-    const recalcular = () => {
-      const uids = new Set<string>();
-      envSnap?.docs?.forEach((d: any) => uids.add(d.data().paraUid));
-      recSnap?.docs?.forEach((d: any) => uids.add(d.data().deUid));
-      uidsInteragidosRef.current = uids;
-      if (envOk && recOk) setInteragidosCarregado(true);
+// ── Comprime imagem no web ─────────────────────────────────
+const comprimirImagemWeb = (file: File, maxWidth = 800, quality = 0.7): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = document.createElement("img");
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let { width, height } = img;
+        if (width > maxWidth) { height = Math.round((height * maxWidth) / width); width = maxWidth; }
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject("Canvas não suportado"); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality).split(",")[1]);
+      };
+      img.onerror = reject;
+      img.src = e.target?.result as string;
     };
-
-    const u1 = onSnapshot(qEnv, s => { envSnap = s; envOk = true; recalcular(); });
-    const u2 = onSnapshot(qRec, s => { recSnap = s; recOk = true; recalcular(); });
-    return () => { u1(); u2(); };
-  }, [meuUid]);
-
-  useEffect(() => {
-    if (!meusDados || !interagidosCarregado) return;
-    carregarCandidatos();
-  }, [meusDados, materiasFiltro.join(','), interagidosCarregado]);
-
-  useEffect(() => {
-    if (!meuUid) return;
-    const q = query(
-      collection(db, 'match_solicitacoes'),
-      where('paraUid', '==', meuUid),
-      where('status',  '==', 'pendente')
-    );
-    const unsub = onSnapshot(q, async snap => {
-      const lista = (await Promise.all(snap.docs.map(async d => {
-        const data = d.data();
-        const rSnap = await getDoc(doc(db, 'usuarios', data.deUid));
-        if (!rSnap.exists()) return null;
-        return { id: d.id, ...data, remetente: rSnap.data() };
-      }))).filter(Boolean);
-
-      if (lista.length > 0) {
-        lista.forEach(async (sol: any) => {
-          if (!ultimasSolicitacoesRef.current.has(sol.id)) {
-            await notificarSolicitacao(sol);
-            ultimasSolicitacoesRef.current.add(sol.id);
-          }
-        });
-      }
-
-      setSolicitacoes(lista);
-    });
-    return () => unsub();
-  }, [meuUid, notifGeral, notifMatch, somNotif, vibracao]);
-
-  const notificarSolicitacao = async (sol: any) => {
-    if (!notifGeral || !notifMatch) return;
-
-    const chaveDedup = `notif_sol_${sol.id}`;
-    const jaNotificou = await AsyncStorage.getItem(chaveDedup);
-    if (jaNotificou) return;
-
-    if (vibracao) {
-      if (somNotif === 'Leve') {
-        Vibration.vibrate(20);
-      } else if (somNotif === 'Normal') {
-        Vibration.vibrate([30, 10, 30]);
-      } else if (somNotif === 'Forte') {
-        Vibration.vibrate([50, 20, 50, 20, 50]);
-      }
-    }
-
-    try {
-      const nomeRemetente = sol.remetente?.nome_completo || 'Alguém';
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: '🎓 Nova solicitação de match',
-          body: `${nomeRemetente} quer estudar com você!`,
-          sound: somNotif !== 'Nenhum' ? 'default' : undefined,
-          badge: 1,
-          data: {
-            tipo: 'solicitacao_match',
-            solicitacaoId: sol.id,
-            deUid: sol.deUid,
-          },
-        },
-        trigger: null,
-      });
-      await AsyncStorage.setItem(chaveDedup, '1');
-    } catch (e) {
-      console.log('Erro notif match:', e);
-    }
-  };
-
-  useEffect(() => {
-    if (!meuUid) return;
-    const q = query(
-      collection(db, 'match_solicitacoes'),
-      where('status',  '==', 'aceito'),
-      where('membros', 'array-contains', meuUid)
-    );
-    const unsub = onSnapshot(q, async snap => {
-      const parVistos = new Map<string, any>();
-      await Promise.all(snap.docs.map(async d => {
-        const data     = d.data();
-        const outroUid = data.membros?.find((id: string) => id !== meuUid);
-        if (!outroUid) return;
-        const oSnap = await getDoc(doc(db, 'usuarios', outroUid));
-        if (!oSnap.exists()) return;
-        const jaExiste = parVistos.get(outroUid);
-        const ts = data.criadoEm?.seconds ?? 0;
-        if (!jaExiste || ts > (jaExiste._ts ?? 0)) {
-          parVistos.set(outroUid, {
-            id: d.id, ...data, _ts: ts,
-            outro: { ...oSnap.data(), uid: outroUid },
-          });
-        }
-      }));
-      setMatches(Array.from(parVistos.values()));
-    });
-    return () => unsub();
-  }, [meuUid]);
-
-  const carregarCandidatos = async () => {
-    setCarregando(true);
-    setCardAtual(0);
-    try {
-      const snap = await getDocs(collection(db, 'usuarios'));
-      const jaInteragidos = uidsInteragidosRef.current;
-      const todos = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter((u: any) => {
-          if (u.id === meuUid)         return false;
-          if (u.status !== 1)          return false;
-          if (jaInteragidos.has(u.id)) return false;
-          const materias = u.ensinar || [];
-          if (materiasFiltro.length > 0) return materiasFiltro.some(m => materias.includes(m));
-          return materias.length > 0;
-        });
-      setCandidatos(todos);
-    } catch (e) { console.log(e); }
-    finally { setCarregando(false); }
-  };
-
-  const enviarSolicitacao = async (paraUid: string) => {
-    if (!meuUid) return;
-    uidsInteragidosRef.current.add(paraUid);
-    try {
-      await addDoc(collection(db, 'match_solicitacoes'), {
-        deUid: meuUid, paraUid,
-        status: 'pendente', membros: [meuUid, paraUid],
-        criadoEm: serverTimestamp(),
-      });
-    } catch (e) { console.log(e); }
-    setCardAtual(prev => prev + 1);
-  };
-
-  const recusarCard = () => setCardAtual(prev => prev + 1);
-
-  const responderSolicitacao = async (solId: string, deUid: string, aceitar: boolean) => {
-    try {
-      await updateDoc(doc(db, 'match_solicitacoes', solId), {
-        status: aceitar ? 'aceito' : 'recusado',
-      });
-      if (aceitar && meuUid) {
-        const conversaId = [meuUid, deUid].sort().join('_');
-        const [meuSnap, outroSnap] = await Promise.all([
-          getDoc(doc(db, 'usuarios', meuUid)),
-          getDoc(doc(db, 'usuarios', deUid)),
-        ]);
-        const meuData   = meuSnap.exists()  ? meuSnap.data()  : {};
-        const outroData = outroSnap.exists() ? outroSnap.data() : {};
-        await setDoc(doc(db, 'conversas', conversaId), {
-          membros: [meuUid, deUid],
-          ultimaMensagem: '🤝 Vocês fizeram match!',
-          data_postagem: serverTimestamp(),
-          quemEnviou: deUid, visto: false, isMatch: true,
-          dadosMembros: {
-            [meuUid]: { nome: meuData.nome_completo   || 'Usuário', foto: meuData.foto   || null },
-            [deUid]:  { nome: outroData.nome_completo || 'Usuário', foto: outroData.foto || null },
-          },
-        }, { merge: true });
-      }
-    } catch (e) { console.log(e); }
-  };
-
-  const abrirChat = (outroUid: string, outroNome: string, outraFoto: string) => {
-    const conversaId = [meuUid, outroUid].sort().join('_');
-    navigation.navigate('Chat', {
-      room: conversaId, meuUid,
-      meuNome:   meusDados?.nome_completo,
-      minhaFoto: meusDados?.foto || null,
-      outroUid, outroNome,
-      outraFoto: outraFoto || null,
-    });
-  };
-
-  const getMateriaDoMatch = (item: any): { materias: string[] } => {
-    const outro = item.outro || {};
-    return { materias: outro.ensinar || [] };
-  };
-
-  const toggleMateria = (m: string) => {
-    setMateriasFiltro(prev =>
-      prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]
-    );
-  };
-
-  const matchesOrdenados = [...matches].sort((a, b) => {
-    const ca = conversas[a.outro?.uid];
-    const cb = conversas[b.outro?.uid];
-    const ta = ca?.data_postagem?.seconds ?? a._ts ?? 0;
-    const tb = cb?.data_postagem?.seconds ?? b._ts ?? 0;
-    return tb - ta;
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
   });
 
-  const card = candidatos[cardAtual];
+// ── Dimensões de imagem web ────────────────────────────────
+const getDimensoesWeb = (base64: string): Promise<{ w: number; h: number }> =>
+  new Promise((resolve) => {
+    const src = base64.startsWith("data:") ? base64 : `data:image/jpeg;base64,${base64}`;
+    const img = document.createElement("img");
+    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+    img.onerror = () => resolve({ w: 200, h: 200 });
+    img.src = src;
+  });
 
-  const renderCard = () => {
-    if (carregando) return (
-      <View style={styles.centro}>
-        <ActivityIndicator size="large" color={C.rosa} />
-      </View>
-    );
-    if (!card) return (
-      <View style={styles.centro}>
-        <FontAwesome5 name="search" size={48} color={C.cinzaClaro} />
-        <Text style={[styles.txtVazio, { color: C.textoSecundario }]}>Ninguém mais por aqui!</Text>
-        <Text style={[styles.txtVazio, { fontSize: 13, marginTop: 4, color: C.textoSecundario }]}>
-          Tente mudar o filtro ou volte mais tarde.
-        </Text>
-        <TouchableOpacity
-          style={[styles.btnRecarregar, { backgroundColor: modoEscuro ? '#0B2046' : C.rosa }]}
-          onPress={carregarCandidatos}
-        >
-          <Text style={[styles.btnRecarregarTxt, { color: modoEscuro ? C.rosa : '#FFFFFF' }]}>
-            Recarregar
-          </Text>
-        </TouchableOpacity>
-      </View>
-    );
+const calcDimensoes = (w: number, h: number) => {
+  if (w === 0 || h === 0) return { width: IMG_MAX, height: IMG_MAX };
+  const ratio = h / w;
+  const width = IMG_MAX;
+  const height = Math.max(IMG_MIN, Math.min(Math.round(IMG_MAX * 1.4), Math.round(width * ratio)));
+  return { width, height };
+};
 
-    const materias: string[] = card.ensinar || [];
+// ── Formatadores ───────────────────────────────────────────
+const formatarHora = (data: any): string => {
+  if (!data) return "";
+  const date = data?.toDate ? data.toDate() : new Date(data);
+  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+};
 
+const formatarDataSeparador = (data: any): string => {
+  if (!data) return "";
+  const date = data?.toDate ? data.toDate() : new Date(data);
+  const hoje = new Date();
+  const ontem = new Date();
+  ontem.setDate(hoje.getDate() - 1);
+  const mesmoDia = (a: Date, b: Date) =>
+    a.getDate() === b.getDate() &&
+    a.getMonth() === b.getMonth() &&
+    a.getFullYear() === b.getFullYear();
+  if (mesmoDia(date, hoje)) return "Hoje";
+  if (mesmoDia(date, ontem)) return "Ontem";
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+};
+
+const getDataChave = (data: any): string => {
+  if (!data) return "";
+  const date = data?.toDate ? data.toDate() : new Date(data);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+};
+
+const getImageUri = (foto: any): string => {
+  const placeholder = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
+  if (!foto) return placeholder;
+  if (typeof foto === "string" && (foto.startsWith("data:image") || foto.startsWith("http"))) return foto;
+  return `data:image/jpeg;base64,${foto}`;
+};
+
+// ── Componente: imagem na mensagem ─────────────────────────
+const ImagemMensagem = ({ base64, onPress }: { base64: string; onPress: () => void }) => {
+  const [dims, setDims] = useState<{ width: number; height: number } | null>(null);
+  const src = base64.startsWith("data:") ? base64 : `data:image/jpeg;base64,${base64}`;
+
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      getDimensoesWeb(base64).then(({ w, h }) => setDims(calcDimensoes(w, h)));
+    } else {
+      Image.getSize(src, (w, h) => setDims(calcDimensoes(w, h)), () => setDims({ width: 200, height: 200 }));
+    }
+  }, [base64]);
+
+  if (!dims) {
     return (
-      <View style={styles.cardWrap}>
-        <View style={styles.matchCard}>
-          <Image source={{ uri: getImageUri(card.foto) }} style={styles.cardFoto} />
-          <View style={styles.cardOverlay} />
-          <View style={styles.cardInfo}>
-            <Text style={styles.cardNome}>{card.nome_completo}</Text>
-            <Text style={styles.cardTurma}>{card.turma || card.ra || ''}</Text>
-            <View style={styles.materiasRow}>
-              {materias.slice(0, 4).map((m: string) => (
-                <View key={m} style={styles.materiaTag}>
-                  <Text style={styles.materiaTagTxt}>{m}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        </View>
-
-        <Text style={[styles.arenaContador, { color: C.textoSecundario }]}>
-          {cardAtual + 1} de {candidatos.length}
-        </Text>
-
-        <View style={styles.acoesRow}>
-          <TouchableOpacity
-            style={[styles.btnRecusar, {
-              backgroundColor: modoEscuro ? '#2A2F36' : '#FFFFFF',
-              shadowColor: '#FF5252',
-            }]}
-            onPress={recusarCard}
-          >
-            <Ionicons name="close" size={28} color="#FF5252" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.btnAceitar, { backgroundColor: C.rosa }]}
-            onPress={() => enviarSolicitacao(card.id)}
-          >
-            <Ionicons name="heart" size={28} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
+      <View style={{ width: 120, height: 120, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator color="white" />
       </View>
     );
-  };
+  }
 
-  const renderSolicitacao = ({ item }: any) => (
-    <View style={[styles.solCard, { backgroundColor: C.branco }]}>
-      <Image source={{ uri: getImageUri(item.remetente?.foto) }} style={styles.solAvatar} />
-      <View style={styles.solInfo}>
-        <Text style={[styles.solNome, { color: C.azulEscuro }]}>
-          {item.remetente?.nome_completo || 'Usuário'}
-        </Text>
-        <Text style={[styles.solTurma, { color: C.textoSecundario }]}>
-          {item.remetente?.turma || ''}
-        </Text>
-      </View>
-      <View style={styles.solAcoes}>
-        <TouchableOpacity
-          style={[styles.btnSolRecusar, { backgroundColor: modoEscuro ? '#2A2F36' : '#FFF0F0' }]}
-          onPress={() => responderSolicitacao(item.id, item.deUid, false)}
-        >
-          <Ionicons name="close" size={20} color="#FF5252" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.btnSolAceitar, { backgroundColor: C.verde }]}
-          onPress={() => responderSolicitacao(item.id, item.deUid, true)}
-        >
-          <Ionicons name="checkmark" size={20} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
-  const renderMatch = ({ item }: any) => {
-    const { materias } = getMateriaDoMatch(item);
-    const outroUid  = item.outro?.uid;
-    const conversa  = conversas[outroUid];
-
-    const ultimaMsg  = conversa?.ultimaMensagem || '';
-    const quemEnviou = conversa?.quemEnviou;
-    const naoLida    = conversa && !conversa.visto && quemEnviou !== meuUid;
-    const prefixo    = quemEnviou === meuUid
-      ? 'Você: '
-      : (item.outro?.nome_completo?.split(' ')[0] + ': ' || '');
-    const labelMsg   = ultimaMsg ? `${prefixo}${ultimaMsg}` : 'Diga olá! 👋';
-
+  if (Platform.OS === "web") {
     return (
-      <TouchableOpacity
-        style={[
-          styles.solCard,
-          { backgroundColor: C.branco },
-          naoLida && {
-            backgroundColor: modoEscuro ? '#2A1520' : '#FFF5F8',
-            borderLeftWidth: 3,
-            borderLeftColor: C.rosa,
-          },
-        ]}
-        onPress={() => abrirChat(outroUid, item.outro?.nome_completo, item.outro?.foto)}
-        activeOpacity={0.75}
-      >
-        <View style={styles.avatarWrap}>
-          <Image source={{ uri: getImageUri(item.outro?.foto) }} style={styles.solAvatar} />
-          {naoLida && <View style={styles.bolinhaVerde} />}
-        </View>
-
-        <View style={styles.solInfo}>
-          <View style={styles.nomeLinha}>
-            <Text
-              style={[styles.solNome, { color: C.azulEscuro }, naoLida && { fontWeight: '900' }]}
-              numberOfLines={1}
-            >
-              {item.outro?.nome_completo || 'Usuário'}
-            </Text>
-
-            <View style={[styles.tagTipo, { backgroundColor: modoEscuro ? '#1A2E1A' : '#E8F5E9' }]}>
-              <Ionicons name="school-outline" size={9} color="#2E7D32" />
-              <Text style={[styles.tagTipoTxt, { color: '#2E7D32' }]}>te ensina</Text>
-            </View>
-
-            {materias.slice(0, 2).map((m: string) => (
-              <View key={m} style={[styles.tagMateria, { backgroundColor: modoEscuro ? '#0D1F36' : '#E3F2FD' }]}>
-                <Text style={[styles.tagMateriaTxt, { color: modoEscuro ? '#90CAF9' : '#1565C0' }]}>
-                  {m}
-                </Text>
-              </View>
-            ))}
-            {materias.length > 2 && (
-              <Text style={[styles.tagMais, { color: C.textoSecundario }]}>
-                +{materias.length - 2}
-              </Text>
-            )}
-          </View>
-
-          {item.outro?.turma ? (
-            <Text style={[styles.solTurma, { color: C.textoSecundario }]}>{item.outro.turma}</Text>
-          ) : null}
-
-          <Text
-            style={[
-              styles.ultimaMsg,
-              { color: C.textoSecundario },
-              naoLida && { color: C.azulEscuro, fontWeight: '700' },
-            ]}
-            numberOfLines={1}
-          >
-            {labelMsg}
-          </Text>
-        </View>
-
-        <View style={styles.matchBadgeWrap}>
-          <View style={[
-            styles.matchBadge,
-            { backgroundColor: modoEscuro ? '#3A1020' : '#FFE4EC' },
-            naoLida && { backgroundColor: C.rosa },
-          ]}>
-            <Ionicons
-              name="chatbubble-outline"
-              size={20}
-              color={naoLida ? '#FFFFFF' : C.rosa}
-            />
-          </View>
-        </View>
+      <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
+        {/* @ts-ignore */}
+        <img src={src} style={{ width: dims.width, height: dims.height, objectFit: "cover", borderRadius: 12, display: "block", cursor: "pointer" }} />
       </TouchableOpacity>
     );
+  }
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
+      <Image source={{ uri: src }} style={{ width: dims.width, height: dims.height, borderRadius: 12 }} resizeMode="cover" />
+    </TouchableOpacity>
+  );
+};
+
+// ── Componente: bolinhas "digitando" no mobile ─────────────
+const TypingDotsNative = () => {
+  const [phase, setPhase] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setPhase(p => (p + 1) % 3), 400);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+      {[0, 1, 2].map(i => (
+        <View
+          key={i}
+          style={{
+            width: 7, height: 7, borderRadius: 4,
+            backgroundColor: "rgba(255,255,255,0.7)",
+            opacity: phase === i ? 1 : 0.35,
+            transform: [{ translateY: phase === i ? -4 : 0 }],
+          }}
+        />
+      ))}
+    </View>
+  );
+};
+
+// ══════════════════════════════════════════════════════════
+// CHAT PRINCIPAL
+// ══════════════════════════════════════════════════════════
+export default function Chat({ route, navigation }: any) {
+  const insets = useSafeAreaInsets();
+  const { outroUid, outroNome } = route.params || {};
+
+  // ✅ ADICIONAR: pegar settings de notificação
+  const { notifGeral, somNotif, vibracao } = useAppSettings();
+
+  // ✅ Avisa o provider global qual conversa está aberta (pra ele NÃO
+  // disparar notificação de uma conversa que o usuário já está vendo)
+  const { setConversaAtiva } = useNotificacao();
+
+  const scrollRef        = useRef<ScrollView>(null);
+  const fileInputRef     = useRef<HTMLInputElement | null>(null);
+  const docIdMap         = useRef<Record<string, string>>({});
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [uidAtual,         setUidAtual]         = useState<string | null>(null);
+  const [conversaId,       setConversaId]        = useState<string | null>(null);
+  const [inputText,        setInputText]         = useState("");
+  const [messages,         setMessages]          = useState<any[]>([]);
+  const [loading,          setLoading]           = useState(true);
+  const [meuNome,          setMeuNome]           = useState("Usuário");
+  const [minhaFoto,        setMinhaFoto]         = useState<string | null>(null);
+  const [uploading,        setUploading]         = useState(false);
+  const [previewVisible,   setPreviewVisible]    = useState(false);
+  const [previewImage,     setPreviewImage]      = useState<string | null>(null);
+  const [previewBase64,    setPreviewBase64]     = useState<string | null>(null);
+  const [fullImageVisible, setFullImageVisible]  = useState(false);
+  const [fullImageUrl,     setFullImageUrl]      = useState<string | null>(null);
+  const [menuMsg,          setMenuMsg]           = useState<any | null>(null);
+  const [editandoId,       setEditandoId]        = useState<string | null>(null);
+  const [citando,          setCitando]           = useState<any | null>(null);
+  const [outraFoto,        setOutraFoto]         = useState<string | null>(null);
+  const [onlineStatus,     setOnlineStatus]      = useState(false);
+  const [outroDigitando,   setOutroDigitando]    = useState(false);
+
+  // ── Injeta CSS global (web) ──────────────────────────────
+  useEffect(() => { injectStyles(); }, []);
+
+  // ── Input file para imagem (web) ─────────────────────────
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = "image/*"; input.style.display = "none";
+    input.onchange = async (e: any) => {
+      const file = e.target?.files?.[0];
+      if (!file) return;
+      setUploading(true);
+      try {
+        const base64 = await comprimirImagemWeb(file);
+        setPreviewImage(`data:image/jpeg;base64,${base64}`);
+        setPreviewBase64(base64);
+        setPreviewVisible(true);
+      } catch {
+        Alert.alert("Erro", "Não foi possível processar a imagem.");
+      } finally { setUploading(false); input.value = ""; }
+    };
+    document.body.appendChild(input);
+    fileInputRef.current = input;
+    return () => { document.body.removeChild(input); };
+  }, []);
+
+  // ── Carrega UID do AsyncStorage ──────────────────────────
+  useEffect(() => {
+    AsyncStorage.getItem("uid")
+      .then(uid => { if (uid) setUidAtual(uid); else setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  // ── Carrega perfil do usuário atual ──────────────────────
+  useEffect(() => {
+    if (!uidAtual) return;
+    getDoc(firestoreDoc(db, "usuarios", uidAtual)).then(snap => {
+      if (snap.exists()) {
+        setMeuNome(snap.data().nome_completo || "Usuário");
+        setMinhaFoto(snap.data().foto || null);
+      }
+    }).catch(e => console.log("Erro perfil:", e.message));
+  }, [uidAtual]);
+
+  // ── Marca online/offline ─────────────────────────────────
+  useEffect(() => {
+    if (!uidAtual) return;
+    setDoc(firestoreDoc(db, "usuarios", uidAtual), { online: true }, { merge: true });
+    return () => {
+      setDoc(firestoreDoc(db, "usuarios", uidAtual), { online: false, digitandoEm: null }, { merge: true });
+    };
+  }, [uidAtual]);
+
+  // ── Ouve status online e "digitando" do outro ────────────
+  useEffect(() => {
+    if (!outroUid) return;
+    getDoc(firestoreDoc(db, "usuarios", outroUid)).then(snap => {
+      if (snap.exists()) setOutraFoto(snap.data().foto || null);
+    });
+    const unsub = onSnapshot(firestoreDoc(db, "usuarios", outroUid), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        // ✅ Só mostra "online" se a pessoa PERMITE (statusOnline !== false).
+        // Se ela desativou nas Configurações, aparece sempre offline.
+        setOnlineStatus(d.online === true && d.statusOnline !== false);
+        setOutroDigitando(!!d.digitandoEm);
+      }
+    });
+    return () => unsub();
+  }, [outroUid]);
+
+  // ── Cria/busca conversaId ────────────────────────────────
+  useEffect(() => {
+    if (!uidAtual || !outroUid) { setLoading(false); return; }
+    getOrCreateConversa(uidAtual, outroUid)
+      .then(id => setConversaId(id))
+      .catch(e => { console.log("Erro conversa:", e.message); setLoading(false); });
+  }, [uidAtual, outroUid]);
+
+  // ── Marca conversa como "ativa" (provider não notifica dela) ──
+  useEffect(() => {
+    if (!conversaId) return;
+    setConversaAtiva(conversaId);
+    return () => setConversaAtiva(null);
+  }, [conversaId]);
+
+  // ── Abrir perfil público da pessoa (toque no header) ─────
+  const abrirPerfilDoOutro = () => {
+    if (!outroUid) return;
+    navigation.navigate('PerfilPublico', { uid: outroUid, meuUid: uidAtual });
   };
 
+  // ── Listener de mensagens em tempo real (onSnapshot) ─────
+  // Funciona em web, iOS e Android sem nenhum servidor externo.
+  useEffect(() => {
+    if (!conversaId) return;
+    setLoading(true);
+
+    const q = query(
+      collection(db, "mensagens"),
+      where("conversaId", "==", conversaId),
+      orderBy("data_postagem", "asc")
+    );
+
+    const unsub = onSnapshot(q, async (snapshot) => {
+      const msgs = snapshot.docs.map(d => {
+        docIdMap.current[d.id] = d.id;
+        return { docId: d.id, id: d.id, ...d.data() };
+      });
+      setMessages(msgs);
+      // 🔔 Notificações de mensagem agora são tratadas globalmente
+      // pelo NotificacaoProvider (funciona em qualquer tela, sem duplicar).
+      setLoading(false);
+    }, (e) => {
+      console.log("Erro onSnapshot mensagens:", e.message);
+      setLoading(false);
+    });
+
+    return () => unsub();
+  }, [conversaId, uidAtual]);
+
+  // ── Scroll para o fim ao chegar nova mensagem ────────────
+  useEffect(() => {
+    if (messages.length > 0)
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+  }, [messages.length, outroDigitando]);
+
+  // ── Gerencia estado "digitando" no Firestore ─────────────
+  const handleTyping = (text: string) => {
+    setInputText(text);
+    if (!uidAtual || !conversaId) return;
+    setDoc(firestoreDoc(db, "usuarios", uidAtual), { digitandoEm: conversaId }, { merge: true });
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      setDoc(firestoreDoc(db, "usuarios", uidAtual), { digitandoEm: null }, { merge: true });
+    }, 2000);
+  };
+
+  const clearTyping = () => {
+    if (!uidAtual) return;
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    setDoc(firestoreDoc(db, "usuarios", uidAtual), { digitandoEm: null }, { merge: true });
+  };
+
+  const resolverDocId = (msg: any): string =>
+    docIdMap.current[msg.id] || docIdMap.current[msg.docId] || msg.docId || msg.id;
+
+  // ── Envia mensagem de texto ───────────────────────────────
+  const sendMessage = async () => {
+    if (!inputText.trim() || !uidAtual || !conversaId || !outroUid) return;
+    const msgTexto = inputText.trim();
+    setInputText("");
+    clearTyping();
+
+    // Modo edição
+    if (editandoId) {
+      const docId = resolverDocId({ docId: editandoId, id: editandoId });
+      setEditandoId(null);
+      try {
+        await updateDoc(firestoreDoc(db, "mensagens", docId), { mensagem: msgTexto, editada: true });
+      } catch (e: any) { console.log("❌ Edit:", e.message); }
+      return;
+    }
+
+    const tempId = `temp_${Date.now()}`;
+    const novaMsgPayload: any = {
+      conversaId, mensagem: msgTexto, tipo: "texto",
+      remetenteUid: uidAtual, nome_remetente: meuNome,
+      foto: minhaFoto || null, data_postagem: serverTimestamp(),
+    };
+
+    if (citando) {
+      novaMsgPayload.citacao = {
+        id: resolverDocId(citando),
+        mensagem: citando.tipo === "imagem" ? "📷 Imagem" : citando.mensagem,
+        nome: citando.nome_remetente, tipo: citando.tipo,
+      };
+      setCitando(null);
+    }
+
+    // Mensagem otimista: aparece imediatamente para quem enviou
+    setMessages(prev => [...prev, {
+      ...novaMsgPayload,
+      docId: tempId, id: tempId,
+      data_postagem: { toDate: () => new Date() },
+    }]);
+
+    try {
+      const ref = await addDoc(collection(db, "mensagens"), novaMsgPayload);
+      docIdMap.current[ref.id] = ref.id;
+      // Remove o placeholder quando o onSnapshot traz a mensagem real
+      setMessages(prev => prev.filter(m => m.docId !== tempId));
+
+      await setDoc(firestoreDoc(db, "conversas", conversaId), {
+        ultimaMensagem: msgTexto, data_postagem: serverTimestamp(),
+        quemEnviou: uidAtual, visto: false,
+        dadosMembros: {
+          [uidAtual]: { nome: meuNome, foto: minhaFoto || null },
+          [outroUid]:  { nome: outroNome || "Usuário", foto: null },
+        },
+      }, { merge: true });
+    } catch (e: any) {
+      console.log("❌ Firestore:", e.message);
+      setMessages(prev => prev.filter(m => m.docId !== tempId));
+      Alert.alert("Erro", "Não foi possível enviar a mensagem.");
+    }
+  };
+
+  // ── Envia imagem ──────────────────────────────────────────
+  const confirmarEnvio = async () => {
+    if (!previewBase64 || !uidAtual || !conversaId || !outroUid) return;
+    setPreviewVisible(false);
+    setUploading(true);
+    clearTyping();
+
+    const tempId = `temp_img_${Date.now()}`;
+    const novaMsgPayload: any = {
+      conversaId, mensagem: previewBase64, tipo: "imagem",
+      remetenteUid: uidAtual, nome_remetente: meuNome,
+      foto: minhaFoto || null, data_postagem: serverTimestamp(),
+    };
+
+    if (citando) {
+      novaMsgPayload.citacao = {
+        id: resolverDocId(citando),
+        mensagem: citando.tipo === "imagem" ? "📷 Imagem" : citando.mensagem,
+        nome: citando.nome_remetente, tipo: citando.tipo,
+      };
+      setCitando(null);
+    }
+
+    // Otimista
+    setMessages(prev => [...prev, {
+      ...novaMsgPayload,
+      docId: tempId, id: tempId,
+      data_postagem: { toDate: () => new Date() },
+    }]);
+
+    try {
+      const ref = await addDoc(collection(db, "mensagens"), novaMsgPayload);
+      docIdMap.current[ref.id] = ref.id;
+      setMessages(prev => prev.filter(m => m.docId !== tempId));
+
+      await setDoc(firestoreDoc(db, "conversas", conversaId), {
+        ultimaMensagem: "📷 Imagem", data_postagem: serverTimestamp(),
+        quemEnviou: uidAtual, visto: false,
+        dadosMembros: {
+          [uidAtual]: { nome: meuNome, foto: minhaFoto || null },
+          [outroUid]:  { nome: outroNome || "Usuário", foto: null },
+        },
+      }, { merge: true });
+    } catch {
+      setMessages(prev => prev.filter(m => m.docId !== tempId));
+      Alert.alert("Erro", "Não foi possível enviar a imagem.");
+    } finally {
+      setUploading(false);
+      setPreviewBase64(null);
+      setPreviewImage(null);
+    }
+  };
+
+  // ── Apaga mensagem ────────────────────────────────────────
+  const apagarMensagem = async (msg: any) => {
+    setMenuMsg(null);
+    const localId   = msg.docId || msg.id;
+    const realDocId = docIdMap.current[localId] || localId;
+
+    // Remove localmente de imediato
+    setMessages(prev => prev.filter(m =>
+      m.docId !== localId && m.id !== localId &&
+      m.docId !== realDocId && m.id !== realDocId
+    ));
+
+    try {
+      await deleteDoc(firestoreDoc(db, "mensagens", realDocId));
+      if (conversaId) {
+        const msgsRestantes = messages.filter(m =>
+          m.docId !== localId && m.id !== localId &&
+          m.docId !== realDocId && m.id !== realDocId
+        );
+        const ultima = msgsRestantes[msgsRestantes.length - 1];
+        await setDoc(firestoreDoc(db, "conversas", conversaId), {
+          ultimaMensagem: ultima ? (ultima.tipo === "imagem" ? "📷 Imagem" : ultima.mensagem) : "",
+          data_postagem:  ultima?.data_postagem || serverTimestamp(),
+        }, { merge: true });
+      }
+    } catch (e: any) { console.log("❌ Delete:", e.message); }
+  };
+
+  const iniciarEdicao = (msg: any) => {
+    setMenuMsg(null);
+    setEditandoId(resolverDocId(msg));
+    setInputText(msg.mensagem);
+  };
+
+  const cancelarPreview = () => {
+    setPreviewVisible(false);
+    setPreviewImage(null);
+    setPreviewBase64(null);
+  };
+
+  const abrirImagemFull = (b64: string) => {
+    setFullImageUrl(b64.startsWith("data:") ? b64 : `data:image/jpeg;base64,${b64}`);
+    setFullImageVisible(true);
+  };
+
+  // ── Loading ───────────────────────────────────────────────
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0f0f1a" }}>
+        <ActivityIndicator size="large" color="#E91E63" />
+      </View>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // RENDER
+  // ══════════════════════════════════════════════════════════
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: C.fundo }]}>
-      <StatusBar
-        barStyle={modoEscuro ? 'light-content' : 'dark-content'}
-        backgroundColor={C.branco}
-      />
-
-      <View style={[styles.navbar, {
-        paddingTop: insets.top,
-        backgroundColor: C.branco,
-        borderBottomColor: C.cinzaClaro,
-      }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={C.azulEscuro} />
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      {/* ── HEADER ── */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={22} color="#0B2046" />
         </TouchableOpacity>
-        <View style={styles.logoWrap}>
-          <View style={styles.dotAmarelo} />
-          <Text style={[styles.logo, { color: C.azulEscuro }]}>
-            JUM<Text style={{ color: C.rosa }}>O</Text>
-          </Text>
-        </View>
-        <TouchableOpacity onPress={() => setPopupInfo(true)}>
-          <Ionicons name="help-circle-outline" size={26} color={C.azulEscuro} />
-        </TouchableOpacity>
-      </View>
 
-      <View style={[styles.tabs, { backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
-        {(['descobrir', 'solicitacoes', 'matches'] as Aba[]).map(aba => (
-          <TouchableOpacity
-            key={aba}
-            style={[
-              styles.tab,
-              { backgroundColor: modoEscuro ? '#252B33' : C.fundo },
-              abaAtiva === aba && { backgroundColor: modoEscuro ? '#FF5C97' : C.azulEscuro },
-            ]}
-            onPress={() => setAbaAtiva(aba)}
-          >
-            <Ionicons
-              name={aba === 'descobrir' ? 'search' : aba === 'solicitacoes' ? 'mail' : 'heart'}
-              size={15}
-              color={abaAtiva === aba ? '#FFFFFF' : modoEscuro ? '#CBD5E0' : C.textoSecundario}
+        <TouchableOpacity style={styles.headerCenter} onPress={abrirPerfilDoOutro} activeOpacity={0.7}>
+          <View style={styles.headerAvatarWrap}>
+            <Image
+              source={{ uri: outraFoto
+                ? (outraFoto.startsWith("data:") || outraFoto.startsWith("http")
+                    ? outraFoto : `data:image/jpeg;base64,${outraFoto}`)
+                : "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+              }}
+              style={styles.headerAvatar}
             />
-            <Text style={[
-              styles.tabTxt,
-              { color: modoEscuro ? '#CBD5E0' : C.textoSecundario },
-              abaAtiva === aba && { color: '#FFFFFF' },
-            ]}>
-              {aba === 'descobrir' ? 'Descobrir' : aba === 'solicitacoes' ? 'Solicitações' : 'Matches'}
-            </Text>
-            {aba === 'solicitacoes' && solicitacoes.length > 0 && (
-              <View style={[styles.badge, { backgroundColor: C.rosa }]}>
-                <Text style={styles.badgeTxt}>{solicitacoes.length}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        ))}
+            <View style={[styles.headerOnlineDot, { backgroundColor: onlineStatus ? "#22C55E" : "#94A3B8" }]} />
+          </View>
+          <View>
+            <Text style={styles.headerTitle}>{outroNome || "Chat"}</Text>
+            {outroDigitando
+              ? <Text style={[styles.headerSub, { color: "#E91E63" }]}>digitando...</Text>
+              : <Text style={[styles.headerSub, { color: onlineStatus ? "#22C55E" : "#94A3B8" }]}>
+                  {onlineStatus ? "online" : "offline"}
+                </Text>
+            }
+          </View>
+        </TouchableOpacity>
+
+        <View style={{ width: 40 }} />
       </View>
 
-      {abaAtiva === 'descobrir' && (
-        <View style={{ flex: 1 }}>
-          <View style={[styles.filtros, { backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
-            <TouchableOpacity
-              style={[styles.materiaSelector, {
-                backgroundColor: modoEscuro ? '#252B33' : C.fundo,
-                borderColor:     modoEscuro ? '#4A5568' : C.cinzaClaro,
-                borderWidth:     modoEscuro ? 1.5 : 1,
-              }]}
-              onPress={() => setPopupMateria(true)}
-            >
-              {materiasFiltro.length === 0 ? (
-                <Text style={[styles.materiaSelectorTxt, { color: modoEscuro ? '#CBD5E0' : C.textoSecundario }]}>
-                  Filtrar por matéria
-                </Text>
-              ) : (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, flex: 1 }}>
-                  {materiasFiltro.map(m => (
-                    <View key={m} style={[styles.tagMateriaFiltro, { backgroundColor: C.rosa }]}>
-                      <Text style={styles.tagMateriaFiltroTxt}>{m}</Text>
-                    </View>
-                  ))}
+      {/* ── LISTA DE MENSAGENS ── */}
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
+        // @ts-ignore
+        dataSet={{ class: "chat-scroll" }}
+      >
+        {messages.map((item, index) => {
+          const isMe              = item.remetenteUid === uidAtual;
+          const proxMsg           = messages[index + 1];
+          const ultimaDaSequencia = proxMsg?.remetenteUid !== item.remetenteUid || !proxMsg;
+
+          const chaveAtual    = getDataChave(item.data_postagem);
+          const chaveAnterior = index > 0 ? getDataChave(messages[index - 1].data_postagem) : null;
+          const mostrarSep    = chaveAtual !== chaveAnterior;
+
+          return (
+            <React.Fragment key={item.docId || item.id || String(index)}>
+              {mostrarSep && (
+                <View style={styles.separadorDataWrap}>
+                  <View style={styles.separadorDataLinha} />
+                  <Text style={styles.separadorDataTxt}>
+                    {formatarDataSeparador(item.data_postagem)}
+                  </Text>
+                  <View style={styles.separadorDataLinha} />
                 </View>
               )}
-              <Ionicons name="chevron-down" size={16} color={modoEscuro ? '#CBD5E0' : C.textoSecundario} />
-            </TouchableOpacity>
-          </View>
 
-          {renderCard()}
-        </View>
-      )}
-
-      {abaAtiva === 'solicitacoes' && (
-        solicitacoes.length === 0
-          ? <View style={styles.centro}>
-              <Ionicons name="mail-open-outline" size={56} color={C.cinzaClaro} />
-              <Text style={[styles.txtVazio, { color: C.textoSecundario }]}>
-                Nenhuma solicitação pendente.
-              </Text>
-            </View>
-          : <FlatList
-              data={solicitacoes}
-              keyExtractor={i => i.id}
-              renderItem={renderSolicitacao}
-              contentContainerStyle={{ padding: 16 }}
-            />
-      )}
-
-      {abaAtiva === 'matches' && (
-        matchesOrdenados.length === 0
-          ? <View style={styles.centro}>
-              <Ionicons name="heart-outline" size={56} color={C.cinzaClaro} />
-              <Text style={[styles.txtVazio, { color: C.textoSecundario }]}>Nenhum match ainda.</Text>
-              <Text style={[styles.txtVazio, { fontSize: 13, marginTop: 4, color: C.textoSecundario }]}>
-                Comece a descobrir monitores!
-              </Text>
-            </View>
-          : <FlatList
-              data={matchesOrdenados}
-              keyExtractor={i => i.id}
-              renderItem={renderMatch}
-              contentContainerStyle={{ padding: 16 }}
-            />
-      )}
-
-      <Modal visible={popupInfo} transparent animationType="fade">
-        <View style={styles.overlayEscuro}>
-          <View style={[styles.popupBox, { backgroundColor: C.branco }]}>
-            <View style={styles.popupIcone}>
-              <Ionicons name="heart" size={32} color={C.rosa} />
-            </View>
-            <Text style={[styles.popupTitulo, { color: C.azulEscuro }]}>
-              O que é o <Text style={{ fontStyle: 'italic', color: C.rosa }}>Match Acadêmico</Text>?
-            </Text>
-            <ScrollView style={{ maxHeight: height * 0.45 }} showsVerticalScrollIndicator={false}>
-              {[
-                { num: '01', titulo: 'Encontre seu monitor ideal',         desc: 'Conectamos alunos que querem aprender com quem pode ensinar — da mesma série ou superior.' },
-                { num: '02', titulo: 'Você escolhe com quem quer estudar', desc: 'Nada é imposto. Você vê o perfil de cada pessoa e decide se quer se conectar.' },
-                { num: '03', titulo: 'Match mútuo → Chat liberado',        desc: 'Só quando os dois aceitarem é que o chat é aberto. Seguro e respeitoso.' },
-                { num: '04', titulo: 'Configure no seu Perfil',            desc: 'Vá em Perfil e configure quais matérias você pode ensinar e quais quer melhorar.' },
-              ].map(item => (
-                <View key={item.num} style={styles.popupItem}>
-                  <View style={[styles.popupNum, { backgroundColor: modoEscuro ? C.rosa : C.azulEscuro }]}>
-                    <Text style={styles.popupNumTxt}>{item.num}</Text>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onLongPress={() => setMenuMsg(item)}
+                style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
+              >
+                {!isMe && (
+                  <View style={styles.avatarSlot}>
+                    {ultimaDaSequencia
+                      ? <Image source={{ uri: getImageUri(item.foto) }} style={styles.avatar} />
+                      : <View style={styles.avatarEspaco} />}
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.popupItemTitulo, { color: C.azulEscuro }]}>{item.titulo}</Text>
-                    <Text style={[styles.popupItemDesc, { color: C.textoSecundario }]}>{item.desc}</Text>
-                  </View>
+                )}
+
+                <View style={[styles.bolha, isMe ? styles.bolhaMe : styles.bolhaOther]}>
+                  {!isMe && ultimaDaSequencia && (
+                    <Text style={styles.nomeRemetente}>{item.nome_remetente}</Text>
+                  )}
+                  {item.citacao && (
+                    <View style={[styles.citacaoBox, isMe ? styles.citacaoMe : styles.citacaoOther]}>
+                      <Text style={styles.citacaoNome}>{item.citacao.nome}</Text>
+                      <Text style={styles.citacaoTexto} numberOfLines={2}>{item.citacao.mensagem}</Text>
+                    </View>
+                  )}
+                  {item.tipo === "imagem" ? (
+                    <>
+                      <ImagemMensagem base64={item.mensagem} onPress={() => abrirImagemFull(item.mensagem)} />
+                      <Text style={styles.hora}>{formatarHora(item.data_postagem)}</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.messageText}>{item.mensagem}</Text>
+                      <View style={styles.rodape}>
+                        {item.editada && <Text style={styles.editadaLabel}>editada · </Text>}
+                        <Text style={styles.hora}>{formatarHora(item.data_postagem)}</Text>
+                      </View>
+                    </>
+                  )}
                 </View>
-              ))}
-            </ScrollView>
+
+                {isMe && (
+                  <View style={styles.avatarSlot}>
+                    {ultimaDaSequencia
+                      ? <Image source={{ uri: getImageUri(minhaFoto) }} style={styles.avatar} />
+                      : <View style={styles.avatarEspaco} />}
+                  </View>
+                )}
+              </TouchableOpacity>
+            </React.Fragment>
+          );
+        })}
+
+        {/* Bolha "digitando..." */}
+        {outroDigitando && (
+          <View style={[styles.messageRow, styles.messageRowOther]}>
+            <View style={styles.avatarSlot}>
+              <Image
+                source={{ uri: outraFoto
+                  ? (outraFoto.startsWith("data:") || outraFoto.startsWith("http")
+                      ? outraFoto : `data:image/jpeg;base64,${outraFoto}`)
+                  : "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+                }}
+                style={styles.avatar}
+              />
+            </View>
+            <View style={[styles.bolha, styles.bolhaOther, styles.bolhaDigitando]}>
+              {Platform.OS === "web" ? (
+                // @ts-ignore
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  {/* @ts-ignore */}
+                  <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
+                </div>
+              ) : (
+                <TypingDotsNative />
+              )}
+            </View>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* ── BARRA DE CITAÇÃO / EDIÇÃO ── */}
+      {(citando || editandoId) && (
+        <View style={styles.citandoBar}>
+          <View style={styles.citandoInfo}>
+            {citando
+              ? <>
+                  <Text style={styles.citandoNome}>{citando.nome_remetente}</Text>
+                  <Text style={styles.citandoTexto} numberOfLines={1}>
+                    {citando.tipo === "imagem" ? "📷 Imagem" : citando.mensagem}
+                  </Text>
+                </>
+              : <Text style={styles.citandoNome}>✏️ Editando mensagem</Text>
+            }
+          </View>
+          <TouchableOpacity onPress={() => { setCitando(null); setEditandoId(null); setInputText(""); clearTyping(); }}>
+            <Text style={styles.citandoFechar}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* ── INPUT ── */}
+      <View style={styles.inputArea}>
+        <TouchableOpacity
+          onPress={() => fileInputRef.current?.click()}
+          style={styles.imgButton}
+          disabled={uploading}
+        >
+          {uploading
+            ? <ActivityIndicator size="small" color="#E91E63" />
+            : <Ionicons name="image-outline" size={22} color="#0B2046" />
+          }
+        </TouchableOpacity>
+        <TextInput
+          value={inputText}
+          onChangeText={handleTyping}
+          style={styles.input}
+          placeholder="Digite aqui..."
+          placeholderTextColor="#94A3B8"
+          multiline
+        />
+        <TouchableOpacity onPress={sendMessage} style={styles.sendButton}>
+          <Ionicons name="send" size={18} color="white" />
+        </TouchableOpacity>
+      </View>
+
+      {/* ── MENU CONTEXTO ── */}
+      {menuMsg && (
+        <View style={styles.overlayFull}>
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setMenuMsg(null)} />
+          <View style={styles.menuCard}>
+            <Text style={styles.menuTitle}>Opções</Text>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setCitando(menuMsg); setMenuMsg(null); }}>
+              <Text style={styles.menuItemIcon}>↩️</Text>
+              <Text style={styles.menuItemText}>Responder</Text>
+            </TouchableOpacity>
+            {menuMsg.remetenteUid === uidAtual && menuMsg.tipo !== "imagem" && (
+              <TouchableOpacity style={styles.menuItem} onPress={() => iniciarEdicao(menuMsg)}>
+                <Text style={styles.menuItemIcon}>✏️</Text>
+                <Text style={styles.menuItemText}>Editar</Text>
+              </TouchableOpacity>
+            )}
+            {menuMsg.remetenteUid === uidAtual && (
+              <TouchableOpacity style={styles.menuItem} onPress={() => {
+                if (Platform.OS === "web") {
+                  if (window.confirm("Apagar mensagem? Essa ação não pode ser desfeita."))
+                    apagarMensagem(menuMsg);
+                } else {
+                  Alert.alert("Apagar mensagem", "Tem certeza?", [
+                    { text: "Cancelar", style: "cancel" },
+                    { text: "Apagar", style: "destructive", onPress: () => apagarMensagem(menuMsg) },
+                  ]);
+                }
+              }}>
+                <Text style={styles.menuItemIcon}>🗑️</Text>
+                <Text style={[styles.menuItemText, { color: "#ff4d6d" }]}>Apagar</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
-              style={[styles.popupBtnPrimary, { backgroundColor: C.rosa }]}
-              onPress={() => setPopupInfo(false)}
+              style={[styles.menuItem, { borderBottomWidth: 0, marginTop: 4 }]}
+              onPress={() => setMenuMsg(null)}
             >
-              <Ionicons name="checkmark" size={18} color="#FFFFFF" />
-              <Text style={styles.popupBtnTxt}>Entendido, vamos lá!</Text>
+              <Text style={[styles.menuItemText, { color: "#aaa", textAlign: "center", width: "100%" }]}>Cancelar</Text>
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      )}
 
-      <Modal visible={popupMateria} transparent animationType="slide">
-        <View style={styles.overlayEscuro}>
-          <View style={[styles.materiaBox, { backgroundColor: C.branco }]}>
-            <Text style={[styles.materiaTitulo, { color: C.azulEscuro }]}>Filtrar por matéria</Text>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={styles.materiaTagsGrid}>
-                {MATERIAS.map(m => {
-                  const selecionada = materiasFiltro.includes(m);
-                  return (
-                    <TouchableOpacity
-                      key={m}
-                      style={[
-                        styles.materiaTagOpcao,
-                        { backgroundColor: C.cinzaClaro },
-                        selecionada && { backgroundColor: C.rosa },
-                      ]}
-                      onPress={() => toggleMateria(m)}
-                    >
-                      {selecionada && (
-                        <Ionicons name="checkmark" size={11} color="#FFFFFF" style={{ marginRight: 3 }} />
-                      )}
-                      <Text style={[
-                        styles.materiaTagOpcaoTxt,
-                        { color: C.azulEscuro },
-                        selecionada && { color: '#FFFFFF' },
-                      ]}>
-                        {m}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </ScrollView>
-
-            <View style={styles.materiaBotoes}>
-              <TouchableOpacity
-                style={[styles.btnLimpar, { borderColor: C.cinzaClaro }]}
-                onPress={() => setMateriasFiltro([])}
-              >
-                <Text style={[styles.btnLimparTxt, { color: C.textoSecundario }]}>Limpar</Text>
+      {/* ── PREVIEW IMAGEM ── */}
+      {previewVisible && (
+        <View style={styles.overlayFull}>
+          <View style={styles.previewCard}>
+            <Text style={styles.previewTitle}>Pré-visualização</Text>
+            {previewImage && (
+              Platform.OS === "web"
+                // @ts-ignore
+                ? <img src={previewImage} style={{ width: 280, height: 280, objectFit: "contain", borderRadius: 12, marginBottom: 20 }} />
+                : <Image source={{ uri: previewImage }} style={styles.previewImage} resizeMode="contain" />
+            )}
+            <View style={styles.previewButtons}>
+              <TouchableOpacity style={[styles.previewBtn, styles.cancelBtn]} onPress={cancelarPreview}>
+                <Text style={styles.cancelBtnText}>Cancelar</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btnAplicar, { backgroundColor: C.rosa }]}
-                onPress={() => setPopupMateria(false)}
-              >
-                <Text style={styles.btnAplicarTxt}>
-                  {materiasFiltro.length === 0
-                    ? 'Ver todas'
-                    : `Ver resultados (${materiasFiltro.length})`}
-                </Text>
+              <TouchableOpacity style={[styles.previewBtn, styles.sendBtn]} onPress={confirmarEnvio}>
+                <Text style={styles.sendBtnText}>Enviar</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
-      </Modal>
-    </SafeAreaView>
+      )}
+
+      {/* ── IMAGEM FULLSCREEN ── */}
+      {fullImageVisible && (
+        <View style={styles.overlayFullDark}>
+          <TouchableOpacity style={styles.closeBtn} onPress={() => setFullImageVisible(false)}>
+            <Text style={styles.closeBtnText}>✕</Text>
+          </TouchableOpacity>
+          {fullImageUrl && (
+            Platform.OS === "web"
+              // @ts-ignore
+              ? <img src={fullImageUrl} style={{ maxWidth: "90%", maxHeight: "85%", objectFit: "contain", borderRadius: 8 }} />
+              : <Image source={{ uri: fullImageUrl }} style={styles.fullImage} resizeMode="contain" />
+          )}
+        </View>
+      )}
+    </KeyboardAvoidingView>
   );
 }
 
+// ══════════════════════════════════════════════════════════
+// STYLES
+// ══════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
-  container:           { flex: 1 },
-  navbar:              { height: 64, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, borderBottomWidth: 1 },
-  logoWrap:            { position: 'relative', flexDirection: 'row', alignItems: 'center' },
-  dotAmarelo:          { position: 'absolute', top: 2, left: -4, width: 7, height: 7, borderRadius: 4, backgroundColor: CORES.amarelo, zIndex: 1 },
-  logo:                { fontSize: 24, fontWeight: '900', letterSpacing: -1 },
-  tabs:                { flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 12, paddingTop: 8, gap: 8, borderBottomWidth: 1 },
-  tab:                 { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
-  tabTxt:              { fontSize: 12, fontWeight: '700' },
-  badge:               { width: 18, height: 18, borderRadius: 9, justifyContent: 'center', alignItems: 'center', marginLeft: 2 },
-  badgeTxt:            { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
-  filtros:             { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1 },
-  materiaSelector:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, borderWidth: 1, minHeight: 46 },
-  materiaSelectorTxt:  { fontSize: 14, fontWeight: '600' },
-  tagMateriaFiltro:    { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
-  tagMateriaFiltroTxt: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
-  cardWrap:            { flex: 1, alignItems: 'center', paddingTop: 20, paddingHorizontal: 20 },
-  matchCard:           { width: '100%', height: height * 0.45, borderRadius: 28, overflow: 'hidden', elevation: 8, shadowColor: CORES.azulEscuro, shadowOpacity: 0.2, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } },
-  cardFoto:            { width: '100%', height: '100%' },
-  cardOverlay:         { ...StyleSheet.absoluteFillObject as any, backgroundColor: 'rgba(11,32,70,0.45)' },
-  cardInfo:            { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20 },
-  cardNome:            { fontSize: 24, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.5 },
-  cardTurma:           { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginBottom: 10 },
-  materiasRow:         { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  materiaTag:          { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
-  materiaTagTxt:       { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
-  arenaContador:       { marginTop: 12, fontSize: 12, fontWeight: '600' },
-  acoesRow:            { flexDirection: 'row', gap: 24, marginTop: 20 },
-  btnRecusar:          { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowOpacity: 0.2, shadowRadius: 8 },
-  btnAceitar:          { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowOpacity: 0.4, shadowRadius: 8 },
-  btnRecarregar:       { marginTop: 16, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 16 },
-  btnRecarregarTxt:    { fontWeight: '700' },
-  centro:              { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
-  txtVazio:            { fontSize: 15, fontWeight: '600', textAlign: 'center' },
-  solCard:             { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 20, marginBottom: 10, elevation: 1, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4 },
-  solAvatar:           { width: 52, height: 52, borderRadius: 16, backgroundColor: CORES.cinzaClaro },
-  solInfo:             { flex: 1, marginLeft: 12 },
-  solNome:             { fontSize: 15, fontWeight: '700' },
-  solTurma:            { fontSize: 11, marginTop: 1 },
-  solAcoes:            { flexDirection: 'row', gap: 8 },
-  btnSolRecusar:       { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center' },
-  btnSolAceitar:       { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center' },
-  avatarWrap:          { position: 'relative' },
-  bolinhaVerde:        { position: 'absolute', top: 0, right: 0, width: 12, height: 12, borderRadius: 6, backgroundColor: CORES.verde, borderWidth: 2, borderColor: '#FFFFFF' },
-  nomeLinha:           { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
-  tagTipo:             { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 7 },
-  tagTipoTxt:          { fontSize: 9, fontWeight: '800' },
-  tagMateria:          { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 7 },
-  tagMateriaTxt:       { fontSize: 10, fontWeight: '700' },
-  tagMais:             { fontSize: 10, fontWeight: '700' },
-  ultimaMsg:           { fontSize: 12, marginTop: 4 },
-  matchBadgeWrap:      { marginLeft: 8 },
-  matchBadge:          { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center' },
-  overlayEscuro:       { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  popupBox:            { borderRadius: 28, padding: 28, width: '100%', maxWidth: 400 },
-  popupIcone:          { width: 64, height: 64, borderRadius: 32, backgroundColor: '#FFE4EC', justifyContent: 'center', alignItems: 'center', alignSelf: 'center', marginBottom: 16 },
-  popupTitulo:         { fontSize: 22, fontWeight: '900', textAlign: 'center', marginBottom: 20, letterSpacing: -0.5 },
-  popupItem:           { flexDirection: 'row', gap: 14, marginBottom: 18 },
-  popupNum:            { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  popupNumTxt:         { color: '#FFFFFF', fontSize: 11, fontWeight: '900' },
-  popupItemTitulo:     { fontSize: 14, fontWeight: '800', marginBottom: 4 },
-  popupItemDesc:       { fontSize: 13, lineHeight: 18 },
-  popupBtnPrimary:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 18, marginTop: 8 },
-  popupBtnTxt:         { color: '#FFFFFF', fontWeight: '800', fontSize: 15 },
-  materiaBox:          { borderRadius: 28, padding: 24, width: '100%', maxWidth: 400, maxHeight: height * 0.7 },
-  materiaTitulo:       { fontSize: 18, fontWeight: '900', marginBottom: 16, textAlign: 'center' },
-  materiaTagsGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 8 },
-  materiaTagOpcao:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20 },
-  materiaTagOpcaoTxt:  { fontSize: 13, fontWeight: '700' },
-  materiaBotoes:       { flexDirection: 'row', gap: 10, marginTop: 16 },
-  btnLimpar:           { flex: 1, alignItems: 'center', paddingVertical: 13, borderRadius: 16, borderWidth: 1.5 },
-  btnLimparTxt:        { fontWeight: '700', fontSize: 14 },
-  btnAplicar:          { flex: 2, alignItems: 'center', paddingVertical: 13, borderRadius: 16 },
-  btnAplicarTxt:       { fontWeight: '800', color: '#FFFFFF', fontSize: 14 },
+  container: {
+    flex: 1,
+    backgroundColor: "#F0F2F5",
+    ...(Platform.OS === "web"
+      ? { height: "100vh" as any, maxHeight: "100vh" as any, overflow: "hidden" as any }
+      : {}),
+  },
+
+  // Header
+  header:           { backgroundColor: "#FFFFFF", flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingTop: Platform.OS === "ios" ? 50 : 40, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: "#EAEFF4", elevation: 2, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 4 },
+  backBtn:          { width: 38, height: 38, borderRadius: 19, backgroundColor: "#F0F2F5", justifyContent: "center", alignItems: "center" },
+  headerCenter:     { flexDirection: "row", alignItems: "center", gap: 10, flex: 1, paddingLeft: 10 },
+  headerAvatarWrap: { position: "relative" },
+  headerAvatar:     { width: 42, height: 42, borderRadius: 21, backgroundColor: "#EAEFF4" },
+  headerOnlineDot:  { position: "absolute", bottom: 1, right: 1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: "#FFFFFF" },
+  headerTitle:      { color: "#0B2046", fontSize: 16, fontWeight: "800" },
+  headerSub:        { fontSize: 12, fontWeight: "600", marginTop: 1 },
+
+  // Scroll
+  scrollView:    { flex: 1 },
+  scrollContent: { paddingVertical: 12, paddingHorizontal: 8, flexGrow: 1 },
+
+  // Mensagens
+  messageRow:      { flexDirection: "row", alignItems: "flex-end", marginVertical: 2, paddingHorizontal: 4, width: "100%" },
+  messageRowMe:    { justifyContent: "flex-end" },
+  messageRowOther: { justifyContent: "flex-start" },
+  avatarSlot:      { width: 36, alignItems: "center", justifyContent: "flex-end" },
+  avatarEspaco:    { width: 32, height: 32 },
+  avatar:          { width: 32, height: 32, borderRadius: 16 },
+  bolha:           { maxWidth: SCREEN_WIDTH * 0.72, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, marginHorizontal: 4, flexShrink: 1, elevation: 1, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 3 },
+  bolhaMe:         { backgroundColor: "#E91E63", borderBottomRightRadius: 4, alignSelf: "flex-end" },
+  bolhaOther:      { backgroundColor: "#0B2046", borderBottomLeftRadius: 4, alignSelf: "flex-start" },
+  bolhaDigitando:  { paddingHorizontal: 16, paddingVertical: 14 },
+  nomeRemetente:   { color: "#E91E63", fontSize: 11, fontWeight: "800", marginBottom: 3 },
+  messageText:     { color: "white", fontSize: 15, flexShrink: 1, flexWrap: "wrap", lineHeight: 21 },
+  rodape:          { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", marginTop: 4 },
+  hora:            { color: "rgba(255,255,255,0.6)", fontSize: 10, textAlign: "right" },
+  editadaLabel:    { color: "rgba(255,255,255,0.5)", fontSize: 10 },
+
+  // Citação
+  citacaoBox:   { borderLeftWidth: 3, paddingLeft: 8, marginBottom: 8, borderRadius: 4, paddingVertical: 4 },
+  citacaoMe:    { borderLeftColor: "rgba(255,255,255,0.7)", backgroundColor: "rgba(0,0,0,0.12)" },
+  citacaoOther: { borderLeftColor: "#E91E63", backgroundColor: "rgba(233,30,99,0.12)" },
+  citacaoNome:  { color: "rgba(255,255,255,0.85)", fontSize: 11, fontWeight: "800", marginBottom: 1 },
+  citacaoTexto: { color: "rgba(255,255,255,0.65)", fontSize: 12 },
+
+  // Barra citando/editando
+  citandoBar:   { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 2, borderTopColor: "#E91E63" },
+  citandoInfo:  { flex: 1 },
+  citandoNome:  { color: "#E91E63", fontSize: 12, fontWeight: "800" },
+  citandoTexto: { color: "#64748B", fontSize: 12 },
+  citandoFechar:{ color: "#64748B", fontSize: 18, paddingLeft: 10 },
+
+  // Input
+  inputArea:  { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingTop: 10, paddingBottom: Platform.OS === "ios" ? 32 : 14, backgroundColor: "#FFFFFF", borderTopWidth: 1, borderTopColor: "#EAEFF4", gap: 8 },
+  imgButton:  { width: 42, height: 42, justifyContent: "center", alignItems: "center", backgroundColor: "#F0F2F5", borderRadius: 21, borderWidth: 1, borderColor: "#EAEFF4" },
+  input:      { flex: 1, backgroundColor: "#F0F2F5", color: "#0B2046", borderRadius: 22, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, maxHeight: 100, fontSize: 15, borderWidth: 1, borderColor: "#EAEFF4" },
+  sendButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#E91E63", justifyContent: "center", alignItems: "center", elevation: 3, shadowColor: "#E91E63", shadowOpacity: 0.35, shadowRadius: 6 },
+
+  // Overlays
+  overlayFull:     { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", zIndex: 999 },
+  overlayFullDark: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "#000", justifyContent: "center", alignItems: "center", zIndex: 999 },
+
+  // Menu contexto
+  menuCard:     { backgroundColor: "#FFFFFF", borderRadius: 24, padding: 20, width: 290, elevation: 10 },
+  menuTitle:    { color: "#0B2046", fontSize: 16, fontWeight: "900", marginBottom: 12, textAlign: "center" },
+  menuItem:     { flexDirection: "row", alignItems: "center", paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#F0F2F5" },
+  menuItemIcon: { fontSize: 20, marginRight: 12 },
+  menuItemText: { color: "#0B2046", fontSize: 15, fontWeight: "600" },
+
+  // Preview imagem
+  previewCard:    { backgroundColor: "#FFFFFF", borderRadius: 24, padding: 24, width: 340, alignItems: "center", elevation: 10 },
+  previewTitle:   { color: "#0B2046", fontSize: 18, fontWeight: "900", marginBottom: 16 },
+  previewImage:   { width: 280, height: 280, borderRadius: 16, marginBottom: 20 },
+  previewButtons: { flexDirection: "row", gap: 15 },
+  previewBtn:     { paddingHorizontal: 28, paddingVertical: 13, borderRadius: 25 },
+  cancelBtn:      { backgroundColor: "#F0F2F5" },
+  sendBtn:        { backgroundColor: "#E91E63" },
+  cancelBtnText:  { color: "#0B2046", fontWeight: "700" },
+  sendBtnText:    { color: "white", fontWeight: "700" },
+
+  // Imagem fullscreen
+  closeBtn:     { position: "absolute", top: Platform.OS === "ios" ? 50 : 30, right: 20, zIndex: 10, backgroundColor: "rgba(255,255,255,0.25)", width: 40, height: 40, borderRadius: 20, justifyContent: "center", alignItems: "center" },
+  closeBtnText: { color: "white", fontSize: 20, fontWeight: "bold" },
+  fullImage:    { width: SCREEN_WIDTH, height: SCREEN_HEIGHT * 0.8 },
+
+  // Separador de data
+  separadorDataWrap:  { flexDirection: "row", alignItems: "center", marginVertical: 16, paddingHorizontal: 16 },
+  separadorDataLinha: { flex: 1, height: 1, backgroundColor: "#DDEAEF" },
+  separadorDataTxt:   { color: "#94A3B8", fontSize: 11, fontWeight: "700", marginHorizontal: 10, letterSpacing: 0.5, backgroundColor: "#F0F2F5", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
 });
