@@ -12,6 +12,7 @@ import {
   deleteDoc, doc, setDoc, getDoc, serverTimestamp, onSnapshot
 } from 'firebase/firestore';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RefreshControl } from 'react-native';
 // ✅ ADICIONAR: Notificações
@@ -686,7 +687,11 @@ useEffect(() => {
       )}
 
       {/* HEADER — mantém azul escuro fixo (identidade visual) */}
-      <View style={[styles.header, { paddingTop: insets.top }]}>
+      <View style={[
+        styles.header,
+        { paddingTop: insets.top },
+        !modoEscuro && { shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4 }
+      ]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.btnVoltar}>
           <Ionicons name="arrow-back" size={20} color={CORES.branco} />
         </TouchableOpacity>
@@ -790,6 +795,7 @@ useEffect(() => {
           </View>
 
           {/* CHIPS DE FILTRO */}
+          <View style={{ position: 'relative' }}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -841,6 +847,16 @@ useEffect(() => {
               );
             })}
           </ScrollView>
+          <LinearGradient
+            colors={[
+              'transparent',
+              modoEscuro ? 'rgba(17,24,39,0.95)' : 'rgba(255,255,255,0.95)',
+            ]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 36, pointerEvents: 'none' }}
+          />
+          </View>
 
           {/* LISTA */}
           {eventosFiltrados.length === 0 ? (
@@ -1489,7 +1505,7 @@ const styles = StyleSheet.create({
   numWrap:           { width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
   numDia:            { fontFamily: F.bold },
   dotsRow:           { flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginTop: 2 },
-  dot:               { width: 5, height: 5, borderRadius: 3 },
+  dot:               { width: 8, height: 8, borderRadius: 4 },
 
   // SEÇÃO EVENTOS
   secaoEventos:      { marginHorizontal: 16, marginTop: 18, borderRadius: 20, padding: 16, elevation: 3, shadowColor: CORES.azulEscuro, shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },

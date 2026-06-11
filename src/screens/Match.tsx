@@ -18,6 +18,15 @@ import { useAppSettings } from '../contexts/AppSettingsContext';
 // ✅ GAMIFICAÇÃO — Import do service
 import { awardXpMatch } from '../services/gamificationService';
 
+// ── Fonte Poppins ──
+const F = {
+  regular:  'Poppins_400Regular',
+  medium:   'Poppins_500Medium',
+  semibold: 'Poppins_600SemiBold',
+  bold:     'Poppins_700Bold',
+  black:    'Poppins_800ExtraBold',
+};
+
 const { width, height } = Dimensions.get('window');
 
 const CORES = {
@@ -44,6 +53,12 @@ const getImageUri = (foto: any) => {
     if (foto.length > 100) return `data:image/jpeg;base64,${foto}`;
   }
   return padrao;
+};
+
+const formatarHora = (data: any): string => {
+  if (!data) return '';
+  const date = data?.toDate ? data.toDate() : new Date(data);
+  return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 };
 
 type Aba  = 'descobrir' | 'solicitacoes' | 'matches';
@@ -75,11 +90,14 @@ function useConversas(meuUid: string | undefined, matchIds: string[]) {
 
 export default function Match({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
+  const { cores: C, fonteScale, modoEscuro } = useAppSettings();
+  const fs = (size: number) => size * fonteScale;
+
   const [abaAtiva,       setAbaAtiva]       = useState<Aba>('descobrir');
   const [modo,           setModo]           = useState<Modo>('aprender');
   const [materiasFiltro, setMateriasFiltro] = useState<string[]>([]);
   const [interagidosCarregado, setInteragidosCarregado] = useState(false);
-  const uidsInteragidosRef = useRef<Set<string>>(new Set());  
+  const uidsInteragidosRef = useRef<Set<string>>(new Set());
   const [candidatos,     setCandidatos]     = useState<any[]>([]);
   const [solicitacoes,   setSolicitacoes]   = useState<any[]>([]);
   const [matches,        setMatches]        = useState<any[]>([]);
@@ -296,6 +314,11 @@ export default function Match({ navigation, route }: any) {
   };
 
   // ── Matches ordenados pela última mensagem ──
+  const matchesNaoLidos = matches.filter(m => {
+    const conversa = conversas[m.outro?.uid];
+    return conversa && !conversa.visto && conversa.quemEnviou !== meuUid;
+  }).length;
+
   const matchesOrdenados = [...matches].sort((a, b) => {
     const ca = conversas[a.outro?.uid];
     const cb = conversas[b.outro?.uid];
@@ -315,11 +338,21 @@ export default function Match({ navigation, route }: any) {
     );
     if (!card) return (
       <View style={styles.centro}>
-        <FontAwesome5 name="search" size={48} color={CORES.cinzaClaro} />
+        <Text style={{ fontSize: 56 }}>🦉</Text>
         <Text style={styles.txtVazio}>Ninguém mais por aqui!</Text>
         <Text style={[styles.txtVazio, { fontSize: 13, marginTop: 4 }]}>
           Tente mudar o filtro ou volte mais tarde.
         </Text>
+        {materiasFiltro.length > 0 && (
+          <TouchableOpacity
+            style={[styles.btnRecarregar, { backgroundColor: CORES.cinzaClaro }]}
+            onPress={() => setMateriasFiltro([])}
+          >
+            <Text style={[styles.btnRecarregarTxt, { color: CORES.azulEscuro }]}>
+              Limpar filtros
+            </Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity style={styles.btnRecarregar} onPress={carregarCandidatos}>
           <Text style={styles.btnRecarregarTxt}>Recarregar</Text>
         </TouchableOpacity>
@@ -418,41 +451,15 @@ export default function Match({ navigation, route }: any) {
         <View style={styles.solInfo}>
           <View style={styles.nomeLinha}>
             <Text
-              style={[styles.solNome, naoLida && styles.solNomeNaoLido]}
+              style={[styles.solNome, naoLida && styles.solNomeNaoLido, { flex: 1 }]}
               numberOfLines={1}
             >
               {item.outro?.nome_completo || 'Usuário'}
             </Text>
-
-            <View style={[styles.tagTipo, { backgroundColor: isEnsina ? '#E8F5E9' : '#FFF3E0' }]}>
-              <Ionicons
-                name={isEnsina ? 'school-outline' : 'book-outline'}
-                size={9}
-                color={isEnsina ? '#2E7D32' : '#E65100'}
-              />
-              <Text style={[styles.tagTipoTxt, { color: isEnsina ? '#2E7D32' : '#E65100' }]}>
-                {tipo}
-              </Text>
-            </View>
-
-            {materias.slice(0, 2).map((m: string) => (
-              <View
-                key={m}
-                style={[styles.tagMateria, { backgroundColor: isEnsina ? '#E3F2FD' : '#FCE4EC' }]}
-              >
-                <Text style={[styles.tagMateriaTxt, { color: isEnsina ? '#1565C0' : '#880E4F' }]}>
-                  {m}
-                </Text>
-              </View>
-            ))}
-            {materias.length > 2 && (
-              <Text style={styles.tagMais}>+{materias.length - 2}</Text>
-            )}
+            <Text style={styles.msgTimestamp}>
+              {conversa?.data_postagem ? formatarHora(conversa.data_postagem) : ''}
+            </Text>
           </View>
-
-          {item.outro?.turma ? (
-            <Text style={styles.solTurma}>{item.outro.turma}</Text>
-          ) : null}
 
           <Text
             style={[styles.ultimaMsg, naoLida && styles.ultimaMsgNaoLida]}
@@ -460,16 +467,6 @@ export default function Match({ navigation, route }: any) {
           >
             {labelMsg}
           </Text>
-        </View>
-
-        <View style={styles.matchBadgeWrap}>
-          <View style={[styles.matchBadge, naoLida && styles.matchBadgeAtivo]}>
-            <Ionicons
-              name="chatbubble-outline"
-              size={20}
-              color={naoLida ? CORES.branco : CORES.rosa}
-            />
-          </View>
         </View>
       </TouchableOpacity>
     );
@@ -479,11 +476,14 @@ export default function Match({ navigation, route }: any) {
   // RENDER PRINCIPAL
   // ══════════════════════════════════════════════════════════
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={CORES.branco} />
+    <SafeAreaView style={[styles.container, { backgroundColor: C.fundo }]}>
+      <StatusBar
+        barStyle={modoEscuro ? 'light-content' : 'dark-content'}
+        backgroundColor={C.fundo}
+      />
 
       {/* NAVBAR */}
-      <View style={[styles.navbar, { paddingTop: insets.top }]}>
+      <View style={[styles.navbar, { paddingTop: insets.top, backgroundColor: modoEscuro ? '#111827' : CORES.branco, borderBottomColor: modoEscuro ? '#1F2937' : CORES.cinzaClaro }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color={CORES.azulEscuro} />
         </TouchableOpacity>
@@ -497,7 +497,7 @@ export default function Match({ navigation, route }: any) {
       </View>
 
       {/* TABS */}
-      <View style={styles.tabs}>
+      <View style={[styles.tabs, { backgroundColor: modoEscuro ? '#111827' : CORES.branco, borderBottomColor: modoEscuro ? '#1F2937' : CORES.cinzaClaro }]}>
         {(['descobrir', 'solicitacoes', 'matches'] as Aba[]).map(aba => (
           <TouchableOpacity
             key={aba}
@@ -517,6 +517,11 @@ export default function Match({ navigation, route }: any) {
                 <Text style={styles.badgeTxt}>{solicitacoes.length}</Text>
               </View>
             )}
+            {aba === 'matches' && matchesNaoLidos > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeTxt}>{matchesNaoLidos}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         ))}
       </View>
@@ -524,7 +529,7 @@ export default function Match({ navigation, route }: any) {
       {/* ABA DESCOBRIR */}
       {abaAtiva === 'descobrir' && (
         <View style={{ flex: 1 }}>
-          <View style={styles.filtros}>
+          <View style={[styles.filtros, { backgroundColor: modoEscuro ? '#111827' : CORES.branco, borderBottomColor: modoEscuro ? '#1F2937' : CORES.cinzaClaro }]}>
             {/* Modo aprender/ensinar */}
             <View style={styles.modoRow}>
               <TouchableOpacity
@@ -755,7 +760,7 @@ const styles = StyleSheet.create({
   // Cards de match / solicitação
   solCard:         { flexDirection: 'row', alignItems: 'center', backgroundColor: CORES.branco, padding: 14, borderRadius: 20, marginBottom: 10, elevation: 1, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4 },
   solCardNaoLido:  { backgroundColor: '#FFF5F8', borderLeftWidth: 3, borderLeftColor: CORES.rosa },
-  solAvatar:       { width: 52, height: 52, borderRadius: 16, backgroundColor: CORES.cinzaClaro },
+  solAvatar:       { width: 52, height: 52, borderRadius: 26, backgroundColor: CORES.cinzaClaro },
   solInfo:         { flex: 1, marginLeft: 12 },
   solNome:         { fontSize: 15, fontWeight: '700', color: CORES.azulEscuro },
   solNomeNaoLido:  { fontWeight: '900' },
@@ -777,13 +782,9 @@ const styles = StyleSheet.create({
   tagMais:      { fontSize: 10, color: CORES.textoSecundario, fontWeight: '700' },
 
   // Última mensagem
-  ultimaMsg:        { fontSize: 12, color: CORES.textoSecundario, marginTop: 4 },
+  ultimaMsg:        { fontSize: 13, color: '#6B7280', marginTop: 3 },
   ultimaMsgNaoLida: { color: CORES.azulEscuro, fontWeight: '700' },
-
-  // Badge chat
-  matchBadgeWrap: { marginLeft: 8 },
-  matchBadge:     { width: 38, height: 38, borderRadius: 19, backgroundColor: '#FFE4EC', justifyContent: 'center', alignItems: 'center' },
-  matchBadgeAtivo:{ backgroundColor: CORES.rosa },
+  msgTimestamp:     { fontSize: 11, color: CORES.textoSecundario, fontWeight: '500', marginLeft: 6 },
 
   // Overlays / popups
   overlayEscuro: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },

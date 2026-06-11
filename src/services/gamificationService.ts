@@ -106,6 +106,76 @@ export const awardDailyCheckIn = async (meuUid: string): Promise<boolean> => {
 };
 
 /**
+ * Award XP quando uma resposta no fórum recebe upvote ou selo de resolução
+ * @param meuUid - UID do usuário logado
+ * @param foiValidada - true se a resposta recebeu upvote ou selo de resolução
+ * @returns Promise com sucesso ou erro
+ */
+export const awardXpForum = async (
+  meuUid: string,
+  foiValidada: boolean
+): Promise<boolean> => {
+  try {
+    if (!meuUid) throw new Error('UID não fornecido');
+
+    // ─ Só bonifica se a resposta foi validada ─
+    if (!foiValidada) {
+      console.warn('⚠️ Resposta ainda não validada (sem upvote ou selo de resolução)');
+      return false;
+    }
+
+    const userRef = doc(db, 'usuarios', meuUid);
+    const userSnap = await getDoc(userRef);
+
+    if (!userSnap.exists()) throw new Error('Usuário não encontrado');
+
+    const xpGanho = GAMIFICATION_CONFIG.RESPOSTA_FORUM.xp;
+    const moedasGanhas = GAMIFICATION_CONFIG.RESPOSTA_FORUM.moedas;
+
+    await updateDoc(userRef, {
+      xp_total: increment(xpGanho),
+      moedas_saldo: increment(moedasGanhas),
+    });
+
+    console.log(`✅ Resposta no fórum validada! +${xpGanho} XP, +${moedasGanhas} Moedas!`);
+    return true;
+  } catch (error) {
+    console.error('❌ Erro ao award XP do fórum:', error);
+    return false;
+  }
+};
+
+/**
+ * Award XP quando o aluno pede ajuda e finaliza uma dúvida
+ * @param meuUid - UID do usuário logado
+ * @returns Promise com sucesso ou erro
+ */
+export const awardXpPedirAjuda = async (meuUid: string): Promise<boolean> => {
+  try {
+    if (!meuUid) throw new Error('UID não fornecido');
+
+    const userRef = doc(db, 'usuarios', meuUid);
+    const userSnap = await getDoc(userRef);
+
+    if (!userSnap.exists()) throw new Error('Usuário não encontrado');
+
+    const xpGanho = GAMIFICATION_CONFIG.PEDIR_AJUDA.xp;
+    const moedasGanhas = GAMIFICATION_CONFIG.PEDIR_AJUDA.moedas;
+
+    await updateDoc(userRef, {
+      xp_total: increment(xpGanho),
+      moedas_saldo: increment(moedasGanhas),
+    });
+
+    console.log(`✅ Dúvida finalizada! +${xpGanho} XP, +${moedasGanhas} Moedas!`);
+    return true;
+  } catch (error) {
+    console.error('❌ Erro ao award XP de pedir ajuda:', error);
+    return false;
+  }
+};
+
+/**
  * Comprar cosmético (gasta Moedas)
  * @param meuUid - UID do usuário
  * @param idCosmetico - ID do cosmético

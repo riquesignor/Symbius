@@ -18,6 +18,15 @@ import * as Notifications from 'expo-notifications';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { useNotificacao } from '../contexts/NotificacaoProvider';
 
+// ── Fonte Poppins ──
+const F = {
+  regular:  'Poppins_400Regular',
+  medium:   'Poppins_500Medium',
+  semibold: 'Poppins_600SemiBold',
+  bold:     'Poppins_700Bold',
+  black:    'Poppins_800ExtraBold',
+};
+
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const IMG_MAX = 220;
 const IMG_MIN = 80;
@@ -207,8 +216,9 @@ export default function Chat({ route, navigation }: any) {
   const insets = useSafeAreaInsets();
   const { outroUid, outroNome } = route.params || {};
 
-  // ✅ ADICIONAR: pegar settings de notificação
-  const { notifGeral, somNotif, vibracao } = useAppSettings();
+  // ✅ ADICIONAR: pegar settings de notificação, cores e escala de fonte
+  const { notifGeral, somNotif, vibracao, cores: C, fonteScale, modoEscuro } = useAppSettings();
+  const fs = (size: number) => size * fonteScale;
 
   // ✅ Avisa o provider global qual conversa está aberta (pra ele NÃO
   // disparar notificação de uma conversa que o usuário já está vendo)
@@ -559,7 +569,7 @@ export default function Chat({ route, navigation }: any) {
   // ══════════════════════════════════════════════════════════
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: C.fundo }]}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       {/* ── HEADER ── */}
@@ -648,29 +658,31 @@ export default function Chat({ route, navigation }: any) {
                       <Text style={styles.citacaoTexto} numberOfLines={2}>{item.citacao.mensagem}</Text>
                     </View>
                   )}
-                  {item.tipo === "imagem" ? (
-                    <>
-                      <ImagemMensagem base64={item.mensagem} onPress={() => abrirImagemFull(item.mensagem)} />
-                      <Text style={styles.hora}>{formatarHora(item.data_postagem)}</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Text style={styles.messageText}>{item.mensagem}</Text>
-                      <View style={styles.rodape}>
-                        {item.editada && <Text style={styles.editadaLabel}>editada · </Text>}
+                  {(() => {
+                    // Detecta imagem pelo tipo OU pelo conteúdo (fallback p/ msgs antigas sem tipo)
+                    const pareceBase64 = typeof item.mensagem === "string"
+                      && item.mensagem.length > 500
+                      && !/\s/.test(item.mensagem.substring(0, 100));
+                    const isImagem = item.tipo === "imagem" || pareceBase64;
+
+                    return isImagem ? (
+                      <>
+                        <ImagemMensagem base64={item.mensagem} onPress={() => abrirImagemFull(item.mensagem)} />
                         <Text style={styles.hora}>{formatarHora(item.data_postagem)}</Text>
-                      </View>
-                    </>
-                  )}
+                      </>
+                    ) : (
+                      <>
+                        <Text style={styles.messageText}>{item.mensagem}</Text>
+                        <View style={styles.rodape}>
+                          {item.editada && <Text style={styles.editadaLabel}>editada · </Text>}
+                          <Text style={styles.hora}>{formatarHora(item.data_postagem)}</Text>
+                        </View>
+                      </>
+                    );
+                  })()}
                 </View>
 
-                {isMe && (
-                  <View style={styles.avatarSlot}>
-                    {ultimaDaSequencia
-                      ? <Image source={{ uri: getImageUri(minhaFoto) }} style={styles.avatar} />
-                      : <View style={styles.avatarEspaco} />}
-                  </View>
-                )}
+                {/* Avatar próprio removido — nenhum app de referência exibe o seu avatar no chat */}
               </TouchableOpacity>
             </React.Fragment>
           );
@@ -872,7 +884,7 @@ const styles = StyleSheet.create({
   nomeRemetente:   { color: "#E91E63", fontSize: 11, fontWeight: "800", marginBottom: 3 },
   messageText:     { color: "white", fontSize: 15, flexShrink: 1, flexWrap: "wrap", lineHeight: 21 },
   rodape:          { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", marginTop: 4 },
-  hora:            { color: "rgba(255,255,255,0.6)", fontSize: 10, textAlign: "right" },
+  hora:            { color: "rgba(255,255,255,0.85)", fontSize: 10, textAlign: "right" },
   editadaLabel:    { color: "rgba(255,255,255,0.5)", fontSize: 10 },
 
   // Citação

@@ -453,6 +453,7 @@ export default function Admin({ navigation, route }: any) {
       </View>
 
       <ScrollView
+        style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
         <RefreshControl
@@ -579,21 +580,30 @@ export default function Admin({ navigation, route }: any) {
                   </View>
                 </View>
 
-                <LineChart
-                  data={{
-                    labels:   cadastrosTimeline.labels,
-                    datasets: [{ data: cadastrosTimeline.dados.length ? cadastrosTimeline.dados : [0,0,0,0,0,0] }],
-                  }}
-                  width={winW - 64}
-                  height={180}
-                  chartConfig={chartConfigBase}
-                  bezier
-                  style={styles.chartGraph}
-                  withInnerLines={true}
-                  withOuterLines={false}
-                  withVerticalLines={false}
-                  fromZero
-                />
+                {cadastrosTimeline.dados.every(v => v === 0) ? (
+                  <View style={styles.chartVazio}>
+                    <Ionicons name="people-outline" size={32} color={C.cinzaClaro} />
+                    <Text style={[styles.chartVazioText, { color: C.textoSec, fontSize: fs(13) }]}>
+                      Nenhum cadastro nos últimos 6 meses
+                    </Text>
+                  </View>
+                ) : (
+                  <LineChart
+                    data={{
+                      labels:   cadastrosTimeline.labels,
+                      datasets: [{ data: cadastrosTimeline.dados }],
+                    }}
+                    width={winW - 64}
+                    height={180}
+                    chartConfig={chartConfigBase}
+                    bezier
+                    style={styles.chartGraph}
+                    withInnerLines={true}
+                    withOuterLines={false}
+                    withVerticalLines={false}
+                    fromZero
+                  />
+                )}
               </View>
             </FadeInView>
 
@@ -612,16 +622,30 @@ export default function Admin({ navigation, route }: any) {
                 </View>
 
                 {postsPorCatStyled.length > 0 ? (
-                  <PieChart
-                    data={postsPorCatStyled}
-                    width={winW - 64}
-                    height={180}
-                    chartConfig={chartConfigBase}
-                    accessor="population"
-                    backgroundColor="transparent"
-                    paddingLeft="10"
-                    absolute
-                  />
+                  <View style={{ alignItems: 'center' }}>
+                    <PieChart
+                      data={postsPorCatStyled}
+                      width={winW - 64}
+                      height={160}
+                      chartConfig={chartConfigBase}
+                      accessor="population"
+                      backgroundColor="transparent"
+                      paddingLeft="20"
+                      hasLegend={false}
+                      absolute
+                    />
+                    {/* Legenda abaixo do gráfico — melhor em mobile */}
+                    <View style={styles.pizzaLegenda}>
+                      {postsPorCatStyled.map(item => (
+                        <View key={item.name} style={styles.pizzaLegendaItem}>
+                          <View style={[styles.pizzaLegendaDot, { backgroundColor: item.color }]} />
+                          <Text style={[styles.pizzaLegendaTxt, { color: C.azulEscuro, fontSize: fs(11) }]}>
+                            {item.population} {item.name}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
                 ) : (
                   <View style={styles.chartVazio}>
                     <Ionicons name="pie-chart-outline" size={32} color={C.cinzaClaro} />
@@ -1128,7 +1152,7 @@ export default function Admin({ navigation, route }: any) {
 // STYLESHEET — sem cores hardcoded em elementos dinâmicos
 // ════════════════════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
-  container:          { flex: 1 },
+  container:          { flex: 1, ...(Platform.OS === 'web' ? { height: '100vh' as any, overflow: 'hidden' as any } : {}) },
   centro:             { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 14 },
   loadingText:        { fontFamily: F.semibold },
 
@@ -1178,6 +1202,10 @@ const styles = StyleSheet.create({
   chartVazio:         { alignItems: 'center', paddingVertical: 30, gap: 8 },
   chartVazioText:     { fontFamily: F.medium },
   trofeu:             { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  pizzaLegenda:       { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 8, paddingHorizontal: 8 },
+  pizzaLegendaItem:   { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  pizzaLegendaDot:    { width: 10, height: 10, borderRadius: 5 },
+  pizzaLegendaTxt:    { fontFamily: F.semibold },
 
   secaoTituloGrande:  { fontFamily: F.black, marginBottom: 10, marginTop: 4, letterSpacing: -0.2 },
 

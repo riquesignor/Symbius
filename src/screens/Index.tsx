@@ -86,7 +86,7 @@ const calcDias = (dataStr: string) => {
   const hoje = new Date();
   hoje.setHours(0,0,0,0); alvo.setHours(0,0,0,0);
   const diff = Math.round((alvo.getTime() - hoje.getTime()) / (1000*60*60*24));
-  if (diff === 0)  return { texto: 'É HOJE',           cor: '#e74c3c' };
+  if (diff === 0)  return { texto: 'É HOJE',           cor: '#e67e22' };
   if (diff === 1)  return { texto: 'É AMANHÃ',         cor: '#e67e22' };
   if (diff > 0)    return { texto: `FALTAM ${diff} DIAS`, cor: CORES.azulEscuro };
   return { texto: '',  cor: CORES.textoSecundario };
@@ -432,7 +432,7 @@ export default function Index({ navigation, route }: any) {
         </View>
 
         <View>
-          <Text style={[styles.destTitulo, { fontSize: fs(14) }]} numberOfLines={3}>
+          <Text style={[styles.destTitulo, { fontSize: fs(14) }]} numberOfLines={2}>
             {post.titulo}
           </Text>
           <View style={styles.destMeta}>
@@ -915,7 +915,7 @@ export default function Index({ navigation, route }: any) {
                   key={s}
                   style={[
                     styles.filtroSerieBtn,
-                    { backgroundColor: C.branco, borderColor: C.cinzaClaro },
+                    { backgroundColor: C.branco, borderColor: modoEscuro ? C.cinzaClaro : '#CBD2DC' },
                     ativo && {
                       backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro,
                       borderColor: modoEscuro ? C.amarelo : CORES.azulEscuro

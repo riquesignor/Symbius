@@ -43,6 +43,7 @@ export const cadastrarNoJumo = async (
       matches_bonificados_hoje: 0,
       ultimo_reset_diario: new Date(),
       ultimo_acesso: new Date(),
+      perfil_publico_xp: false, // Privado por padrão
     };
 
     await setDoc(doc(db, "usuarios", user.uid), dadosUsuario);
