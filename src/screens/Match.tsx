@@ -64,6 +64,18 @@ const formatarHora = (data: any): string => {
 type Aba  = 'descobrir' | 'solicitacoes' | 'matches';
 type Modo = 'aprender'  | 'ensinar';
 
+// ── Helper: formata "último acesso" estilo Instagram ──
+const formatarUltimoAcesso = (ultimoAcesso: any): string => {
+  if (!ultimoAcesso) return '';
+  const date = ultimoAcesso?.toDate ? ultimoAcesso.toDate() : new Date(ultimoAcesso);
+  const diffMin = Math.floor((Date.now() - date.getTime()) / 60000);
+  if (diffMin < 1)  return 'agora';
+  if (diffMin < 60) return `visto há ${diffMin} min`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24)   return `visto há ${diffH}h`;
+  return `visto em ${date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`;
+};
+
 // ── Hook: ouve conversas de uma lista de matchIds ──
 function useConversas(meuUid: string | undefined, matchIds: string[]) {
   const [conversas, setConversas] = useState<Record<string, any>>({});
@@ -88,6 +100,39 @@ function useConversas(meuUid: string | undefined, matchIds: string[]) {
   return conversas;
 }
 
+// ── Hook: ouve status online de cada match ──
+function useOnlineStatus(uids: string[]) {
+  const [statuses, setStatuses] = useState<Record<string, {
+    online: boolean; ultimo_acesso: any; statusOnline: boolean;
+  }>>({});
+
+  useEffect(() => {
+    if (uids.length === 0) return;
+    const unsubs: (() => void)[] = [];
+
+    uids.forEach(uid => {
+      const unsub = onSnapshot(doc(db, 'usuarios', uid), snap => {
+        if (snap.exists()) {
+          const d = snap.data();
+          setStatuses(prev => ({
+            ...prev,
+            [uid]: {
+              online:       d.online === true,
+              ultimo_acesso: d.ultimo_acesso || null,
+              statusOnline: d.statusOnline !== false,
+            },
+          }));
+        }
+      });
+      unsubs.push(unsub);
+    });
+
+    return () => unsubs.forEach(u => u());
+  }, [uids.join(',')]);
+
+  return statuses;
+}
+
 export default function Match({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const { cores: C, fonteScale, modoEscuro } = useAppSettings();
@@ -109,8 +154,9 @@ export default function Match({ navigation, route }: any) {
 
   const meuUid = route?.params?.uid;
 
-  const matchUids = matches.map(m => m.outro?.uid).filter(Boolean);
-  const conversas = useConversas(meuUid, matchUids);
+  const matchUids    = matches.map(m => m.outro?.uid).filter(Boolean);
+  const conversas    = useConversas(meuUid, matchUids);
+  const onlineStatus = useOnlineStatus(matchUids);
 
   // ── Dados do usuário logado ──
   useEffect(() => {
@@ -423,9 +469,12 @@ export default function Match({ navigation, route }: any) {
   // ── ITEM DE MATCH ──
   const renderMatch = ({ item }: any) => {
     const { materias, tipo } = getMateriaDoMatch(item);
-    const isEnsina  = tipo === 'te ensina';
     const outroUid  = item.outro?.uid;
     const conversa  = conversas[outroUid];
+    const status    = onlineStatus[outroUid];
+
+    // Online: respeita a config de privacidade statusOnline do outro
+    const estaOnline = status?.online === true && status?.statusOnline !== false;
 
     const ultimaMsg  = conversa?.ultimaMensagem || '';
     const quemEnviou = conversa?.quemEnviou;
@@ -437,6 +486,13 @@ export default function Match({ navigation, route }: any) {
       ? `${prefixo}${ultimaMsg}`
       : 'Diga olá! 👋';
 
+    // Texto da direita: "online agora" se online, senão último acesso, senão hora da msg
+    const labelDireita = estaOnline
+      ? 'online'
+      : (status?.ultimo_acesso
+          ? formatarUltimoAcesso(status.ultimo_acesso)
+          : (conversa?.data_postagem ? formatarHora(conversa.data_postagem) : ''));
+
     return (
       <TouchableOpacity
         style={[styles.solCard, naoLida && styles.solCardNaoLido]}
@@ -445,7 +501,8 @@ export default function Match({ navigation, route }: any) {
       >
         <TouchableOpacity style={styles.avatarWrap} onPress={() => abrirPerfil(outroUid)} activeOpacity={0.8}>
           <Image source={{ uri: getImageUri(item.outro?.foto) }} style={styles.solAvatar} />
-          {naoLida && <View style={styles.bolinhaVerde} />}
+          {/* Bolinha verde = online, separada do indicador de não lida */}
+          {estaOnline && <View style={styles.bolinhaOnline} />}
         </TouchableOpacity>
 
         <View style={styles.solInfo}>
@@ -456,8 +513,8 @@ export default function Match({ navigation, route }: any) {
             >
               {item.outro?.nome_completo || 'Usuário'}
             </Text>
-            <Text style={styles.msgTimestamp}>
-              {conversa?.data_postagem ? formatarHora(conversa.data_postagem) : ''}
+            <Text style={[styles.msgTimestamp, estaOnline && { color: CORES.verde, fontWeight: '700' }]}>
+              {labelDireita}
             </Text>
           </View>
 
@@ -468,6 +525,9 @@ export default function Match({ navigation, route }: any) {
             {labelMsg}
           </Text>
         </View>
+
+        {/* Badge de não lida */}
+        {naoLida && <View style={styles.badgeNaoLida} />}
       </TouchableOpacity>
     );
   };
@@ -714,7 +774,7 @@ export default function Match({ navigation, route }: any) {
 
 const styles = StyleSheet.create({
   container:          { flex: 1, backgroundColor: CORES.fundo },
-  navbar:             { height: 64, backgroundColor: CORES.branco, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
+  navbar:             { minHeight: 64, backgroundColor: CORES.branco, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
   logoWrap:           { position: 'relative', flexDirection: 'row', alignItems: 'center' },
   dotAmarelo:         { position: 'absolute', top: 2, left: -4, width: 7, height: 7, borderRadius: 4, backgroundColor: CORES.amarelo, zIndex: 1 },
   logo:               { fontSize: 24, fontWeight: '900', color: CORES.azulEscuro, letterSpacing: -1 },
@@ -769,9 +829,11 @@ const styles = StyleSheet.create({
   btnSolRecusar:   { width: 38, height: 38, borderRadius: 19, backgroundColor: '#FFF0F0', justifyContent: 'center', alignItems: 'center' },
   btnSolAceitar:   { width: 38, height: 38, borderRadius: 19, backgroundColor: CORES.verde, justifyContent: 'center', alignItems: 'center' },
 
-  // Avatar com bolinha
-  avatarWrap:   { position: 'relative' },
-  bolinhaVerde: { position: 'absolute', top: 0, right: 0, width: 12, height: 12, borderRadius: 6, backgroundColor: CORES.verde, borderWidth: 2, borderColor: CORES.branco },
+  // Avatar com bolinha online (canto inferior direito — igual Instagram)
+  avatarWrap:    { position: 'relative' },
+  bolinhaOnline: { position: 'absolute', bottom: 1, right: 1, width: 13, height: 13, borderRadius: 7, backgroundColor: CORES.verde, borderWidth: 2, borderColor: CORES.branco },
+  // Badge de mensagem não lida (ponto rosa menor, separado do online)
+  badgeNaoLida:  { width: 10, height: 10, borderRadius: 5, backgroundColor: CORES.rosa, marginLeft: 8, alignSelf: 'center' },
 
   // Tags inline no match
   nomeLinha:    { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 },

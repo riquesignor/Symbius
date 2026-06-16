@@ -1,11 +1,14 @@
 
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { Platform, Vibration, AppState } from 'react-native';
+import {
+  Platform, Vibration, AppState,
+  Animated, TouchableOpacity, Image, Text, View, StyleSheet,
+} from 'react-native';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   collection, query, where, onSnapshot, orderBy, limit,
-  getDoc, doc as firestoreDoc,
+  getDoc, doc as firestoreDoc, setDoc, serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../config/firebaseConfig';
 import { useAppSettings } from './AppSettingsContext';
@@ -37,14 +40,31 @@ const EVENTO_SUBS: { tipo: string; sub: string }[] = [
   { tipo: 'Evento',  sub: 'eventos'  },
 ];
 
+const PLACEHOLDER_FOTO = 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
+
+// ════ TIPOS PÚBLICOS ════
+export interface ChatNotif {
+  id: string;            // conversaId + timestamp (único)
+  nome: string;
+  foto: string | null;
+  corpo: string;
+  outroUid: string;
+  outroNome: string;
+  quando: Date;
+}
+
 // ════ CONTEXTO ════
 interface NotificacaoContextType {
   conversaAtiva: string | null;
   setConversaAtiva: (id: string | null) => void;
+  notificacoesChat: ChatNotif[];
+  limparNotificacoesChat: () => void;
 }
 const NotificacaoContext = createContext<NotificacaoContextType>({
   conversaAtiva: null,
   setConversaAtiva: () => {},
+  notificacoesChat: [],
+  limparNotificacoesChat: () => {},
 });
 export const useNotificacao = () => useContext(NotificacaoContext);
 
@@ -55,6 +75,20 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
   const [uidAtual, setUidAtual] = useState<string | null>(null);
   const [serie, setSerie] = useState<string | null>(null);
   const [conversaAtiva, setConversaAtiva] = useState<string | null>(null);
+  const [notificacoesChat, setNotificacoesChat] = useState<ChatNotif[]>([]);
+  const limparNotificacoesChat = () => setNotificacoesChat([]);
+
+  // ── Banner in-app ─────────────────────────────────────────
+  interface BannerDados {
+    nome: string;
+    foto: string | null;
+    corpo: string;
+    outroUid: string;
+    outroNome: string;
+  }
+  const [bannerMsg, setBannerMsg] = useState<BannerDados | null>(null);
+  const bannerAnim  = useRef(new Animated.Value(0)).current;  // 0 = invisível, 1 = visível
+  const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Refs (evitam closures velhas dentro dos listeners)
   const conversaAtivaRef = useRef<string | null>(null);
@@ -66,7 +100,34 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
 
   const ultimasMensagensRef = useRef<Record<string, string>>({});
 
+  // ── Helpers do banner ────────────────────────────────────
+  const esconderBanner = () => {
+    if (bannerTimer.current) clearTimeout(bannerTimer.current);
+    Animated.timing(bannerAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+      setBannerMsg(null);
+    });
+  };
+
+  const mostrarBanner = (dados: BannerDados) => {
+    bannerAnim.setValue(0);       // reset antes do mount → view começa invisível
+    setBannerMsg(dados);          // dispara re-render → Animated.View monta
+    // A animação é iniciada no useEffect abaixo, APÓS o view existir no native side
+    if (bannerTimer.current) clearTimeout(bannerTimer.current);
+    bannerTimer.current = setTimeout(esconderBanner, 4000);
+  };
+
+  // Inicia fade-in SÓ após o Animated.View ter sido montado (resolve race com useNativeDriver)
+  useEffect(() => {
+    if (!bannerMsg) return;
+    Animated.timing(bannerAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bannerMsg]);
+
+  // Ref para evitar stale closure nos listeners Firestore
+  const mostrarBannerRef = useRef<(dados: BannerDados) => void>(() => {});
+
   // ── Mantém refs atualizadas ──
+  useEffect(() => { mostrarBannerRef.current = mostrarBanner; }); // sem deps → atualiza em todo render
   useEffect(() => { conversaAtivaRef.current = conversaAtiva; }, [conversaAtiva]);
   useEffect(() => { notifGeralRef.current   = notifGeral;   }, [notifGeral]);
   useEffect(() => { notifMatchRef.current   = notifMatch;   }, [notifMatch]);
@@ -122,6 +183,30 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
     })();
   }, []);
 
+  // ════ 2️⃣b ONLINE STATUS GLOBAL ════
+  // Marca online ao logar; atualiza conforme AppState; marca offline ao sair
+  useEffect(() => {
+    if (!uidAtual) return;
+    const userRef = firestoreDoc(db, 'usuarios', uidAtual);
+
+    // Marca online imediatamente
+    setDoc(userRef, { online: true }, { merge: true });
+
+    const handler = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        setDoc(userRef, { online: true }, { merge: true });
+      } else {
+        // background ou inactive → offline + registra ultimo_acesso
+        setDoc(userRef, { online: false, ultimo_acesso: serverTimestamp() }, { merge: true });
+      }
+    });
+
+    return () => {
+      handler.remove();
+      setDoc(userRef, { online: false, ultimo_acesso: serverTimestamp() }, { merge: true });
+    };
+  }, [uidAtual]);
+
   // ════ 3️⃣ LISTENER — CHAT (todas as conversas do usuário) ════
   useEffect(() => {
     if (!uidAtual) return;
@@ -156,51 +241,81 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
   const processarChat = async (conversaId: string, conversa: any) => {
     try {
       const remetenteUid = conversa.quemEnviou;
-      const qUltima = query(
-        collection(db, 'mensagens'),
-        where('conversaId', '==', conversaId),
-        orderBy('data_postagem', 'desc'),
-        limit(1)
-      );
-      const snapMsgs = await new Promise<any>((resolve) => {
-        const u = onSnapshot(qUltima, (s) => { u(); resolve(s); });
-      });
-      if (snapMsgs.empty) return;
 
-      const ultimaMsg = snapMsgs.docs[0];
-      const msgData = ultimaMsg.data();
-      const msgId = ultimaMsg.id;
+      // ── Dados disponíveis diretamente na conversa ─────────────────────
+      const nome  = conversa.dadosMembros?.[remetenteUid]?.nome || 'Mensagem nova';
+      const foto  = conversa.dadosMembros?.[remetenteUid]?.foto || null;
+      // ultimaMensagem já vem "📷 Imagem" para fotos (Chat.tsx linha 496)
+      const corpo = (String(conversa.ultimaMensagem || '')).substring(0, 120);
 
-      if (ultimasMensagensRef.current[conversaId] === msgId) return;
-      ultimasMensagensRef.current[conversaId] = msgId;
-
-      const chaveDedup = `notif_msg_${msgId}`;
-      if (await AsyncStorage.getItem(chaveDedup)) return;
-
-      const nome = conversa.dadosMembros?.[remetenteUid]?.nome
-        || msgData.nome_remetente || 'Mensagem nova';
-      const corpo = msgData.tipo === 'imagem'
-        ? '📷 Imagem'
-        : (msgData.mensagem || '').substring(0, 120);
-      const horario = (msgData.data_postagem?.toDate?.() || new Date())
-        .toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      // Dedup via timestamp da conversa (não precisa buscar msgId pra o banner)
+      const tsKey = conversa.data_postagem?.seconds?.toString() || String(Date.now());
+      const chaveConversa = `${conversaId}_${tsKey}`;
+      if (ultimasMensagensRef.current[conversaId] === chaveConversa) return;
+      ultimasMensagensRef.current[conversaId] = chaveConversa;
 
       vibrar();
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: nome,
-          body: corpo,
-          subtitle: horario,
-          sound: somNotifRef.current !== 'Nenhum' ? 'default' : undefined,
-          badge: 1,
-          data: { tipo: 'mensagem', conversaId, outroUid: remetenteUid, outroNome: nome },
-        },
-        trigger: null,
-      });
-      await AsyncStorage.setItem(chaveDedup, '1');
-      console.log(`✅ Notif chat: ${nome}`);
+
+      // ── Banner in-app: imediato, sem nenhuma query extra ─────────────
+      mostrarBannerRef.current({ nome, foto, corpo, outroUid: remetenteUid, outroNome: nome });
+
+      // ── Histórico de notificações (sino na Index) ─────────────────────
+      const novaNotifChat: ChatNotif = {
+        id: `${conversaId}_${Date.now()}`,
+        nome, foto, corpo,
+        outroUid: remetenteUid, outroNome: nome,
+        quando: new Date(),
+      };
+      setNotificacoesChat(prev => [novaNotifChat, ...prev].slice(0, 20));
+
+      // ── Notificação do sistema: busca msgId pro dedup correto ─────────
+      // (erro aqui não afeta o banner – bloco independente)
+      try {
+        const qUltima = query(
+          collection(db, 'mensagens'),
+          where('conversaId', '==', conversaId),
+          orderBy('data_postagem', 'desc'),
+          limit(1)
+        );
+        let unsubInner: (() => void) | undefined;
+        const snapMsgs = await new Promise<any>((resolve, reject) => {
+          const timer = setTimeout(() => { unsubInner?.(); reject(new Error('timeout')); }, 5000);
+          unsubInner = onSnapshot(qUltima, (s) => {
+            clearTimeout(timer);
+            unsubInner?.();
+            resolve(s);
+          }, (err) => { clearTimeout(timer); reject(err); });
+        });
+
+        if (!snapMsgs.empty) {
+          const ultimaMsg  = snapMsgs.docs[0];
+          const msgData    = ultimaMsg.data();
+          const msgId      = ultimaMsg.id;
+          const chaveNotif = `notif_msg_${msgId}`;
+
+          if (!(await AsyncStorage.getItem(chaveNotif))) {
+            const horario = (msgData.data_postagem?.toDate?.() || new Date())
+              .toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: nome,
+                body:  corpo,
+                subtitle: horario,
+                sound: somNotifRef.current !== 'Nenhum' ? 'default' : undefined,
+                badge: 1,
+                data: { tipo: 'mensagem', conversaId, outroUid: remetenteUid, outroNome: nome },
+              },
+              trigger: null,
+            });
+            await AsyncStorage.setItem(chaveNotif, '1');
+          }
+        }
+      } catch { /* erro de sistema não cancela o banner – ignora */ }
+
+      console.log(`✅ Banner: ${nome} — ${corpo.substring(0, 40)}`);
     } catch (e: any) {
-      console.log('❌ Erro notif chat:', e.message);
+      console.log('❌ Erro processarChat:', e.message);
     }
   };
 
@@ -343,9 +458,75 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
     return () => handler.remove();
   }, []);
 
+  const fotoUri = bannerMsg?.foto
+    ? (bannerMsg.foto.startsWith('http') || bannerMsg.foto.startsWith('data:')
+        ? bannerMsg.foto
+        : `data:image/jpeg;base64,${bannerMsg.foto}`)
+    : PLACEHOLDER_FOTO;
+
   return (
-    <NotificacaoContext.Provider value={{ conversaAtiva, setConversaAtiva }}>
-      {children}
+    <NotificacaoContext.Provider value={{ conversaAtiva, setConversaAtiva, notificacoesChat, limparNotificacoesChat }}>
+      <View style={{ flex: 1, overflow: 'visible' }}>
+        {children}
+
+        {/* ── Banner in-app (foto + nome + prévia da mensagem) ── */}
+        {bannerMsg && (
+          <Animated.View
+            style={[bannerStyles.wrapper, { opacity: bannerAnim }]}
+            // @ts-ignore
+            pointerEvents="box-none"
+          >
+            <TouchableOpacity
+              activeOpacity={0.92}
+              style={bannerStyles.card}
+              onPress={() => {
+                esconderBanner();
+                const nav = (globalThis as any).navigationRef;
+                if (nav && bannerMsg)
+                  nav.navigate('Chat', { outroUid: bannerMsg.outroUid, outroNome: bannerMsg.outroNome });
+              }}
+            >
+              <Image source={{ uri: fotoUri }} style={bannerStyles.foto} />
+              <View style={{ flex: 1 }}>
+                <Text style={bannerStyles.nome} numberOfLines={1}>{bannerMsg.nome}</Text>
+                <Text style={bannerStyles.corpo} numberOfLines={1}>{bannerMsg.corpo}</Text>
+              </View>
+              <TouchableOpacity onPress={esconderBanner} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={bannerStyles.fechar}>✕</Text>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </Animated.View>
+        )}
+      </View>
     </NotificacaoContext.Provider>
   );
 };
+
+// ════ ESTILOS DO BANNER ════
+const bannerStyles = StyleSheet.create({
+  wrapper: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 54 : 36,
+    left: 14,
+    right: 14,
+    zIndex: 9999,
+    elevation: 20,
+    overflow: 'visible',
+  },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0B2046',
+    borderRadius: 18,
+    padding: 12,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  foto:   { width: 44, height: 44, borderRadius: 22, backgroundColor: '#1B3868' },
+  nome:   { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  corpo:  { color: 'rgba(255,255,255,0.7)', fontSize: 13, marginTop: 2 },
+  fechar: { color: 'rgba(255,255,255,0.5)', fontSize: 17, paddingLeft: 4 },
+});

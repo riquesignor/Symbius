@@ -293,12 +293,12 @@ export default function Chat({ route, navigation }: any) {
     }).catch(e => console.log("Erro perfil:", e.message));
   }, [uidAtual]);
 
-  // ── Marca online/offline ─────────────────────────────────
+  // ── Limpa "digitandoEm" ao sair do chat ──────────────────
+  // (online/offline é gerenciado globalmente pelo NotificacaoProvider)
   useEffect(() => {
     if (!uidAtual) return;
-    setDoc(firestoreDoc(db, "usuarios", uidAtual), { online: true }, { merge: true });
     return () => {
-      setDoc(firestoreDoc(db, "usuarios", uidAtual), { online: false, digitandoEm: null }, { merge: true });
+      setDoc(firestoreDoc(db, "usuarios", uidAtual), { digitandoEm: null }, { merge: true });
     };
   }, [uidAtual]);
 
@@ -573,7 +573,7 @@ export default function Chat({ route, navigation }: any) {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       {/* ── HEADER ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color="#0B2046" />
         </TouchableOpacity>
@@ -857,7 +857,7 @@ const styles = StyleSheet.create({
   },
 
   // Header
-  header:           { backgroundColor: "#FFFFFF", flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingTop: Platform.OS === "ios" ? 50 : 40, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: "#EAEFF4", elevation: 2, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 4 },
+  header:           { backgroundColor: "#FFFFFF", flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: "#EAEFF4", elevation: 2, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 4 },
   backBtn:          { width: 38, height: 38, borderRadius: 19, backgroundColor: "#F0F2F5", justifyContent: "center", alignItems: "center" },
   headerCenter:     { flexDirection: "row", alignItems: "center", gap: 10, flex: 1, paddingLeft: 10 },
   headerAvatarWrap: { position: "relative" },
@@ -938,4 +938,11 @@ const styles = StyleSheet.create({
   separadorDataWrap:  { flexDirection: "row", alignItems: "center", marginVertical: 16, paddingHorizontal: 16 },
   separadorDataLinha: { flex: 1, height: 1, backgroundColor: "#DDEAEF" },
   separadorDataTxt:   { color: "#94A3B8", fontSize: 11, fontWeight: "700", marginHorizontal: 10, letterSpacing: 0.5, backgroundColor: "#F0F2F5", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+
+  // Finalizar match
+  finalizarBtn: { width: 38, height: 38, borderRadius: 19, justifyContent: "center", alignItems: "center" },
+
+  // Toast XP
+  toast:     { position: "absolute", bottom: 110, alignSelf: "center", backgroundColor: "#0B2046", paddingHorizontal: 22, paddingVertical: 12, borderRadius: 28, zIndex: 9999, elevation: 12, shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 8 },
+  toastText: { color: "white", fontWeight: "800", fontSize: 15, letterSpacing: 0.3 },
 });

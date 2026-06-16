@@ -292,10 +292,20 @@
         setSenhaAtual(''); setSenhaNova(''); setSenhaConfirma('');
         setToast('Senha alterada');
       } catch (e: any) {
-        if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
+        console.error('Erro ao alterar senha:', e?.code, e?.message);
+        const code = e?.code || '';
+        if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
           setErroSenha('Senha atual incorreta.');
+        } else if (code === 'auth/weak-password') {
+          setErroSenha('A nova senha é muito fraca. Escolha uma mais segura.');
+        } else if (code === 'auth/too-many-requests') {
+          setErroSenha('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
+        } else if (code === 'auth/network-request-failed') {
+          setErroSenha('Erro de conexão. Verifique sua internet e tente novamente.');
+        } else if (e?.message === 'no-user') {
+          setErroSenha('Usuário não autenticado. Feche o app, faça login novamente e tente outra vez.');
         } else {
-          setErroSenha('Erro ao alterar senha. Tente novamente.');
+          setErroSenha(`Erro ao alterar senha: ${e?.message || code || 'Tente novamente.'}`);
         }
       } finally { setSalvandoSenha(false); }
     };

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../config/firebaseConfig';
 
 // ════════════════════════════════════════════════════════════════════════
@@ -112,6 +113,23 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
     carregarLocal();
   }, []);
 
+  // ── Online/Offline via AppState (backup global, complementa o NotificacaoProvider) ──
+  useEffect(() => {
+    const handler = AppState.addEventListener('change', async (nextState) => {
+      try {
+        const uid = auth.currentUser?.uid || (await AsyncStorage.getItem('uid'));
+        if (!uid) return;
+        const userRef = doc(db, 'usuarios', uid);
+        if (nextState === 'active') {
+          setDoc(userRef, { online: true }, { merge: true }).catch(() => {});
+        } else {
+          setDoc(userRef, { online: false, ultimo_acesso: serverTimestamp() }, { merge: true }).catch(() => {});
+        }
+      } catch {}
+    });
+    return () => handler.remove();
+  }, []);
+
   const carregarLocal = async () => {
     try {
       const configs = await AsyncStorage.multiGet([
@@ -134,7 +152,13 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       // Tenta sincronizar com Firebase se já tiver login
       const uid = await AsyncStorage.getItem('uid');
-      if (uid) await recarregarDoFirebase(uid);
+      if (uid) {
+        await recarregarDoFirebase(uid);
+        // Marca online assim que o Firebase confirmar que está acessível
+        // (aqui Auth já está pronto pois recarregarDoFirebase fez um getDoc com sucesso)
+        setDoc(doc(db, 'usuarios', uid), { online: true }, { merge: true })
+          .catch(() => {}); // falha silenciosa – NotificacaoProvider vai tentar novamente
+      }
     } catch (e) {
       console.error('Erro carregar configs:', e);
     } finally {

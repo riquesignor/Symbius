@@ -104,6 +104,10 @@ export default function EditorPost({ route, navigation }: any) {
   };
 
   const excluirPost = () => {
+    if (!postId) {
+      Alert.alert('Erro', 'ID do post não encontrado. Não é possível excluir.');
+      return;
+    }
     Alert.alert(
       'Excluir Post',
       'Deseja realmente excluir esta publicação? Essa ação não tem volta.',
@@ -113,12 +117,18 @@ export default function EditorPost({ route, navigation }: any) {
           text: 'Excluir',
           style: 'destructive',
           onPress: async () => {
+            setLoading(true);
             try {
               await deleteDoc(doc(db, 'posts', postId));
-              navigation.goBack();
-            } catch (e) {
-              Alert.alert('Erro', 'Não foi possível excluir.');
+            } catch (e: any) {
+              setLoading(false);
+              const msg = e?.message || String(e);
+              console.error('Erro ao excluir post:', msg);
+              Alert.alert('Erro ao excluir', msg || 'Não foi possível excluir. Verifique sua conexão ou permissões.');
+              return;
             }
+            setLoading(false);
+            navigation.goBack();
           }
         }
       ]
@@ -129,7 +139,7 @@ export default function EditorPost({ route, navigation }: any) {
     <SafeAreaView style={styles.container}>
 
       {/* HEADER */}
-      <View style={[styles.header, { paddingBottom: insets.bottom }]}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={CORES.azulEscuro} />
         </TouchableOpacity>

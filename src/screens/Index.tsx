@@ -13,6 +13,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RefreshControl } from 'react-native';
 import { useAppSettings } from '../contexts/AppSettingsContext';
+import { useNotificacao, ChatNotif } from '../contexts/NotificacaoProvider';
 import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -127,7 +128,10 @@ export default function Index({ navigation, route }: any) {
   const [miniMenuAberto, setMiniMenuAberto]     = useState(false);
   const [destaqueIdx, setDestaqueIdx]           = useState(0);
   const [notificacoes, setNotificacoes] = useState<any[]>([]);
+  const [notificacoesDescartadas, setNotificacoesDescartadas] = useState<Set<string>>(new Set());
   const [modalNotif, setModalNotif] = useState(false);
+
+  const { notificacoesChat, limparNotificacoesChat } = useNotificacao();
   const [serieFiltroAdm, setSerieFiltroAdm]     = useState('todas');
 
   const [modalEvento, setModalEvento]           = useState(false);
@@ -188,6 +192,11 @@ export default function Index({ navigation, route }: any) {
     const unsubPosts = onSnapshot(q, (snapshot) => {
       setPosts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     });
+
+    // Carrega IDs de notificações de agenda descartadas
+    AsyncStorage.getItem('notif_descartadas').then(raw => {
+      if (raw) setNotificacoesDescartadas(new Set(JSON.parse(raw)));
+    }).catch(() => {});
 
     carregarPerfil();
     return () => unsubPosts();
@@ -619,21 +628,24 @@ export default function Index({ navigation, route }: any) {
             hitSlop={HIT_SLOP_SM}
             accessibilityRole="button"
             accessibilityLabel={
-              notificacoes.length > 0
-                ? `Notificações, ${notificacoes.length} ${notificacoes.length === 1 ? 'nova' : 'novas'}`
+              (notificacoes.filter(n => !notificacoesDescartadas.has(n.id)).length + notificacoesChat.length) > 0
+                ? `Notificações, ${notificacoes.filter(n => !notificacoesDescartadas.has(n.id)).length + notificacoesChat.length} novas`
                 : 'Notificações'
             }
             accessibilityHint="Toque duplo para ver suas notificações"
           >
             <Ionicons name="notifications-outline" size={18} color={C.azulEscuro} />
-            {notificacoes.length > 0 && (
+            {(notificacoes.filter(n => !notificacoesDescartadas.has(n.id)).length + notificacoesChat.length) > 0 && (
               <View
                 style={[styles.dotNotifBadge, { borderColor: C.branco, backgroundColor: CORES.rosa }]}
                 accessibilityElementsHidden
                 importantForAccessibility="no"
               >
                 <Text style={styles.dotNotifText}>
-                  {notificacoes.length > 9 ? '9+' : notificacoes.length}
+                  {(() => {
+                    const total = notificacoes.filter(n => !notificacoesDescartadas.has(n.id)).length + notificacoesChat.length;
+                    return total > 9 ? '9+' : total;
+                  })()}
                 </Text>
               </View>
             )}
@@ -1023,7 +1035,7 @@ export default function Index({ navigation, route }: any) {
             accessibilityLabel="Match"
             accessibilityHint="Abre a tela do Match"
           >
-            <Ionicons name="heart" size={22} color="#FFF" />
+            <Ionicons name="people" size={22} color="#FFF" />
           </TouchableOpacity>
           <Text style={[styles.tabLabel, styles.centerLabel, { color: CORES.rosa, fontSize: fs(10) }]}>
             Match
@@ -1389,14 +1401,38 @@ export default function Index({ navigation, route }: any) {
               accessibilityElementsHidden
               importantForAccessibility="no"
             />
-            <Text
-              style={[styles.evHeroTitulo, { color: C.azulEscuro, fontSize: fs(18), marginBottom: 16 }]}
-              accessibilityRole="header"
-            >
-              Notificações ({notificacoes.length})
-            </Text>
 
-            {notificacoes.length === 0 ? (
+            {/* Cabeçalho + Limpar */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+              <Text
+                style={[styles.evHeroTitulo, { color: C.azulEscuro, fontSize: fs(18), flex: 1 }]}
+                accessibilityRole="header"
+              >
+                Notificações
+              </Text>
+              {(notificacoesChat.length > 0 || notificacoes.filter(n => !notificacoesDescartadas.has(n.id)).length > 0) && (
+                <TouchableOpacity
+                  onPress={() => {
+                    // Limpa mensagens de chat
+                    limparNotificacoesChat();
+                    // Descarta notificações de agenda atuais
+                    const idsAtivos = notificacoes.map(n => n.id);
+                    const novoSet = new Set([...notificacoesDescartadas, ...idsAtivos]);
+                    setNotificacoesDescartadas(novoSet);
+                    AsyncStorage.setItem('notif_descartadas', JSON.stringify([...novoSet])).catch(() => {});
+                  }}
+                  hitSlop={HIT_SLOP_SM}
+                  accessibilityRole="button"
+                  accessibilityLabel="Limpar todas as notificações"
+                >
+                  <Text style={{ color: CORES.rosa, fontSize: fs(13), fontFamily: F.bold }}>
+                    Limpar tudo
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {notificacoesChat.length === 0 && notificacoes.filter(n => !notificacoesDescartadas.has(n.id)).length === 0 ? (
               <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                 <Ionicons
                   name="notifications-off"
@@ -1410,36 +1446,86 @@ export default function Index({ navigation, route }: any) {
                 </Text>
               </View>
             ) : (
-              <FlatList
-                data={notificacoes}
-                keyExtractor={item => item.id}
-                renderItem={({ item }) => (
-                  <View
-                    style={[styles.agCard, { backgroundColor: C.fundo, borderColor: C.cinzaClaro, borderLeftColor: item.tipo === 'lembrete_vencido' ? '#e74c3c' : '#e67e22', marginBottom: 8 }]}
-                    accessible
-                    accessibilityRole="text"
-                    accessibilityLabel={`${item.tipo === 'lembrete_vencido' ? 'Lembrete vencido' : 'Prova próxima'}: ${item.titulo}`}
-                  >
-                    <View style={[styles.agData, { backgroundColor: item.tipo === 'lembrete_vencido' ? '#FDECEA' : '#FEF3E7' }]}>
-                      <Ionicons
-                        name={item.icon}
-                        size={18}
-                        color={item.tipo === 'lembrete_vencido' ? '#e74c3c' : '#e67e22'}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.agTitulo, { color: C.azulEscuro, fontSize: fs(13) }]}>
-                        {item.titulo}
-                      </Text>
-                      <Text style={[styles.agMeta, { color: textoSecAcc, fontSize: fs(10) }]}>
-                        {item.tipo === 'lembrete_vencido' ? '⚠️ Vencido' : '📅 Próximo'}
-                      </Text>
-                    </View>
-                  </View>
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
+
+                {/* ── Mensagens recebidas ── */}
+                {notificacoesChat.length > 0 && (
+                  <>
+                    <Text style={[styles.agMeta, { color: textoSecAcc, fontSize: fs(10), marginBottom: 8, letterSpacing: 0.6 }]}>
+                      MENSAGENS
+                    </Text>
+                    {notificacoesChat.map(item => (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={[styles.agCard, { backgroundColor: C.fundo, borderColor: C.cinzaClaro, borderLeftColor: CORES.rosa, marginBottom: 8 }]}
+                        onPress={() => {
+                          setModalNotif(false);
+                          navigation.navigate('Chat', { outroUid: item.outroUid, outroNome: item.outroNome });
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Mensagem de ${item.nome}: ${item.corpo}`}
+                      >
+                        {item.foto ? (
+                          <Image
+                            source={{ uri: item.foto.startsWith('http') || item.foto.startsWith('data:') ? item.foto : `data:image/jpeg;base64,${item.foto}` }}
+                            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.cinzaClaro }}
+                          />
+                        ) : (
+                          <View style={[styles.agData, { backgroundColor: '#F0E6FF' }]}>
+                            <Ionicons name="chatbubble-ellipses" size={16} color={CORES.rosa} />
+                          </View>
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.agTitulo, { color: C.azulEscuro, fontSize: fs(13) }]} numberOfLines={1}>
+                            {item.nome}
+                          </Text>
+                          <Text style={[styles.agMeta, { color: textoSecAcc, fontSize: fs(11) }]} numberOfLines={1}>
+                            {item.corpo}
+                          </Text>
+                        </View>
+                        <Text style={{ color: textoSecAcc, fontSize: fs(10), alignSelf: 'flex-start', marginTop: 2 }}>
+                          {item.quando.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </>
                 )}
-                scrollEnabled={notificacoes.length > 3}
-                nestedScrollEnabled
-              />
+
+                {/* ── Agenda ── */}
+                {notificacoes.filter(n => !notificacoesDescartadas.has(n.id)).length > 0 && (
+                  <>
+                    <Text style={[styles.agMeta, { color: textoSecAcc, fontSize: fs(10), marginBottom: 8, marginTop: notificacoesChat.length > 0 ? 12 : 0, letterSpacing: 0.6 }]}>
+                      AGENDA
+                    </Text>
+                    {notificacoes.filter(n => !notificacoesDescartadas.has(n.id)).map(item => (
+                      <View
+                        key={item.id}
+                        style={[styles.agCard, { backgroundColor: C.fundo, borderColor: C.cinzaClaro, borderLeftColor: item.tipo === 'lembrete_vencido' ? '#e74c3c' : '#e67e22', marginBottom: 8 }]}
+                        accessible
+                        accessibilityRole="text"
+                        accessibilityLabel={`${item.tipo === 'lembrete_vencido' ? 'Lembrete vencido' : 'Prova próxima'}: ${item.titulo}`}
+                      >
+                        <View style={[styles.agData, { backgroundColor: item.tipo === 'lembrete_vencido' ? '#FDECEA' : '#FEF3E7' }]}>
+                          <Ionicons
+                            name={item.icon}
+                            size={18}
+                            color={item.tipo === 'lembrete_vencido' ? '#e74c3c' : '#e67e22'}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.agTitulo, { color: C.azulEscuro, fontSize: fs(13) }]}>
+                            {item.titulo}
+                          </Text>
+                          <Text style={[styles.agMeta, { color: textoSecAcc, fontSize: fs(10) }]}>
+                            {item.tipo === 'lembrete_vencido' ? '⚠️ Vencido' : '📅 Próximo'}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                )}
+
+              </ScrollView>
             )}
 
             <TouchableOpacity
@@ -1467,7 +1553,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
 
   // NAVBAR
-  navbar:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, height: 64, borderBottomWidth: 1 },
+  navbar:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, minHeight: 64, borderBottomWidth: 1 },
   logoWrap:      { position: 'relative', flexDirection: 'row', alignItems: 'center' },
   dotAmarelo:    { position: 'absolute', top: 2, left: -4, width: 7, height: 7, borderRadius: 4, backgroundColor: CORES.amarelo, zIndex: 1 },
   logoText:      { fontFamily: F.black, letterSpacing: -1 },
@@ -1599,11 +1685,11 @@ const styles = StyleSheet.create({
 
   // MODAL POST
   modalWrap:         { flex: 1 },
-  modalCover:        { width: '100%', height: height * 0.42, position: 'absolute', top: 0 },
+  modalCover:        { width: '100%', height: height * 0.52, position: 'absolute', top: 0 },
   modalCoverOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)' },
   logoMini:          { fontFamily: F.black, color: '#FFF', opacity: 0.2 },
   btnFechar:         { position: 'absolute', top: Platform.OS === 'ios' ? 50 : 28, right: 18, backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 22, width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  modalBody:         { flex: 1, marginTop: height * 0.36, borderTopLeftRadius: 36, borderTopRightRadius: 36, overflow: 'hidden', elevation: 20 },
+  modalBody:         { flex: 1, marginTop: height * 0.46, borderTopLeftRadius: 36, borderTopRightRadius: 36, overflow: 'hidden', elevation: 20 },
   tagsRow:           { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
   tag:               { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
   tagText:           { color: CORES.rosa, fontFamily: F.black, letterSpacing: 0.5, textTransform: 'uppercase' },
