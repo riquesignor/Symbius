@@ -14,8 +14,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { RefreshControl } from 'react-native';
 
-
-
 import {
   LineChart, BarChart, PieChart, ProgressChart
 } from 'react-native-chart-kit';
@@ -30,20 +28,20 @@ const F = {
 };
 
 const CORES = {
-  azulEscuro:      '#0B2046',
-  azulMedio:       '#1B3868',
-  rosa:            '#E51C6A',
-  amarelo:         '#FFC82C',
-  fundo:           '#F5F7FA',
-  branco:          '#FFFFFF',
-  cinzaClaro:      '#EAEFF4',
-  textoSec:        '#8D99AE',
-  preto:           '#1A1A2E',
-  verde:           '#27ae60',
-  vermelho:        '#e74c3c',
-  laranja:         '#e67e22',
-  roxo:            '#8e44ad',
-  azulCeu:         '#3498db',
+  azulEscuro: '#0B2046',
+  azulMedio:  '#1B3868',
+  rosa:       '#E51C6A',
+  amarelo:    '#FFC82C',
+  fundo:      '#F5F7FA',
+  branco:     '#FFFFFF',
+  cinzaClaro: '#EAEFF4',
+  textoSec:   '#8D99AE',
+  preto:      '#1A1A2E',
+  verde:      '#27ae60',
+  vermelho:   '#e74c3c',
+  laranja:    '#e67e22',
+  roxo:       '#8e44ad',
+  azulCeu:    '#3498db',
 };
 
 const CAT_LABELS: Record<string, string> = {
@@ -63,7 +61,7 @@ const CAT_CORES: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<number, string> = { 0: 'Pendente', 1: 'Ativo', 2: 'Suspenso' };
-const STATUS_CORES: Record<number, string> = { 0: '#FFC82C', 1: '#27ae60', 2: '#e74c3c' };
+const STATUS_CORES:  Record<number, string> = { 0: '#FFC82C', 1: '#27ae60', 2: '#e74c3c' };
 const TIPOS_USUARIO = ['Aluno', 'Gremista', 'Administrador'];
 const STATUS_OPCOES = [
   { value: 0, label: 'Pendente' },
@@ -72,23 +70,24 @@ const STATUS_OPCOES = [
 ];
 
 const MESES_ABREV = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const MEDALHAS    = ['#FFD700', '#C0C0C0', '#CD7F32', CORES.textoSec, CORES.textoSec];
+
+const ABAS_DEF = [
+  { key: 'overview', label: 'Visão Geral', icon: 'grid'   },
+  { key: 'usuarios', label: 'Usuários',    icon: 'people' },
+] as const;
 
 // ── Animação fade in ──
 const FadeInView = ({ children, delay = 0, style }: any) => {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(anim, {
-      toValue: 1, duration: 450, delay, useNativeDriver: true,
-    }).start();
+    Animated.timing(anim, { toValue: 1, duration: 450, delay, useNativeDriver: true }).start();
   }, []);
   return (
-    <Animated.View style={[
-      style,
-      {
-        opacity: anim,
-        transform: [{ translateY: anim.interpolate({ inputRange: [0,1], outputRange: [16, 0] }) }],
-      },
-    ]}>
+    <Animated.View style={[style, {
+      opacity: anim,
+      transform: [{ translateY: anim.interpolate({ inputRange: [0,1], outputRange: [16,0] }) }],
+    }]}>
       {children}
     </Animated.View>
   );
@@ -99,19 +98,15 @@ const AnimatedCounter = ({ value, style, duration = 1200 }: any) => {
   const [display, setDisplay] = useState(0);
   useEffect(() => {
     const anim = new Animated.Value(0);
-    const listener = anim.addListener(({ value: v }) => {
-      setDisplay(Math.round(v));
-    });
-    Animated.timing(anim, {
-      toValue: value, duration, useNativeDriver: false,
-    }).start();
+    const listener = anim.addListener(({ value: v }) => setDisplay(Math.round(v)));
+    Animated.timing(anim, { toValue: value, duration, useNativeDriver: false }).start();
     return () => anim.removeListener(listener);
   }, [value]);
   return <Text style={style}>{display.toLocaleString('pt-BR')}</Text>;
 };
 
 export default function Admin({ navigation, route }: any) {
-  const [refreshing,   setRefreshing]   = useState(false); 
+  const [refreshing, setRefreshing] = useState(false);
   const insets = useSafeAreaInsets();
   const { width: winW } = useWindowDimensions();
   const uid = route?.params?.uid;
@@ -122,7 +117,7 @@ export default function Admin({ navigation, route }: any) {
   const [posts,    setPosts]    = useState<any[]>([]);
   const [usuarios, setUsuarios] = useState<any[]>([]);
   const [loading,  setLoading]  = useState(true);
-  const [abaAtiva, setAbaAtiva] = useState<'overview' | 'engagement' | 'usuarios'>('overview');
+  const [abaAtiva, setAbaAtiva] = useState<'overview' | 'usuarios'>('overview');
 
   // Busca por RA
   const [buscaRA,        setBuscaRA]        = useState('');
@@ -143,10 +138,26 @@ export default function Admin({ navigation, route }: any) {
   const [cartaoStatus,    setCartaoStatus]    = useState(0);
   const [salvandoCartao,  setSalvandoCartao]  = useState(false);
 
-  // Filtro tipo de usuário
+  // Filtro
   const [filtroTipoU, setFiltroTipoU] = useState<string>('todos');
-  
 
+  // ── Pager horizontal ────────────────────────────────────────
+  const pageRef   = useRef<ScrollView>(null);
+  const scrollX   = useRef(new Animated.Value(0)).current;
+  const tabW      = winW / 2;
+  const indicatorX = scrollX.interpolate({
+    inputRange: [0, winW], outputRange: [0, tabW], extrapolate: 'clamp',
+  });
+
+  const irParaAba = (idx: number) => {
+    pageRef.current?.scrollTo({ x: idx * winW, animated: true });
+    setAbaAtiva(idx === 0 ? 'overview' : 'usuarios');
+  };
+
+  const handlePageScroll = (e: any) => {
+    const x = e.nativeEvent.contentOffset.x;
+    setAbaAtiva(x < winW / 2 ? 'overview' : 'usuarios');
+  };
 
   // Toast
   const [toast, setToast] = useState('');
@@ -178,9 +189,8 @@ export default function Admin({ navigation, route }: any) {
       const us = snapUsuarios.docs.map(d => ({ uid: d.id, ...d.data() }));
       setPosts(ps);
       setUsuarios(us);
-
-      const t: Record<string, string>  = {};
-      const s: Record<string, number>  = {};
+      const t: Record<string, string> = {};
+      const s: Record<string, number> = {};
       us.forEach((u: any) => { t[u.uid] = u.tipo; s[u.uid] = u.status; });
       setEditTipo(t);
       setEditStatus(s);
@@ -188,7 +198,7 @@ export default function Admin({ navigation, route }: any) {
     finally { setLoading(false); }
   };
 
-  // ── STATS ────────────────────────────────────────────────
+  // ── Stats ────────────────────────────────────────────────
   const stats = useMemo(() => {
     const totalViews     = posts.reduce((s, p) => s + (p.visualizacoes || 0), 0);
     const totalAlunos    = usuarios.filter((u: any) => u.tipo === 'Aluno').length;
@@ -199,113 +209,48 @@ export default function Admin({ navigation, route }: any) {
     const totalSuspensos = usuarios.filter((u: any) => u.status === 2).length;
     const taxaEngaj      = posts.length > 0 ? Math.round((totalViews / (posts.length * Math.max(1, usuarios.length))) * 100) : 0;
     const mediaViews     = posts.length > 0 ? Math.round(totalViews / posts.length) : 0;
-    return {
-      totalViews, totalAlunos, totalGremistas, totalAdmins,
-      totalAtivos, totalPendentes, totalSuspensos,
-      taxaEngaj, mediaViews,
-    };
+    return { totalViews, totalAlunos, totalGremistas, totalAdmins, totalAtivos, totalPendentes, totalSuspensos, taxaEngaj, mediaViews };
   }, [posts, usuarios]);
 
-  // ── Top 5 ────────────────────────────────────────────────
   const top5     = [...posts].sort((a, b) => (b.visualizacoes || 0) - (a.visualizacoes || 0)).slice(0, 5);
   const maxViews = top5[0]?.visualizacoes || 1;
 
-  // ── Posts por categoria (pizza) ──────────────────────────
   const postsPorCat = useMemo(() => {
     const map: Record<string, number> = {};
-    posts.forEach(p => {
-      const c = p.categoria || 'avisos';
-      map[c] = (map[c] || 0) + 1;
-    });
+    posts.forEach(p => { const c = p.categoria || 'avisos'; map[c] = (map[c] || 0) + 1; });
     return Object.entries(map).map(([cat, count]) => ({
-      name: CAT_LABELS[cat] || cat,
-      population: count,
-      color: CAT_CORES[cat] || '#888',
-      legendFontColor: CORES.azulEscuro,
-      legendFontSize: 11,
+      name: CAT_LABELS[cat] || cat, population: count,
+      color: CAT_CORES[cat] || '#888', legendFontColor: CORES.azulEscuro, legendFontSize: 11,
     }));
   }, [posts]);
 
-  // ── Views por categoria (barra horizontal) ──────────────
-  const viewsPorCat = useMemo(() => {
-    const map: Record<string, number> = {};
-    posts.forEach(p => {
-      const c = p.categoria || 'avisos';
-      map[c] = (map[c] || 0) + (p.visualizacoes || 0);
-    });
-    const labels = Object.keys(map).map(k => CAT_LABELS[k] || k);
-    const dados  = Object.values(map);
-    return { labels, dados };
-  }, [posts]);
-
-  // ── Cadastros últimos 6 meses (linha) ───────────────────
   const cadastrosTimeline = useMemo(() => {
     const hoje = new Date();
-    const labels: string[] = [];
-    const dados:  number[] = [];
-
+    const labels: string[] = [], dados: number[] = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
-      const label = MESES_ABREV[d.getMonth()];
-      labels.push(label);
-
+      labels.push(MESES_ABREV[d.getMonth()]);
       const inicio = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
       const fim    = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59).getTime();
-      const count  = usuarios.filter((u: any) => {
+      dados.push(usuarios.filter((u: any) => {
         if (!u.cadastrado_em) return false;
-        const dt = u.cadastrado_em.toDate
-          ? u.cadastrado_em.toDate().getTime()
-          : new Date(u.cadastrado_em).getTime();
+        const dt = u.cadastrado_em.toDate ? u.cadastrado_em.toDate().getTime() : new Date(u.cadastrado_em).getTime();
         return dt >= inicio && dt <= fim;
-      }).length;
-      dados.push(count);
+      }).length);
     }
     return { labels, dados };
   }, [usuarios]);
 
-  // ── Engajamento por categoria (progress) ────────────────
-  const progressData = useMemo(() => {
-    const labels: string[] = [];
-    const data:   number[] = [];
-    const max = Math.max(1, ...Object.values(
-      posts.reduce((acc: Record<string, number>, p) => {
-        const c = p.categoria || 'avisos';
-        acc[c] = (acc[c] || 0) + (p.visualizacoes || 0);
-        return acc;
-      }, {})
-    ));
-
-    Object.keys(CAT_LABELS).forEach(cat => {
-      const v = posts.filter(p => p.categoria === cat).reduce((s, p) => s + (p.visualizacoes || 0), 0);
-      labels.push(CAT_LABELS[cat]);
-      data.push(Math.min(1, v / max));
-    });
-    return { labels, data };
-  }, [posts]);
-
   const handleRefresh = async () => {
-  setRefreshing(true);
-  try {
-    // Recarregar todos os dados
-    await carregar();
-  } catch (error) {
-    console.error('Erro ao recarregar:', error);
-  } finally {
-    setRefreshing(false);
-  }
-};
+    setRefreshing(true);
+    try { await carregar(); } catch (e) { console.error(e); } finally { setRefreshing(false); }
+  };
 
-  // ── Salvar usuário ───────────────────────────────────────
   const salvarUsuario = async (uid: string) => {
     setSalvando(prev => ({ ...prev, [uid]: true }));
     try {
-      await updateDoc(doc(db, 'usuarios', uid), {
-        tipo:   editTipo[uid],
-        status: editStatus[uid],
-      });
-      setUsuarios(prev => prev.map((u: any) =>
-        u.uid === uid ? { ...u, tipo: editTipo[uid], status: editStatus[uid] } : u
-      ));
+      await updateDoc(doc(db, 'usuarios', uid), { tipo: editTipo[uid], status: editStatus[uid] });
+      setUsuarios(prev => prev.map((u: any) => u.uid === uid ? { ...u, tipo: editTipo[uid], status: editStatus[uid] } : u));
       setToast('Usuário atualizado');
     } catch { setToast('Falha ao salvar'); }
     finally { setSalvando(prev => ({ ...prev, [uid]: false })); }
@@ -325,68 +270,45 @@ export default function Admin({ navigation, route }: any) {
     if (!usuarioBuscado) return;
     setSalvandoCartao(true);
     try {
-      await updateDoc(doc(db, 'usuarios', usuarioBuscado.uid), {
-        tipo: cartaoTipo, status: cartaoStatus,
-      });
-      setUsuarios(prev => prev.map((u: any) =>
-        u.uid === usuarioBuscado.uid ? { ...u, tipo: cartaoTipo, status: cartaoStatus } : u
-      ));
+      await updateDoc(doc(db, 'usuarios', usuarioBuscado.uid), { tipo: cartaoTipo, status: cartaoStatus });
+      setUsuarios(prev => prev.map((u: any) => u.uid === usuarioBuscado.uid ? { ...u, tipo: cartaoTipo, status: cartaoStatus } : u));
       setToast(`${usuarioBuscado.nome_completo.split(' ')[0]} atualizado`);
     } catch { setToast('Falha ao salvar'); }
     finally { setSalvandoCartao(false); }
   };
 
-  // ── Filtro de usuários ──────────────────────────────────
   const usuariosFiltrados = useMemo(() => {
-    if (filtroTipoU === 'todos') return usuarios;
+    if (filtroTipoU === 'todos')     return usuarios;
     if (filtroTipoU === 'pendentes') return usuarios.filter((u: any) => u.status === 0);
     if (filtroTipoU === 'suspensos') return usuarios.filter((u: any) => u.status === 2);
     return usuarios.filter((u: any) => u.tipo === filtroTipoU);
   }, [usuarios, filtroTipoU]);
 
-  // ── Config dos gráficos ──────────────────────────────────
   const chartConfigBase = useMemo(() => ({
-    backgroundColor:        C.branco,
-    backgroundGradientFrom: C.branco,
-    backgroundGradientTo:   C.branco,
-    decimalPlaces:          0,
-    // Cor das linhas/dots — no dark usa rosa pra contraste
-    color: (opacity = 1) => modoEscuro
-      ? `rgba(255, 92, 151, ${opacity})`
-      : `rgba(11, 32, 70, ${opacity})`,
-    // Cor dos labels (eixos)
-    labelColor: (opacity = 1) => modoEscuro
-      ? `rgba(180, 190, 200, ${opacity})`
-      : `rgba(141, 153, 174, ${opacity})`,
-    style:                  { borderRadius: 16 },
-    propsForDots:           { r: '5', strokeWidth: '2', stroke: CORES.rosa },
-    propsForBackgroundLines:{
-      strokeDasharray: '',
-      stroke: modoEscuro ? '#3A4048' : CORES.cinzaClaro,
-      strokeWidth: 0.5
-    },
-    propsForLabels:         { fontFamily: F.semibold, fontSize: 10 },
+    backgroundColor: C.branco, backgroundGradientFrom: C.branco, backgroundGradientTo: C.branco,
+    decimalPlaces: 0,
+    color: (opacity = 1) => modoEscuro ? `rgba(255,92,151,${opacity})` : `rgba(11,32,70,${opacity})`,
+    labelColor: (opacity = 1) => modoEscuro ? `rgba(180,190,200,${opacity})` : `rgba(141,153,174,${opacity})`,
+    style: { borderRadius: 16 },
+    propsForDots: { r: '5', strokeWidth: '2', stroke: CORES.rosa },
+    propsForBackgroundLines: { strokeDasharray: '', stroke: modoEscuro ? '#3A4048' : CORES.cinzaClaro, strokeWidth: 0.5 },
+    propsForLabels: { fontFamily: F.semibold, fontSize: 10 },
   }), [modoEscuro, C.branco]);
 
-  const chartConfigBar = useMemo(() => ({
-    ...chartConfigBase,
-    color: (opacity = 1) => `rgba(229, 28, 106, ${opacity})`,
-    fillShadowGradient: CORES.rosa,
-    fillShadowGradientOpacity: 1,
-    barPercentage: 0.6,
-  }), [chartConfigBase]);
+  const postsPorCatStyled = useMemo(() => postsPorCat.map(p => ({ ...p, legendFontColor: C.azulEscuro })), [postsPorCat, C.azulEscuro]);
 
-  const postsPorCatStyled = useMemo(() => postsPorCat.map(p => ({
-    ...p,
-    legendFontColor: C.azulEscuro,
-  })), [postsPorCat, C.azulEscuro]);
+  const refreshProps = {
+    refreshing,
+    onRefresh: handleRefresh,
+    tintColor: modoEscuro ? C.amarelo : CORES.azulEscuro,
+    title: 'Puxe para recarregar',
+    titleColor: C.textoSec,
+  };
 
   if (loading) return (
     <View style={[styles.centro, { backgroundColor: C.fundo }]}>
       <ActivityIndicator size="large" color={modoEscuro ? C.amarelo : CORES.azulEscuro} />
-      <Text style={[styles.loadingText, { color: C.textoSec, fontSize: fs(13) }]}>
-        Carregando dashboard...
-      </Text>
+      <Text style={[styles.loadingText, { color: C.textoSec, fontSize: fs(13) }]}>Carregando dashboard...</Text>
     </View>
   );
 
@@ -394,7 +316,7 @@ export default function Admin({ navigation, route }: any) {
     <SafeAreaView style={[styles.container, { backgroundColor: C.fundo }]}>
       <StatusBar barStyle="light-content" backgroundColor={CORES.azulEscuro} />
 
-      {/* TOAST — fixo */}
+      {/* TOAST */}
       {toast !== '' && (
         <View style={[styles.toast, { top: insets.top + 12 }]}>
           <Ionicons name="checkmark-circle" size={16} color={CORES.amarelo} />
@@ -402,7 +324,7 @@ export default function Admin({ navigation, route }: any) {
         </View>
       )}
 
-      {/* HEADER — fixo */}
+      {/* HEADER */}
       <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
         <TouchableOpacity
           onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Index', params: { uid } }] })}
@@ -422,29 +344,17 @@ export default function Admin({ navigation, route }: any) {
         </TouchableOpacity>
       </View>
 
-      {/* ABAS */}
+      {/* ABAS — indicador desliza com o swipe */}
       <View style={[styles.abas, { backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
-        {[
-          { key: 'overview',   label: 'Visão Geral', icon: 'grid'        },
-          { key: 'usuarios',   label: 'Usuários',    icon: 'people'      },
-        ].map(a => {
+        <Animated.View
+          style={[styles.abaIndicatorLine, { width: tabW, transform: [{ translateX: indicatorX }] }]}
+        />
+        {ABAS_DEF.map((a, idx) => {
           const ativo = abaAtiva === a.key;
           return (
-            <TouchableOpacity
-              key={a.key}
-              style={[styles.aba, ativo && { borderBottomWidth: 3, borderBottomColor: CORES.rosa }]}
-              onPress={() => setAbaAtiva(a.key as any)}
-            >
-              <Ionicons
-                name={a.icon as any}
-                size={14}
-                color={ativo ? C.azulEscuro : C.textoSec}
-              />
-              <Text style={[
-                styles.abaText,
-                { color: C.textoSec, fontSize: fs(11) },
-                ativo && { color: C.azulEscuro }
-              ]}>
+            <TouchableOpacity key={a.key} style={styles.aba} onPress={() => irParaAba(idx)}>
+              <Ionicons name={a.icon as any} size={14} color={ativo ? C.azulEscuro : C.textoSec} />
+              <Text style={[styles.abaText, { color: C.textoSec, fontSize: fs(11) }, ativo && { color: C.azulEscuro }]}>
                 {a.label}
               </Text>
             </TouchableOpacity>
@@ -452,48 +362,43 @@ export default function Admin({ navigation, route }: any) {
         })}
       </View>
 
+      {/* ════ PAGER HORIZONTAL — deslize para navegar ════ */}
       <ScrollView
+        ref={pageRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+          { useNativeDriver: false, listener: handlePageScroll },
+        )}
         style={{ flex: 1 }}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          tintColor={modoEscuro ? C.amarelo : CORES.azulEscuro}
-          title="Puxe para recarregar"
-          titleColor={C.textoSec}
-        />
-      }     
-        contentContainerStyle={{ paddingBottom: insets.bottom + 60 }}
       >
 
-        {/* ═══════ ABA OVERVIEW ═══════ */}
-        {abaAtiva === 'overview' && (
+        {/* ══ PAGE 0 — VISÃO GERAL ══ */}
+        <ScrollView
+          style={{ width: winW }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl {...refreshProps} />}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 60 }}
+        >
           <View style={{ padding: 16 }}>
 
-            {/* HERO STATS — sempre azul escuro fixo (identidade) */}
+            {/* HERO */}
             <FadeInView delay={0}>
               <View style={styles.heroCard}>
                 <View>
-                  <Text style={[styles.heroEyebrow, { fontSize: fs(9) }]}>
-                    TOTAL DE VISUALIZAÇÕES
-                  </Text>
-                  <AnimatedCounter
-                    value={stats.totalViews}
-                    style={[styles.heroValor, { fontSize: fs(38) }]}
-                  />
+                  <Text style={[styles.heroEyebrow, { fontSize: fs(9) }]}>TOTAL DE VISUALIZAÇÕES</Text>
+                  <AnimatedCounter value={stats.totalViews} style={[styles.heroValor, { fontSize: fs(38) }]} />
                   <View style={styles.heroBadges}>
                     <View style={styles.heroBadge}>
                       <Ionicons name="trending-up" size={10} color={CORES.verde} />
-                      <Text style={[styles.heroBadgeText, { color: CORES.verde, fontSize: fs(10) }]}>
-                        {stats.mediaViews}/post
-                      </Text>
+                      <Text style={[styles.heroBadgeText, { color: CORES.verde, fontSize: fs(10) }]}>{stats.mediaViews}/post</Text>
                     </View>
                     <View style={styles.heroBadge}>
                       <Ionicons name="flash" size={10} color={CORES.amarelo} />
-                      <Text style={[styles.heroBadgeText, { color: CORES.amarelo, fontSize: fs(10) }]}>
-                        {stats.taxaEngaj}% engaj.
-                      </Text>
+                      <Text style={[styles.heroBadgeText, { color: CORES.amarelo, fontSize: fs(10) }]}>{stats.taxaEngaj}% engaj.</Text>
                     </View>
                   </View>
                 </View>
@@ -503,60 +408,23 @@ export default function Admin({ navigation, route }: any) {
               </View>
             </FadeInView>
 
-            {/* MINI STATS GRID */}
+            {/* MINI GRID */}
             <FadeInView delay={120}>
               <View style={styles.miniGrid}>
-                <View style={[styles.miniCard, { backgroundColor: C.branco, borderLeftColor: CORES.azulCeu }]}>
-                  <View style={[styles.miniIcon, { backgroundColor: CORES.azulCeu + (modoEscuro ? '25' : '15') }]}>
-                    <Ionicons name="people" size={16} color={CORES.azulCeu} />
+                {[
+                  { label: 'Usuários', value: usuarios.length,      cor: CORES.azulCeu, icon: 'people'         },
+                  { label: 'Ativos',   value: stats.totalAtivos,    cor: CORES.verde,   icon: 'checkmark-circle'},
+                  { label: 'Pendentes',value: stats.totalPendentes, cor: CORES.laranja, icon: 'time'            },
+                  { label: 'Posts',    value: posts.length,         cor: CORES.rosa,    icon: 'document-text'   },
+                ].map(item => (
+                  <View key={item.label} style={[styles.miniCard, { backgroundColor: C.branco, borderLeftColor: item.cor }]}>
+                    <View style={[styles.miniIcon, { backgroundColor: item.cor + (modoEscuro ? '25' : '15') }]}>
+                      <Ionicons name={item.icon as any} size={16} color={item.cor} />
+                    </View>
+                    <AnimatedCounter value={item.value} style={[styles.miniValor, { color: C.azulEscuro, fontSize: fs(22) }]} />
+                    <Text style={[styles.miniLabel, { color: C.textoSec, fontSize: fs(10) }]}>{item.label}</Text>
                   </View>
-                  <AnimatedCounter
-                    value={usuarios.length}
-                    style={[styles.miniValor, { color: C.azulEscuro, fontSize: fs(22) }]}
-                  />
-                  <Text style={[styles.miniLabel, { color: C.textoSec, fontSize: fs(10) }]}>
-                    Usuários
-                  </Text>
-                </View>
-
-                <View style={[styles.miniCard, { backgroundColor: C.branco, borderLeftColor: CORES.verde }]}>
-                  <View style={[styles.miniIcon, { backgroundColor: CORES.verde + (modoEscuro ? '25' : '15') }]}>
-                    <Ionicons name="checkmark-circle" size={16} color={CORES.verde} />
-                  </View>
-                  <AnimatedCounter
-                    value={stats.totalAtivos}
-                    style={[styles.miniValor, { color: C.azulEscuro, fontSize: fs(22) }]}
-                  />
-                  <Text style={[styles.miniLabel, { color: C.textoSec, fontSize: fs(10) }]}>
-                    Ativos
-                  </Text>
-                </View>
-
-                <View style={[styles.miniCard, { backgroundColor: C.branco, borderLeftColor: CORES.amarelo }]}>
-                  <View style={[styles.miniIcon, { backgroundColor: CORES.amarelo + (modoEscuro ? '30' : '20') }]}>
-                    <Ionicons name="time" size={16} color={CORES.laranja} />
-                  </View>
-                  <AnimatedCounter
-                    value={stats.totalPendentes}
-                    style={[styles.miniValor, { color: C.azulEscuro, fontSize: fs(22) }]}
-                  />
-                  <Text style={[styles.miniLabel, { color: C.textoSec, fontSize: fs(10) }]}>
-                    Pendentes
-                  </Text>
-                </View>
-
-                <View style={[styles.miniCard, { backgroundColor: C.branco, borderLeftColor: CORES.rosa }]}>
-                  <View style={[styles.miniIcon, { backgroundColor: CORES.rosa + (modoEscuro ? '25' : '15') }]}>
-                    <Ionicons name="document-text" size={16} color={CORES.rosa} />
-                  </View>
-                  <AnimatedCounter
-                    value={posts.length}
-                    style={[styles.miniValor, { color: C.azulEscuro, fontSize: fs(22) }]}
-                  />
-                  <Text style={[styles.miniLabel, { color: C.textoSec, fontSize: fs(10) }]}>
-                    Posts
-                  </Text>
-                </View>
+                ))}
               </View>
             </FadeInView>
 
@@ -565,43 +433,26 @@ export default function Admin({ navigation, route }: any) {
               <View style={[styles.chartCard, { backgroundColor: C.branco }]}>
                 <View style={styles.chartHeader}>
                   <View>
-                    <Text style={[styles.chartEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
-                      ÚLTIMOS 6 MESES
-                    </Text>
-                    <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
-                      Crescimento de cadastros
-                    </Text>
+                    <Text style={[styles.chartEyebrow, { color: CORES.rosa, fontSize: fs(9) }]}>ÚLTIMOS 6 MESES</Text>
+                    <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>Crescimento de cadastros</Text>
                   </View>
                   <View style={[styles.chartLegenda, { backgroundColor: C.fundo }]}>
                     <View style={[styles.dotCor, { backgroundColor: CORES.rosa }]} />
-                    <Text style={[styles.chartLegendaText, { color: C.textoSec, fontSize: fs(10) }]}>
-                      Novos usuários
-                    </Text>
+                    <Text style={[styles.chartLegendaText, { color: C.textoSec, fontSize: fs(10) }]}>Novos usuários</Text>
                   </View>
                 </View>
-
                 {cadastrosTimeline.dados.every(v => v === 0) ? (
                   <View style={styles.chartVazio}>
                     <Ionicons name="people-outline" size={32} color={C.cinzaClaro} />
-                    <Text style={[styles.chartVazioText, { color: C.textoSec, fontSize: fs(13) }]}>
-                      Nenhum cadastro nos últimos 6 meses
-                    </Text>
+                    <Text style={[styles.chartVazioText, { color: C.textoSec, fontSize: fs(13) }]}>Nenhum cadastro nos últimos 6 meses</Text>
                   </View>
                 ) : (
                   <LineChart
-                    data={{
-                      labels:   cadastrosTimeline.labels,
-                      datasets: [{ data: cadastrosTimeline.dados }],
-                    }}
-                    width={winW - 64}
-                    height={180}
-                    chartConfig={chartConfigBase}
-                    bezier
+                    data={{ labels: cadastrosTimeline.labels, datasets: [{ data: cadastrosTimeline.dados }] }}
+                    width={winW - 64} height={180}
+                    chartConfig={chartConfigBase} bezier
                     style={styles.chartGraph}
-                    withInnerLines={true}
-                    withOuterLines={false}
-                    withVerticalLines={false}
-                    fromZero
+                    withInnerLines withOuterLines={false} withVerticalLines={false} fromZero
                   />
                 )}
               </View>
@@ -612,29 +463,17 @@ export default function Admin({ navigation, route }: any) {
               <View style={[styles.chartCard, { backgroundColor: C.branco }]}>
                 <View style={styles.chartHeader}>
                   <View>
-                    <Text style={[styles.chartEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
-                      DISTRIBUIÇÃO
-                    </Text>
-                    <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
-                      Posts por categoria
-                    </Text>
+                    <Text style={[styles.chartEyebrow, { color: CORES.rosa, fontSize: fs(9) }]}>DISTRIBUIÇÃO</Text>
+                    <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>Posts por categoria</Text>
                   </View>
                 </View>
-
                 {postsPorCatStyled.length > 0 ? (
                   <View style={{ alignItems: 'center' }}>
                     <PieChart
-                      data={postsPorCatStyled}
-                      width={winW - 64}
-                      height={160}
-                      chartConfig={chartConfigBase}
-                      accessor="population"
-                      backgroundColor="transparent"
-                      paddingLeft="20"
-                      hasLegend={false}
-                      absolute
+                      data={postsPorCatStyled} width={winW - 64} height={160}
+                      chartConfig={chartConfigBase} accessor="population"
+                      backgroundColor="transparent" paddingLeft="20" hasLegend={false} absolute
                     />
-                    {/* Legenda abaixo do gráfico — melhor em mobile */}
                     <View style={styles.pizzaLegenda}>
                       {postsPorCatStyled.map(item => (
                         <View key={item.name} style={styles.pizzaLegendaItem}>
@@ -649,91 +488,51 @@ export default function Admin({ navigation, route }: any) {
                 ) : (
                   <View style={styles.chartVazio}>
                     <Ionicons name="pie-chart-outline" size={32} color={C.cinzaClaro} />
-                    <Text style={[styles.chartVazioText, { color: C.textoSec, fontSize: fs(12) }]}>
-                      Sem dados ainda
-                    </Text>
+                    <Text style={[styles.chartVazioText, { color: C.textoSec, fontSize: fs(12) }]}>Sem dados ainda</Text>
                   </View>
                 )}
               </View>
             </FadeInView>
 
-            {/* CARDS DE STATUS */}
+            {/* STATUS DOS USUÁRIOS */}
             <FadeInView delay={480}>
-              <Text style={[styles.secaoTituloGrande, { color: C.azulEscuro, fontSize: fs(13) }]}>
-                Status dos usuários
-              </Text>
+              <Text style={[styles.secaoTituloGrande, { color: C.azulEscuro, fontSize: fs(13) }]}>Status dos usuários</Text>
               <View style={styles.statusGrid}>
-                <View style={[styles.statusCard, { backgroundColor: CORES.verde + (modoEscuro ? '20' : '12') }]}>
-                  <View style={[styles.statusBolha, { backgroundColor: CORES.verde }]}>
-                    <Ionicons name="checkmark" size={20} color="#FFF" />
+                {[
+                  { label: 'Ativos',    value: stats.totalAtivos,    cor: CORES.verde,   icon: 'checkmark' },
+                  { label: 'Pendentes', value: stats.totalPendentes, cor: CORES.laranja, icon: 'hourglass' },
+                  { label: 'Suspensos', value: stats.totalSuspensos, cor: CORES.vermelho,icon: 'close'     },
+                ].map(item => (
+                  <View key={item.label} style={[styles.statusCard, { backgroundColor: item.cor + (modoEscuro ? '20' : '12') }]}>
+                    <View style={[styles.statusBolha, { backgroundColor: item.cor }]}>
+                      <Ionicons name={item.icon as any} size={20} color="#FFF" />
+                    </View>
+                    <AnimatedCounter value={item.value} style={[styles.statusN, { color: item.cor, fontSize: fs(24) }]} />
+                    <Text style={[styles.statusL, { color: C.textoSec, fontSize: fs(10) }]}>{item.label}</Text>
+                    <View style={[styles.statusBarra, { backgroundColor: modoEscuro ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
+                      <View style={[styles.statusBarraFill, {
+                        width: `${(item.value / Math.max(1, usuarios.length)) * 100}%`,
+                        backgroundColor: item.cor,
+                      }]} />
+                    </View>
                   </View>
-                  <AnimatedCounter
-                    value={stats.totalAtivos}
-                    style={[styles.statusN, { color: CORES.verde, fontSize: fs(24) }]}
-                  />
-                  <Text style={[styles.statusL, { color: C.textoSec, fontSize: fs(10) }]}>Ativos</Text>
-                  <View style={[styles.statusBarra, { backgroundColor: modoEscuro ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
-                    <View style={[styles.statusBarraFill, {
-                      width: `${(stats.totalAtivos / Math.max(1, usuarios.length)) * 100}%`,
-                      backgroundColor: CORES.verde
-                    }]} />
-                  </View>
-                </View>
-
-                <View style={[styles.statusCard, { backgroundColor: CORES.amarelo + (modoEscuro ? '30' : '20') }]}>
-                  <View style={[styles.statusBolha, { backgroundColor: CORES.laranja }]}>
-                    <Ionicons name="hourglass" size={18} color="#FFF" />
-                  </View>
-                  <AnimatedCounter
-                    value={stats.totalPendentes}
-                    style={[styles.statusN, { color: CORES.laranja, fontSize: fs(24) }]}
-                  />
-                  <Text style={[styles.statusL, { color: C.textoSec, fontSize: fs(10) }]}>Pendentes</Text>
-                  <View style={[styles.statusBarra, { backgroundColor: modoEscuro ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
-                    <View style={[styles.statusBarraFill, {
-                      width: `${(stats.totalPendentes / Math.max(1, usuarios.length)) * 100}%`,
-                      backgroundColor: CORES.laranja
-                    }]} />
-                  </View>
-                </View>
-
-                <View style={[styles.statusCard, { backgroundColor: CORES.vermelho + (modoEscuro ? '20' : '12') }]}>
-                  <View style={[styles.statusBolha, { backgroundColor: CORES.vermelho }]}>
-                    <Ionicons name="close" size={20} color="#FFF" />
-                  </View>
-                  <AnimatedCounter
-                    value={stats.totalSuspensos}
-                    style={[styles.statusN, { color: CORES.vermelho, fontSize: fs(24) }]}
-                  />
-                  <Text style={[styles.statusL, { color: C.textoSec, fontSize: fs(10) }]}>Suspensos</Text>
-                  <View style={[styles.statusBarra, { backgroundColor: modoEscuro ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
-                    <View style={[styles.statusBarraFill, {
-                      width: `${(stats.totalSuspensos / Math.max(1, usuarios.length)) * 100}%`,
-                      backgroundColor: CORES.vermelho
-                    }]} />
-                  </View>
-                </View>
+                ))}
               </View>
             </FadeInView>
 
-            {/* COMPOSIÇÃO USUÁRIOS */}
+            {/* COMPOSIÇÃO */}
             <FadeInView delay={600}>
               <View style={[styles.chartCard, { backgroundColor: C.branco }]}>
                 <View style={styles.chartHeader}>
                   <View>
-                    <Text style={[styles.chartEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
-                      COMPOSIÇÃO
-                    </Text>
-                    <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
-                      Tipos de usuário
-                    </Text>
+                    <Text style={[styles.chartEyebrow, { color: CORES.rosa, fontSize: fs(9) }]}>COMPOSIÇÃO</Text>
+                    <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>Tipos de usuário</Text>
                   </View>
                 </View>
-
                 <View style={styles.composicaoLista}>
                   {[
                     { tipo: 'Aluno',        n: stats.totalAlunos,    cor: CORES.azulCeu, icon: 'school' },
-                    { tipo: 'Gremista',     n: stats.totalGremistas, cor: CORES.amarelo, icon: 'star' },
+                    { tipo: 'Gremista',     n: stats.totalGremistas, cor: CORES.amarelo, icon: 'star'   },
                     { tipo: 'Administrador',n: stats.totalAdmins,    cor: CORES.rosa,    icon: 'shield' },
                   ].map(item => {
                     const pct = Math.round((item.n / Math.max(1, usuarios.length)) * 100);
@@ -744,12 +543,9 @@ export default function Admin({ navigation, route }: any) {
                         </View>
                         <View style={{ flex: 1 }}>
                           <View style={styles.composicaoTopo}>
-                            <Text style={[styles.composicaoNome, { color: C.azulEscuro, fontSize: fs(13) }]}>
-                              {item.tipo}
-                            </Text>
+                            <Text style={[styles.composicaoNome, { color: C.azulEscuro, fontSize: fs(13) }]}>{item.tipo}</Text>
                             <Text style={[styles.composicaoValor, { color: C.azulEscuro, fontSize: fs(13) }]}>
-                              {item.n}{' '}
-                              <Text style={{ color: C.textoSec, fontFamily: F.regular }}>· {pct}%</Text>
+                              {item.n} <Text style={{ color: C.textoSec, fontFamily: F.regular }}>· {pct}%</Text>
                             </Text>
                           </View>
                           <View style={[styles.composicaoBarra, { backgroundColor: C.cinzaClaro }]}>
@@ -762,25 +558,83 @@ export default function Admin({ navigation, route }: any) {
                 </View>
               </View>
             </FadeInView>
+
+            {/* TOP 5 POSTS MAIS LIDOS */}
+            {top5.length > 0 && (
+              <FadeInView delay={720}>
+                <View style={[styles.chartCard, { backgroundColor: C.branco }]}>
+                  <View style={styles.chartHeader}>
+                    <View>
+                      <Text style={[styles.chartEyebrow, { color: CORES.rosa, fontSize: fs(9) }]}>RANKING</Text>
+                      <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>Posts mais lidos</Text>
+                    </View>
+                    <View style={[styles.chartLegenda, { backgroundColor: C.fundo }]}>
+                      <Ionicons name="eye-outline" size={12} color={C.textoSec} />
+                      <Text style={[styles.chartLegendaText, { color: C.textoSec, fontSize: fs(10) }]}>visualizações</Text>
+                    </View>
+                  </View>
+                  {top5.map((p, i) => (
+                    <View
+                      key={p.id}
+                      style={[
+                        styles.top5ItemPro,
+                        { borderBottomColor: C.cinzaClaro },
+                        i === top5.length - 1 && { borderBottomWidth: 0 },
+                      ]}
+                    >
+                      <View style={[styles.top5Medalha, {
+                        borderColor: MEDALHAS[i],
+                        backgroundColor: MEDALHAS[i] + (modoEscuro ? '25' : '18'),
+                      }]}>
+                        <Text style={[styles.top5Pos, { color: MEDALHAS[i], fontSize: fs(12) }]}>{i + 1}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.top5Nome, { color: C.azulEscuro, fontSize: fs(13) }]} numberOfLines={1}>
+                          {p.titulo || 'Sem título'}
+                        </Text>
+                        <View style={styles.top5MetaRow}>
+                          <View style={[styles.top5Cat, { backgroundColor: (CAT_CORES[p.categoria] || '#888') + '20' }]}>
+                            <Text style={[styles.top5CatText, { color: CAT_CORES[p.categoria] || '#888', fontSize: fs(9) }]}>
+                              {CAT_LABELS[p.categoria] || p.categoria || '—'}
+                            </Text>
+                          </View>
+                          <View style={styles.top5Views}>
+                            <Ionicons name="eye-outline" size={12} color={CORES.rosa} />
+                            <Text style={[styles.top5ViewsText, { fontSize: fs(11) }]}>
+                              {(p.visualizacoes || 0).toLocaleString('pt-BR')}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={[styles.barraWrap, { backgroundColor: C.cinzaClaro, marginTop: 6 }]}>
+                          <View style={[styles.barra, {
+                            width: `${Math.round(((p.visualizacoes || 0) / maxViews) * 100)}%`,
+                            backgroundColor: CAT_CORES[p.categoria] || CORES.rosa,
+                          }]} />
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </FadeInView>
+            )}
+
           </View>
-        )}
+        </ScrollView>
 
-        
-
-        {/* ═══════ ABA USUÁRIOS ═══════ */}
-        {abaAtiva === 'usuarios' && (
+        {/* ══ PAGE 1 — USUÁRIOS ══ */}
+        <ScrollView
+          style={{ width: winW }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl {...refreshProps} />}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 60 }}
+        >
           <View style={{ padding: 16 }}>
 
             {/* BUSCA */}
             <FadeInView delay={0}>
               <View style={[styles.chartCard, { backgroundColor: C.branco }]}>
-                <Text style={[styles.chartEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
-                  BUSCA RÁPIDA
-                </Text>
-                <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15), marginBottom: 14 }]}>
-                  Encontrar por RA
-                </Text>
-
+                <Text style={[styles.chartEyebrow, { color: CORES.rosa, fontSize: fs(9) }]}>BUSCA RÁPIDA</Text>
+                <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15), marginBottom: 14 }]}>Encontrar por RA</Text>
                 <View style={styles.buscaRow}>
                   <View style={[styles.buscaInputWrap, { backgroundColor: C.fundo, borderColor: C.cinzaClaro }]}>
                     <Ionicons name="search" size={16} color={C.textoSec} />
@@ -798,10 +652,7 @@ export default function Admin({ navigation, route }: any) {
                     style={[styles.btnBuscar, { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }]}
                     onPress={buscarRA}
                   >
-                    <Text style={[
-                      styles.btnBuscarText,
-                      { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(12) }
-                    ]}>
+                    <Text style={[styles.btnBuscarText, { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(12) }]}>
                       Buscar
                     </Text>
                   </TouchableOpacity>
@@ -817,30 +668,20 @@ export default function Admin({ navigation, route }: any) {
                           </Text>
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={[styles.cartaoNome, { color: C.azulEscuro, fontSize: fs(14) }]}>
-                            {usuarioBuscado.nome_completo}
-                          </Text>
-                          <Text style={[styles.cartaoEmail, { color: C.textoSec, fontSize: fs(11) }]}>
-                            {usuarioBuscado.email_escolar}
-                          </Text>
+                          <Text style={[styles.cartaoNome, { color: C.azulEscuro, fontSize: fs(14) }]}>{usuarioBuscado.nome_completo}</Text>
+                          <Text style={[styles.cartaoEmail, { color: C.textoSec, fontSize: fs(11) }]}>{usuarioBuscado.email_escolar}</Text>
                         </View>
                       </View>
-
                       <View style={styles.cartaoInfoRow}>
                         <View style={[styles.cartaoInfoBox, { backgroundColor: C.branco }]}>
                           <Text style={[styles.cartaoInfoLabel, { color: C.textoSec, fontSize: fs(9) }]}>RA</Text>
-                          <Text style={[styles.cartaoInfoValor, { color: C.azulEscuro, fontSize: fs(14) }]}>
-                            {usuarioBuscado.ra || '—'}
-                          </Text>
+                          <Text style={[styles.cartaoInfoValor, { color: C.azulEscuro, fontSize: fs(14) }]}>{usuarioBuscado.ra || '—'}</Text>
                         </View>
                         <View style={[styles.cartaoInfoBox, { backgroundColor: C.branco }]}>
                           <Text style={[styles.cartaoInfoLabel, { color: C.textoSec, fontSize: fs(9) }]}>TURMA</Text>
-                          <Text style={[styles.cartaoInfoValor, { color: C.azulEscuro, fontSize: fs(14) }]}>
-                            {usuarioBuscado.turma || '—'}
-                          </Text>
+                          <Text style={[styles.cartaoInfoValor, { color: C.azulEscuro, fontSize: fs(14) }]}>{usuarioBuscado.turma || '—'}</Text>
                         </View>
                       </View>
-
                       <View style={styles.cartaoControles}>
                         <View style={{ flex: 1 }}>
                           <Text style={[styles.campoLabel, { color: C.textoSec, fontSize: fs(9) }]}>TIPO</Text>
@@ -848,9 +689,7 @@ export default function Admin({ navigation, route }: any) {
                             style={[styles.seletorBtn, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
                             onPress={() => setModalCartaoTipo(true)}
                           >
-                            <Text style={[styles.seletorBtnText, { color: C.azulEscuro, fontSize: fs(12) }]}>
-                              {cartaoTipo}
-                            </Text>
+                            <Text style={[styles.seletorBtnText, { color: C.azulEscuro, fontSize: fs(12) }]}>{cartaoTipo}</Text>
                             <Ionicons name="chevron-down" size={14} color={C.textoSec} />
                           </TouchableOpacity>
                         </View>
@@ -861,34 +700,21 @@ export default function Admin({ navigation, route }: any) {
                             onPress={() => setModalCartaoSts(true)}
                           >
                             <View style={[styles.dotStatus, { backgroundColor: STATUS_CORES[cartaoStatus] }]} />
-                            <Text style={[styles.seletorBtnText, { color: C.azulEscuro, fontSize: fs(12) }]}>
-                              {STATUS_LABELS[cartaoStatus]}
-                            </Text>
+                            <Text style={[styles.seletorBtnText, { color: C.azulEscuro, fontSize: fs(12) }]}>{STATUS_LABELS[cartaoStatus]}</Text>
                             <Ionicons name="chevron-down" size={14} color={C.textoSec} />
                           </TouchableOpacity>
                         </View>
                       </View>
-
                       <TouchableOpacity
-                        style={[
-                          styles.btnSalvarCartao,
-                          { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
-                        ]}
+                        style={[styles.btnSalvarCartao, { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }]}
                         onPress={salvarCartao}
                         disabled={salvandoCartao}
                       >
                         {salvandoCartao
                           ? <ActivityIndicator color={modoEscuro ? CORES.azulEscuro : '#FFF'} size="small" />
                           : <>
-                              <Ionicons
-                                name="save"
-                                size={14}
-                                color={modoEscuro ? CORES.azulEscuro : '#FFF'}
-                              />
-                              <Text style={[
-                                styles.btnSalvarCartaoText,
-                                { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(13) }
-                              ]}>
+                              <Ionicons name="save" size={14} color={modoEscuro ? CORES.azulEscuro : '#FFF'} />
+                              <Text style={[styles.btnSalvarCartaoText, { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(13) }]}>
                                 Salvar Alterações
                               </Text>
                             </>
@@ -905,27 +731,21 @@ export default function Admin({ navigation, route }: any) {
               <View style={[styles.chartCard, { backgroundColor: C.branco }]}>
                 <View style={styles.chartHeader}>
                   <View>
-                    <Text style={[styles.chartEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
-                      GERENCIAR
-                    </Text>
+                    <Text style={[styles.chartEyebrow, { color: CORES.rosa, fontSize: fs(9) }]}>GERENCIAR</Text>
                     <Text style={[styles.chartTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
                       {usuariosFiltrados.length} usuário{usuariosFiltrados.length !== 1 ? 's' : ''}
                     </Text>
                   </View>
                 </View>
 
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.chipsRow}
-                >
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
                   {[
-                    { key: 'todos',         label: 'Todos',          icon: 'grid'         },
-                    { key: 'Aluno',         label: 'Alunos',         icon: 'school'       },
-                    { key: 'Gremista',      label: 'Gremistas',      icon: 'star'         },
-                    { key: 'Administrador', label: 'Admins',         icon: 'shield'       },
-                    { key: 'pendentes',     label: 'Pendentes',      icon: 'time'         },
-                    { key: 'suspensos',     label: 'Suspensos',      icon: 'close-circle' },
+                    { key: 'todos',         label: 'Todos',    icon: 'grid'         },
+                    { key: 'Aluno',         label: 'Alunos',   icon: 'school'       },
+                    { key: 'Gremista',      label: 'Gremistas',icon: 'star'         },
+                    { key: 'Administrador', label: 'Admins',   icon: 'shield'       },
+                    { key: 'pendentes',     label: 'Pendentes',icon: 'time'         },
+                    { key: 'suspensos',     label: 'Suspensos',icon: 'close-circle' },
                   ].map(c => {
                     const ativo = filtroTipoU === c.key;
                     return (
@@ -934,23 +754,12 @@ export default function Admin({ navigation, route }: any) {
                         style={[
                           styles.chip,
                           { backgroundColor: C.fundo, borderColor: C.cinzaClaro },
-                          ativo && {
-                            backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro,
-                            borderColor: modoEscuro ? C.amarelo : CORES.azulEscuro
-                          }
+                          ativo && { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro, borderColor: modoEscuro ? C.amarelo : CORES.azulEscuro },
                         ]}
                         onPress={() => setFiltroTipoU(c.key)}
                       >
-                        <Ionicons
-                          name={c.icon as any}
-                          size={11}
-                          color={ativo ? (modoEscuro ? CORES.azulEscuro : CORES.branco) : C.textoSec}
-                        />
-                        <Text style={[
-                          styles.chipText,
-                          { color: C.textoSec, fontSize: fs(11) },
-                          ativo && { color: modoEscuro ? CORES.azulEscuro : CORES.branco }
-                        ]}>
+                        <Ionicons name={c.icon as any} size={11} color={ativo ? (modoEscuro ? CORES.azulEscuro : CORES.branco) : C.textoSec} />
+                        <Text style={[styles.chipText, { color: C.textoSec, fontSize: fs(11) }, ativo && { color: modoEscuro ? CORES.azulEscuro : CORES.branco }]}>
                           {c.label}
                         </Text>
                       </TouchableOpacity>
@@ -958,67 +767,41 @@ export default function Admin({ navigation, route }: any) {
                   })}
                 </ScrollView>
 
-                {/* LISTA DE USUÁRIOS */}
                 {usuariosFiltrados.map((u: any, i: number) => (
                   <FadeInView key={u.uid} delay={i * 30}>
-                    <View style={[
-                      styles.usuarioCard,
-                      { backgroundColor: C.fundo, borderColor: C.cinzaClaro }
-                    ]}>
+                    <View style={[styles.usuarioCard, { backgroundColor: C.fundo, borderColor: C.cinzaClaro }]}>
                       <View style={styles.usuarioTopo}>
-                        <View style={[
-                          styles.usuarioAvatar,
-                          { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
-                        ]}>
-                          <Text style={[
-                            styles.usuarioAvatarText,
-                            { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(15) }
-                          ]}>
+                        <View style={[styles.usuarioAvatar, { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }]}>
+                          <Text style={[styles.usuarioAvatarText, { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(15) }]}>
                             {u.nome_completo?.charAt(0)?.toUpperCase() || '?'}
                           </Text>
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text
-                            style={[styles.usuarioNome, { color: C.azulEscuro, fontSize: fs(13) }]}
-                            numberOfLines={1}
-                          >
+                          <Text style={[styles.usuarioNome, { color: C.azulEscuro, fontSize: fs(13) }]} numberOfLines={1}>
                             {u.nome_completo || '—'}
                           </Text>
-                          <Text
-                            style={[styles.usuarioEmail, { color: C.textoSec, fontSize: fs(11) }]}
-                            numberOfLines={1}
-                          >
+                          <Text style={[styles.usuarioEmail, { color: C.textoSec, fontSize: fs(11) }]} numberOfLines={1}>
                             {u.email_escolar || ''}
                           </Text>
                           <Text style={[styles.usuarioDetalhe, { color: C.textoSec, fontSize: fs(10) }]}>
                             {u.ra || '—'} · {u.turma || '—'}
                           </Text>
                         </View>
-                        <View style={[
-                          styles.statusPill,
-                          { backgroundColor: STATUS_CORES[u.status] + (modoEscuro ? '30' : '20') }
-                        ]}>
+                        <View style={[styles.statusPill, { backgroundColor: STATUS_CORES[u.status] + (modoEscuro ? '30' : '20') }]}>
                           <View style={[styles.dotStatus, { backgroundColor: STATUS_CORES[u.status] }]} />
-                          <Text style={[
-                            styles.statusPillText,
-                            { color: STATUS_CORES[u.status], fontSize: fs(9) }
-                          ]}>
+                          <Text style={[styles.statusPillText, { color: STATUS_CORES[u.status], fontSize: fs(9) }]}>
                             {STATUS_LABELS[u.status]}
                           </Text>
                         </View>
                       </View>
-
                       <View style={styles.usuarioControles}>
                         <TouchableOpacity
                           style={[styles.seletorBtnSm, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
                           onPress={() => { setModalUidAlvo(u.uid); setModalTipo(true); }}
                         >
-                          <Text style={[styles.seletorBtnSmText, { color: C.azulEscuro, fontSize: fs(10) }]}>
-                            {editTipo[u.uid] || u.tipo}
-                          </Text>
+                          <Text style={[styles.seletorBtnSmText, { color: C.azulEscuro, fontSize: fs(10) }]}>{editTipo[u.uid] || u.tipo}</Text>
                           <Ionicons name="chevron-down" size={11} color={C.textoSec} />
                         </TouchableOpacity>
-
                         <TouchableOpacity
                           style={[styles.seletorBtnSm, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
                           onPress={() => { setModalUidAlvo(u.uid); setModalStatus(true); }}
@@ -1029,16 +812,8 @@ export default function Admin({ navigation, route }: any) {
                           </Text>
                           <Ionicons name="chevron-down" size={11} color={C.textoSec} />
                         </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={styles.btnSalvarRow}
-                          onPress={() => salvarUsuario(u.uid)}
-                          disabled={salvando[u.uid]}
-                        >
-                          {salvando[u.uid]
-                            ? <ActivityIndicator color="#FFF" size="small" />
-                            : <Ionicons name="checkmark" size={14} color="#FFF" />
-                          }
+                        <TouchableOpacity style={styles.btnSalvarRow} onPress={() => salvarUsuario(u.uid)} disabled={salvando[u.uid]}>
+                          {salvando[u.uid] ? <ActivityIndicator color="#FFF" size="small" /> : <Ionicons name="checkmark" size={14} color="#FFF" />}
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -1046,28 +821,22 @@ export default function Admin({ navigation, route }: any) {
                 ))}
               </View>
             </FadeInView>
+
           </View>
-        )}
+        </ScrollView>
+
       </ScrollView>
 
-      {/* ════════════════════════════════════════════════
-          MODAIS DE SELEÇÃO
-      ════════════════════════════════════════════════ */}
+      {/* ════ MODAIS ════ */}
       <Modal visible={modalTipo} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalSheet, { backgroundColor: C.branco, paddingBottom: insets.bottom + 24 }]}>
             <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
-            <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(16) }]}>
-              Tipo de Usuário
-            </Text>
+            <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(16) }]}>Tipo de Usuário</Text>
             {TIPOS_USUARIO.map(t => (
               <TouchableOpacity
-                key={t}
-                style={[styles.seletorItem, { borderBottomColor: C.cinzaClaro }]}
-                onPress={() => {
-                  setEditTipo(prev => ({ ...prev, [modalUidAlvo]: t }));
-                  setModalTipo(false);
-                }}
+                key={t} style={[styles.seletorItem, { borderBottomColor: C.cinzaClaro }]}
+                onPress={() => { setEditTipo(prev => ({ ...prev, [modalUidAlvo]: t })); setModalTipo(false); }}
               >
                 <Text style={[styles.seletorItemText, { color: C.azulEscuro, fontSize: fs(14) }]}>{t}</Text>
                 {editTipo[modalUidAlvo] === t && <Ionicons name="checkmark" size={18} color={C.azulEscuro} />}
@@ -1084,12 +853,8 @@ export default function Admin({ navigation, route }: any) {
             <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(16) }]}>Status</Text>
             {STATUS_OPCOES.map(s => (
               <TouchableOpacity
-                key={s.value}
-                style={[styles.seletorItem, { borderBottomColor: C.cinzaClaro }]}
-                onPress={() => {
-                  setEditStatus(prev => ({ ...prev, [modalUidAlvo]: s.value }));
-                  setModalStatus(false);
-                }}
+                key={s.value} style={[styles.seletorItem, { borderBottomColor: C.cinzaClaro }]}
+                onPress={() => { setEditStatus(prev => ({ ...prev, [modalUidAlvo]: s.value })); setModalStatus(false); }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <View style={[styles.dotStatus, { backgroundColor: STATUS_CORES[s.value] }]} />
@@ -1106,13 +871,10 @@ export default function Admin({ navigation, route }: any) {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalSheet, { backgroundColor: C.branco, paddingBottom: insets.bottom + 24 }]}>
             <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
-            <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(16) }]}>
-              Tipo de Usuário
-            </Text>
+            <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(16) }]}>Tipo de Usuário</Text>
             {TIPOS_USUARIO.map(t => (
               <TouchableOpacity
-                key={t}
-                style={[styles.seletorItem, { borderBottomColor: C.cinzaClaro }]}
+                key={t} style={[styles.seletorItem, { borderBottomColor: C.cinzaClaro }]}
                 onPress={() => { setCartaoTipo(t); setModalCartaoTipo(false); }}
               >
                 <Text style={[styles.seletorItemText, { color: C.azulEscuro, fontSize: fs(14) }]}>{t}</Text>
@@ -1130,8 +892,7 @@ export default function Admin({ navigation, route }: any) {
             <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(16) }]}>Status</Text>
             {STATUS_OPCOES.map(s => (
               <TouchableOpacity
-                key={s.value}
-                style={[styles.seletorItem, { borderBottomColor: C.cinzaClaro }]}
+                key={s.value} style={[styles.seletorItem, { borderBottomColor: C.cinzaClaro }]}
                 onPress={() => { setCartaoStatus(s.value); setModalCartaoSts(false); }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -1148,77 +909,67 @@ export default function Admin({ navigation, route }: any) {
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════
-// STYLESHEET — sem cores hardcoded em elementos dinâmicos
-// ════════════════════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
-  container:          { flex: 1, ...(Platform.OS === 'web' ? { height: '100vh' as any, overflow: 'hidden' as any } : {}) },
-  centro:             { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 14 },
-  loadingText:        { fontFamily: F.semibold },
+  container:   { flex: 1, ...(Platform.OS === 'web' ? { height: '100vh' as any, overflow: 'hidden' as any } : {}) },
+  centro:      { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 14 },
+  loadingText: { fontFamily: F.semibold },
 
-  // TOAST
-  toast:              { position: 'absolute', alignSelf: 'center', backgroundColor: CORES.azulEscuro, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 24, zIndex: 9999, elevation: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  toastText:          { color: CORES.branco, fontFamily: F.bold },
+  toast:     { position: 'absolute', alignSelf: 'center', backgroundColor: CORES.azulEscuro, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 24, zIndex: 9999, elevation: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  toastText: { color: CORES.branco, fontFamily: F.bold },
 
-  // HEADER
-  header:             { backgroundColor: CORES.azulEscuro, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingBottom: 16, gap: 12 },
-  btnVoltar:          { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
-  headerEyebrowRow:   { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  headerDot:          { width: 6, height: 6, borderRadius: 3, backgroundColor: CORES.amarelo },
-  headerEyebrow:      { color: 'rgba(255,255,255,0.7)', fontFamily: F.black, letterSpacing: 1.6 },
-  headerTitulo:       { color: CORES.branco, fontFamily: F.black, letterSpacing: -0.4, marginTop: 2 },
-  btnRefresh:         { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
+  header:          { backgroundColor: CORES.azulEscuro, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingBottom: 16, gap: 12 },
+  btnVoltar:       { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
+  headerEyebrowRow:{ flexDirection: 'row', alignItems: 'center', gap: 6 },
+  headerDot:       { width: 6, height: 6, borderRadius: 3, backgroundColor: CORES.amarelo },
+  headerEyebrow:   { color: 'rgba(255,255,255,0.7)', fontFamily: F.black, letterSpacing: 1.6 },
+  headerTitulo:    { color: CORES.branco, fontFamily: F.black, letterSpacing: -0.4, marginTop: 2 },
+  btnRefresh:      { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
 
-  // ABAS
-  abas:               { flexDirection: 'row', paddingHorizontal: 4, borderBottomWidth: 1 },
-  aba:                { flex: 1, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 5 },
-  abaText:            { fontFamily: F.bold },
+  // ABAS com indicador animado
+  abas:             { flexDirection: 'row', paddingHorizontal: 4, borderBottomWidth: 1, position: 'relative' },
+  aba:              { flex: 1, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 5 },
+  abaText:          { fontFamily: F.bold },
+  abaIndicatorLine: { position: 'absolute', bottom: 0, left: 4, height: 3, backgroundColor: CORES.rosa, borderRadius: 3 },
 
-  // HERO CARD — fixo azul escuro
-  heroCard:           { backgroundColor: CORES.azulEscuro, borderRadius: 22, padding: 22, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, elevation: 4, shadowColor: CORES.azulEscuro, shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, overflow: 'hidden' },
-  heroEyebrow:        { color: 'rgba(255,255,255,0.6)', fontFamily: F.black, letterSpacing: 1.4, marginBottom: 6 },
-  heroValor:          { color: CORES.branco, fontFamily: F.black, letterSpacing: -1, lineHeight: 42 },
-  heroBadges:         { flexDirection: 'row', gap: 6, marginTop: 8 },
-  heroBadge:          { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.12)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  heroBadgeText:      { fontFamily: F.bold },
-  heroIconWrap:       { width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
+  heroCard:      { backgroundColor: CORES.azulEscuro, borderRadius: 22, padding: 22, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, elevation: 4, shadowColor: CORES.azulEscuro, shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
+  heroEyebrow:   { color: 'rgba(255,255,255,0.6)', fontFamily: F.black, letterSpacing: 1.4, marginBottom: 6 },
+  heroValor:     { color: CORES.branco, fontFamily: F.black, letterSpacing: -1, lineHeight: 42 },
+  heroBadges:    { flexDirection: 'row', gap: 6, marginTop: 8 },
+  heroBadge:     { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.12)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  heroBadgeText: { fontFamily: F.bold },
+  heroIconWrap:  { width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
 
-  // MINI GRID
-  miniGrid:           { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
-  miniCard:           { width: '48.5%', borderRadius: 14, padding: 12, borderLeftWidth: 3, gap: 6 },
-  miniIcon:           { width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  miniValor:          { fontFamily: F.black, letterSpacing: -0.5 },
-  miniLabel:          { fontFamily: F.bold, letterSpacing: 0.6, textTransform: 'uppercase' },
+  miniGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  miniCard:  { width: '48.5%', borderRadius: 14, padding: 12, borderLeftWidth: 3, gap: 6 },
+  miniIcon:  { width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  miniValor: { fontFamily: F.black, letterSpacing: -0.5 },
+  miniLabel: { fontFamily: F.bold, letterSpacing: 0.6, textTransform: 'uppercase' },
 
-  // CHART CARD
-  chartCard:          { borderRadius: 18, padding: 16, marginBottom: 14, elevation: 2, shadowColor: CORES.azulEscuro, shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
-  chartHeader:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
-  chartEyebrow:       { fontFamily: F.black, letterSpacing: 1.2 },
-  chartTitulo:        { fontFamily: F.black, marginTop: 2, letterSpacing: -0.2 },
-  chartLegenda:       { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  chartLegendaText:   { fontFamily: F.semibold },
-  dotCor:             { width: 8, height: 8, borderRadius: 4 },
-  chartGraph:         { borderRadius: 14, marginVertical: 4, marginLeft: -10 },
-  chartVazio:         { alignItems: 'center', paddingVertical: 30, gap: 8 },
-  chartVazioText:     { fontFamily: F.medium },
-  trofeu:             { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  pizzaLegenda:       { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 8, paddingHorizontal: 8 },
-  pizzaLegendaItem:   { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  pizzaLegendaDot:    { width: 10, height: 10, borderRadius: 5 },
-  pizzaLegendaTxt:    { fontFamily: F.semibold },
+  chartCard:        { borderRadius: 18, padding: 16, marginBottom: 14, elevation: 2, shadowColor: CORES.azulEscuro, shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
+  chartHeader:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
+  chartEyebrow:     { fontFamily: F.black, letterSpacing: 1.2 },
+  chartTitulo:      { fontFamily: F.black, marginTop: 2, letterSpacing: -0.2 },
+  chartLegenda:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  chartLegendaText: { fontFamily: F.semibold },
+  dotCor:           { width: 8, height: 8, borderRadius: 4 },
+  chartGraph:       { borderRadius: 14, marginVertical: 4, marginLeft: -10 },
+  chartVazio:       { alignItems: 'center', paddingVertical: 30, gap: 8 },
+  chartVazioText:   { fontFamily: F.medium },
+  pizzaLegenda:     { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 8, paddingHorizontal: 8 },
+  pizzaLegendaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  pizzaLegendaDot:  { width: 10, height: 10, borderRadius: 5 },
+  pizzaLegendaTxt:  { fontFamily: F.semibold },
 
-  secaoTituloGrande:  { fontFamily: F.black, marginBottom: 10, marginTop: 4, letterSpacing: -0.2 },
+  secaoTituloGrande: { fontFamily: F.black, marginBottom: 10, marginTop: 4, letterSpacing: -0.2 },
 
-  // STATUS GRID
-  statusGrid:         { flexDirection: 'row', gap: 8, marginBottom: 14 },
-  statusCard:         { flex: 1, borderRadius: 16, padding: 14, alignItems: 'center', gap: 6 },
-  statusBolha:        { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
-  statusN:            { fontFamily: F.black, letterSpacing: -0.5 },
-  statusL:            { fontFamily: F.bold, letterSpacing: 0.6, textTransform: 'uppercase' },
-  statusBarra:        { width: '100%', height: 3, borderRadius: 2, marginTop: 8, overflow: 'hidden' },
-  statusBarraFill:    { height: 3, borderRadius: 2 },
+  statusGrid:     { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  statusCard:     { flex: 1, borderRadius: 16, padding: 14, alignItems: 'center', gap: 6 },
+  statusBolha:    { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
+  statusN:        { fontFamily: F.black, letterSpacing: -0.5 },
+  statusL:        { fontFamily: F.bold, letterSpacing: 0.6, textTransform: 'uppercase' },
+  statusBarra:    { width: '100%', height: 3, borderRadius: 2, marginTop: 8, overflow: 'hidden' },
+  statusBarraFill:{ height: 3, borderRadius: 2 },
 
-  // COMPOSIÇÃO
   composicaoLista:    { gap: 14 },
   composicaoItem:     { flexDirection: 'row', alignItems: 'center', gap: 12 },
   composicaoIcon:     { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
@@ -1228,70 +979,64 @@ const styles = StyleSheet.create({
   composicaoBarra:    { height: 5, borderRadius: 3, overflow: 'hidden' },
   composicaoBarraFill:{ height: 5, borderRadius: 3 },
 
-  // TOP 5
-  top5ItemPro:        { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 0.5 },
-  top5Medalha:        { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5 },
-  top5Pos:            { fontFamily: F.black },
-  top5Nome:           { fontFamily: F.bold, marginBottom: 4 },
-  top5MetaRow:        { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
-  top5Cat:            { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
-  top5CatText:        { fontFamily: F.black, letterSpacing: 0.4 },
-  top5Views:          { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  top5ViewsText:      { color: CORES.rosa, fontFamily: F.bold },
-  barraWrap:          { height: 4, borderRadius: 2, overflow: 'hidden' },
-  barra:              { height: 4, borderRadius: 2 },
+  top5ItemPro:  { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 0.5 },
+  top5Medalha:  { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5 },
+  top5Pos:      { fontFamily: F.black },
+  top5Nome:     { fontFamily: F.bold, marginBottom: 4 },
+  top5MetaRow:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  top5Cat:      { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
+  top5CatText:  { fontFamily: F.black, letterSpacing: 0.4 },
+  top5Views:    { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  top5ViewsText:{ color: CORES.rosa, fontFamily: F.bold },
+  barraWrap:    { height: 4, borderRadius: 2, overflow: 'hidden' },
+  barra:        { height: 4, borderRadius: 2 },
 
-  // BUSCA
-  buscaRow:           { flexDirection: 'row', gap: 8 },
-  buscaInputWrap:     { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, paddingHorizontal: 12, borderWidth: 1 },
-  buscaInput:         { flex: 1, paddingVertical: 12, fontFamily: F.medium },
-  btnBuscar:          { borderRadius: 12, paddingHorizontal: 18, justifyContent: 'center', alignItems: 'center' },
-  btnBuscarText:      { fontFamily: F.black },
+  buscaRow:       { flexDirection: 'row', gap: 8 },
+  buscaInputWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, paddingHorizontal: 12, borderWidth: 1 },
+  buscaInput:     { flex: 1, paddingVertical: 12, fontFamily: F.medium },
+  btnBuscar:      { borderRadius: 12, paddingHorizontal: 18, justifyContent: 'center', alignItems: 'center' },
+  btnBuscarText:  { fontFamily: F.black },
 
-  // CARTÃO ENCONTRADO
-  cartaoEncontrado:       { marginTop: 14, padding: 16, borderRadius: 14, borderWidth: 1 },
-  cartaoEncontradoTopo:   { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  cartaoAvatar:           { width: 44, height: 44, borderRadius: 22, backgroundColor: CORES.rosa, justifyContent: 'center', alignItems: 'center' },
-  cartaoAvatarText:       { color: CORES.branco, fontFamily: F.black },
-  cartaoNome:             { fontFamily: F.black },
-  cartaoEmail:            { fontFamily: F.medium, marginTop: 2 },
-  cartaoInfoRow:          { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  cartaoInfoBox:          { flex: 1, borderRadius: 10, padding: 10 },
-  cartaoInfoLabel:        { fontFamily: F.black, letterSpacing: 0.8 },
-  cartaoInfoValor:        { fontFamily: F.bold, marginTop: 3 },
-  cartaoControles:        { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  campoLabel:             { fontFamily: F.black, letterSpacing: 0.8, marginBottom: 5 },
-  seletorBtn:             { flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'space-between', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1 },
-  seletorBtnText:         { fontFamily: F.bold, flex: 1 },
-  dotStatus:              { width: 8, height: 8, borderRadius: 4 },
-  btnSalvarCartao:        { flexDirection: 'row', gap: 6, borderRadius: 12, paddingVertical: 12, justifyContent: 'center', alignItems: 'center' },
-  btnSalvarCartaoText:    { fontFamily: F.black },
+  cartaoEncontrado:     { marginTop: 14, padding: 16, borderRadius: 14, borderWidth: 1 },
+  cartaoEncontradoTopo: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
+  cartaoAvatar:         { width: 44, height: 44, borderRadius: 22, backgroundColor: CORES.rosa, justifyContent: 'center', alignItems: 'center' },
+  cartaoAvatarText:     { color: CORES.branco, fontFamily: F.black },
+  cartaoNome:           { fontFamily: F.black },
+  cartaoEmail:          { fontFamily: F.medium, marginTop: 2 },
+  cartaoInfoRow:        { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  cartaoInfoBox:        { flex: 1, borderRadius: 10, padding: 10 },
+  cartaoInfoLabel:      { fontFamily: F.black, letterSpacing: 0.8 },
+  cartaoInfoValor:      { fontFamily: F.bold, marginTop: 3 },
+  cartaoControles:      { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  campoLabel:           { fontFamily: F.black, letterSpacing: 0.8, marginBottom: 5 },
+  seletorBtn:           { flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'space-between', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1 },
+  seletorBtnText:       { fontFamily: F.bold, flex: 1 },
+  dotStatus:            { width: 8, height: 8, borderRadius: 4 },
+  btnSalvarCartao:      { flexDirection: 'row', gap: 6, borderRadius: 12, paddingVertical: 12, justifyContent: 'center', alignItems: 'center' },
+  btnSalvarCartaoText:  { fontFamily: F.black },
 
-  // CHIPS
-  chipsRow:           { gap: 8, paddingVertical: 4, paddingBottom: 12, flexDirection: 'row' },
-  chip:               { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
-  chipText:           { fontFamily: F.bold },
+  chipsRow: { gap: 8, paddingVertical: 4, paddingBottom: 12, flexDirection: 'row' },
+  chip:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
+  chipText: { fontFamily: F.bold },
 
-  // USUÁRIO CARD
-  usuarioCard:        { borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 0.5 },
-  usuarioTopo:        { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  usuarioAvatar:      { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-  usuarioAvatarText:  { fontFamily: F.black },
-  usuarioNome:        { fontFamily: F.black },
-  usuarioEmail:       { fontFamily: F.medium, marginTop: 2 },
-  usuarioDetalhe:     { fontFamily: F.semibold, marginTop: 1 },
-  statusPill:         { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  statusPillText:     { fontFamily: F.black, letterSpacing: 0.4 },
-  usuarioControles:   { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  seletorBtnSm:       { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 7, borderWidth: 0.5 },
-  seletorBtnSmText:   { fontFamily: F.bold, flex: 1 },
-  btnSalvarRow:       { width: 32, height: 32, borderRadius: 8, backgroundColor: CORES.verde, justifyContent: 'center', alignItems: 'center' },
+  usuarioCard:       { borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 0.5 },
+  usuarioTopo:       { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  usuarioAvatar:     { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  usuarioAvatarText: { fontFamily: F.black },
+  usuarioNome:       { fontFamily: F.black },
+  usuarioEmail:      { fontFamily: F.medium, marginTop: 2 },
+  usuarioDetalhe:    { fontFamily: F.semibold, marginTop: 1 },
+  statusPill:        { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  statusPillText:    { fontFamily: F.black, letterSpacing: 0.4 },
+  usuarioControles:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  seletorBtnSm:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 7, borderWidth: 0.5 },
+  seletorBtnSmText:  { fontFamily: F.bold, flex: 1 },
+  btnSalvarRow:      { width: 32, height: 32, borderRadius: 8, backgroundColor: CORES.verde, justifyContent: 'center', alignItems: 'center' },
 
-  // MODAIS
-  modalOverlay:       { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalSheet:         { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 22, paddingBottom: 32 },
-  modalHandle:        { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
-  modalTitulo:        { fontFamily: F.black, marginBottom: 10 },
-  seletorItem:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: 0.5 },
-  seletorItemText:    { fontFamily: F.bold },
+  modalOverlay:  { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalSheet:    { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 22, paddingBottom: 32 },
+  modalHandle:   { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  modalTitulo:   { fontFamily: F.black, marginBottom: 10 },
+  seletorItem:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: 0.5 },
+  seletorItemText:{ fontFamily: F.bold },
 });

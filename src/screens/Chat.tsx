@@ -13,7 +13,6 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-// ✅ ADICIONAR NOTIFICAÇÕES
 import * as Notifications from 'expo-notifications';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { useNotificacao } from '../contexts/NotificacaoProvider';
@@ -573,9 +572,9 @@ export default function Chat({ route, navigation }: any) {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       {/* ── HEADER ── */}
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={22} color="#0B2046" />
+      <View style={[styles.header, { paddingTop: insets.top + 10, backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.backBtn, { backgroundColor: C.cinzaClaro }]}>
+          <Ionicons name="arrow-back" size={22} color={C.azulEscuro} />
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.headerCenter} onPress={abrirPerfilDoOutro} activeOpacity={0.7}>
@@ -588,10 +587,10 @@ export default function Chat({ route, navigation }: any) {
               }}
               style={styles.headerAvatar}
             />
-            <View style={[styles.headerOnlineDot, { backgroundColor: onlineStatus ? "#22C55E" : "#94A3B8" }]} />
+            <View style={[styles.headerOnlineDot, { backgroundColor: onlineStatus ? "#22C55E" : "#94A3B8", borderColor: C.branco }]} />
           </View>
           <View>
-            <Text style={styles.headerTitle}>{outroNome || "Chat"}</Text>
+            <Text style={[styles.headerTitle, { color: C.azulEscuro, fontFamily: F.black }]}>{outroNome || "Chat"}</Text>
             {outroDigitando
               ? <Text style={[styles.headerSub, { color: "#E91E63" }]}>digitando...</Text>
               : <Text style={[styles.headerSub, { color: onlineStatus ? "#22C55E" : "#94A3B8" }]}>
@@ -718,12 +717,12 @@ export default function Chat({ route, navigation }: any) {
 
       {/* ── BARRA DE CITAÇÃO / EDIÇÃO ── */}
       {(citando || editandoId) && (
-        <View style={styles.citandoBar}>
+        <View style={[styles.citandoBar, { backgroundColor: C.branco }]}>
           <View style={styles.citandoInfo}>
             {citando
               ? <>
                   <Text style={styles.citandoNome}>{citando.nome_remetente}</Text>
-                  <Text style={styles.citandoTexto} numberOfLines={1}>
+                  <Text style={[styles.citandoTexto, { color: C.textoSec }]} numberOfLines={1}>
                     {citando.tipo === "imagem" ? "📷 Imagem" : citando.mensagem}
                   </Text>
                 </>
@@ -737,23 +736,23 @@ export default function Chat({ route, navigation }: any) {
       )}
 
       {/* ── INPUT ── */}
-      <View style={styles.inputArea}>
+      <View style={[styles.inputArea, { backgroundColor: C.branco, borderTopColor: C.cinzaClaro }]}>
         <TouchableOpacity
           onPress={() => fileInputRef.current?.click()}
-          style={styles.imgButton}
+          style={[styles.imgButton, { backgroundColor: C.cinzaClaro, borderColor: C.cinzaClaro }]}
           disabled={uploading}
         >
           {uploading
             ? <ActivityIndicator size="small" color="#E91E63" />
-            : <Ionicons name="image-outline" size={22} color="#0B2046" />
+            : <Ionicons name="image-outline" size={22} color={C.azulEscuro} />
           }
         </TouchableOpacity>
         <TextInput
           value={inputText}
           onChangeText={handleTyping}
-          style={styles.input}
+          style={[styles.input, { backgroundColor: C.cinzaClaro, color: C.azulEscuro, borderColor: C.cinzaClaro }]}
           placeholder="Digite aqui..."
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor={C.textoSec}
           multiline
         />
         <TouchableOpacity onPress={sendMessage} style={styles.sendButton}>
@@ -765,16 +764,16 @@ export default function Chat({ route, navigation }: any) {
       {menuMsg && (
         <View style={styles.overlayFull}>
           <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setMenuMsg(null)} />
-          <View style={styles.menuCard}>
-            <Text style={styles.menuTitle}>Opções</Text>
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setCitando(menuMsg); setMenuMsg(null); }}>
+          <View style={[styles.menuCard, { backgroundColor: C.branco }]}>
+            <Text style={[styles.menuTitle, { color: C.azulEscuro, fontFamily: F.black }]}>Opções</Text>
+            <TouchableOpacity style={[styles.menuItem, { borderBottomColor: C.cinzaClaro }]} onPress={() => { setCitando(menuMsg); setMenuMsg(null); }}>
               <Text style={styles.menuItemIcon}>↩️</Text>
-              <Text style={styles.menuItemText}>Responder</Text>
+              <Text style={[styles.menuItemText, { color: C.azulEscuro, fontFamily: F.semibold }]}>Responder</Text>
             </TouchableOpacity>
             {menuMsg.remetenteUid === uidAtual && menuMsg.tipo !== "imagem" && (
-              <TouchableOpacity style={styles.menuItem} onPress={() => iniciarEdicao(menuMsg)}>
+              <TouchableOpacity style={[styles.menuItem, { borderBottomColor: C.cinzaClaro }]} onPress={() => iniciarEdicao(menuMsg)}>
                 <Text style={styles.menuItemIcon}>✏️</Text>
-                <Text style={styles.menuItemText}>Editar</Text>
+                <Text style={[styles.menuItemText, { color: C.azulEscuro, fontFamily: F.semibold }]}>Editar</Text>
               </TouchableOpacity>
             )}
             {menuMsg.remetenteUid === uidAtual && (
@@ -797,7 +796,7 @@ export default function Chat({ route, navigation }: any) {
               style={[styles.menuItem, { borderBottomWidth: 0, marginTop: 4 }]}
               onPress={() => setMenuMsg(null)}
             >
-              <Text style={[styles.menuItemText, { color: "#aaa", textAlign: "center", width: "100%" }]}>Cancelar</Text>
+              <Text style={[styles.menuItemText, { color: C.textoSec, textAlign: "center", width: "100%", fontFamily: F.medium }]}>Cancelar</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -806,8 +805,8 @@ export default function Chat({ route, navigation }: any) {
       {/* ── PREVIEW IMAGEM ── */}
       {previewVisible && (
         <View style={styles.overlayFull}>
-          <View style={styles.previewCard}>
-            <Text style={styles.previewTitle}>Pré-visualização</Text>
+          <View style={[styles.previewCard, { backgroundColor: C.branco }]}>
+            <Text style={[styles.previewTitle, { color: C.azulEscuro, fontFamily: F.black }]}>Pré-visualização</Text>
             {previewImage && (
               Platform.OS === "web"
                 // @ts-ignore
@@ -815,8 +814,8 @@ export default function Chat({ route, navigation }: any) {
                 : <Image source={{ uri: previewImage }} style={styles.previewImage} resizeMode="contain" />
             )}
             <View style={styles.previewButtons}>
-              <TouchableOpacity style={[styles.previewBtn, styles.cancelBtn]} onPress={cancelarPreview}>
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
+              <TouchableOpacity style={[styles.previewBtn, styles.cancelBtn, { backgroundColor: C.cinzaClaro }]} onPress={cancelarPreview}>
+                <Text style={[styles.cancelBtnText, { color: C.azulEscuro, fontFamily: F.bold }]}>Cancelar</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.previewBtn, styles.sendBtn]} onPress={confirmarEnvio}>
                 <Text style={styles.sendBtnText}>Enviar</Text>

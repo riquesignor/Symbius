@@ -441,13 +441,13 @@ export default function Match({ navigation, route }: any) {
 
   // ── ITEM DE SOLICITAÇÃO ──
   const renderSolicitacao = ({ item }: any) => (
-    <View style={styles.solCard}>
+    <View style={[styles.solCard, { backgroundColor: C.branco }]}>
       <TouchableOpacity onPress={() => abrirPerfil(item.deUid)} activeOpacity={0.8}>
         <Image source={{ uri: getImageUri(item.remetente?.foto) }} style={styles.solAvatar} />
       </TouchableOpacity>
       <View style={styles.solInfo}>
-        <Text style={styles.solNome}>{item.remetente?.nome_completo || 'Usuário'}</Text>
-        <Text style={styles.solTurma}>{item.remetente?.turma || ''}</Text>
+        <Text style={[styles.solNome, { color: C.azulEscuro, fontFamily: F.bold }]}>{item.remetente?.nome_completo || 'Usuário'}</Text>
+        <Text style={[styles.solTurma, { color: C.textoSec, fontFamily: F.regular }]}>{item.remetente?.turma || ''}</Text>
       </View>
       <View style={styles.solAcoes}>
         <TouchableOpacity
@@ -495,7 +495,7 @@ export default function Match({ navigation, route }: any) {
 
     return (
       <TouchableOpacity
-        style={[styles.solCard, naoLida && styles.solCardNaoLido]}
+        style={[styles.solCard, { backgroundColor: C.branco }, naoLida && styles.solCardNaoLido]}
         onPress={() => abrirChat(outroUid, item.outro?.nome_completo, item.outro?.foto)}
         activeOpacity={0.75}
       >
@@ -508,18 +508,18 @@ export default function Match({ navigation, route }: any) {
         <View style={styles.solInfo}>
           <View style={styles.nomeLinha}>
             <Text
-              style={[styles.solNome, naoLida && styles.solNomeNaoLido, { flex: 1 }]}
+              style={[styles.solNome, naoLida && styles.solNomeNaoLido, { flex: 1, color: C.azulEscuro, fontFamily: naoLida ? F.black : F.bold }]}
               numberOfLines={1}
             >
               {item.outro?.nome_completo || 'Usuário'}
             </Text>
-            <Text style={[styles.msgTimestamp, estaOnline && { color: CORES.verde, fontWeight: '700' }]}>
+            <Text style={[styles.msgTimestamp, { color: estaOnline ? CORES.verde : C.textoSec, fontFamily: F.medium }]}>
               {labelDireita}
             </Text>
           </View>
 
           <Text
-            style={[styles.ultimaMsg, naoLida && styles.ultimaMsgNaoLida]}
+            style={[styles.ultimaMsg, naoLida && styles.ultimaMsgNaoLida, { color: naoLida ? C.azulEscuro : C.textoSec, fontFamily: naoLida ? F.bold : F.regular }]}
             numberOfLines={1}
           >
             {labelMsg}
@@ -545,14 +545,14 @@ export default function Match({ navigation, route }: any) {
       {/* NAVBAR */}
       <View style={[styles.navbar, { paddingTop: insets.top, backgroundColor: modoEscuro ? '#111827' : CORES.branco, borderBottomColor: modoEscuro ? '#1F2937' : CORES.cinzaClaro }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={CORES.azulEscuro} />
+          <Ionicons name="arrow-back" size={24} color={C.azulEscuro} />
         </TouchableOpacity>
         <View style={styles.logoWrap}>
           <View style={styles.dotAmarelo} />
-          <Text style={styles.logo}>JUM<Text style={{ color: CORES.rosa }}>O</Text></Text>
+          <Text style={[styles.logo, { color: C.azulEscuro, fontFamily: F.black }]}>JUM<Text style={{ color: CORES.rosa }}>O</Text></Text>
         </View>
         <TouchableOpacity onPress={() => setPopupInfo(true)}>
-          <Ionicons name="help-circle-outline" size={26} color={CORES.azulEscuro} />
+          <Ionicons name="help-circle-outline" size={26} color={C.azulEscuro} />
         </TouchableOpacity>
       </View>
 
@@ -565,11 +565,11 @@ export default function Match({ navigation, route }: any) {
             onPress={() => setAbaAtiva(aba)}
           >
             <Ionicons
-              name={aba === 'descobrir' ? 'search' : aba === 'solicitacoes' ? 'mail' : 'heart'}
+              name={aba === 'descobrir' ? 'search' : aba === 'solicitacoes' ? 'mail' : 'people'}
               size={15}
-              color={abaAtiva === aba ? CORES.branco : CORES.textoSecundario}
+              color={abaAtiva === aba ? CORES.branco : C.textoSec}
             />
-            <Text style={[styles.tabTxt, abaAtiva === aba && styles.tabTxtAtiva]}>
+            <Text style={[styles.tabTxt, { color: abaAtiva === aba ? CORES.branco : C.textoSec, fontFamily: F.bold }, abaAtiva === aba && styles.tabTxtAtiva]}>
               {aba === 'descobrir' ? 'Descobrir' : aba === 'solicitacoes' ? 'Solicitações' : 'Matches'}
             </Text>
             {aba === 'solicitacoes' && solicitacoes.length > 0 && (
@@ -601,7 +601,7 @@ export default function Match({ navigation, route }: any) {
                   size={12}
                   color={modo === 'aprender' ? CORES.branco : CORES.azulEscuro}
                 />
-                <Text style={[styles.modoBtnTxt, modo === 'aprender' && { color: CORES.branco }]}>
+                <Text style={[styles.modoBtnTxt, { color: modo === 'aprender' ? CORES.branco : C.azulEscuro, fontFamily: F.bold }]}>
                   Quero Aprender
                 </Text>
               </TouchableOpacity>
@@ -612,9 +612,9 @@ export default function Match({ navigation, route }: any) {
                 <MaterialIcons
                   name="cast-for-education"
                   size={14}
-                  color={modo === 'ensinar' ? CORES.branco : CORES.azulEscuro}
+                  color={modo === 'ensinar' ? CORES.branco : C.azulEscuro}
                 />
-                <Text style={[styles.modoBtnTxt, modo === 'ensinar' && { color: CORES.branco }]}>
+                <Text style={[styles.modoBtnTxt, { color: modo === 'ensinar' ? CORES.branco : C.azulEscuro, fontFamily: F.bold }]}>
                   Quero Ensinar
                 </Text>
               </TouchableOpacity>
@@ -626,7 +626,7 @@ export default function Match({ navigation, route }: any) {
               onPress={() => setPopupMateria(true)}
             >
               {materiasFiltro.length === 0 ? (
-                <Text style={styles.materiaSelectorTxt}>Filtrar por matéria</Text>
+                <Text style={[styles.materiaSelectorTxt, { color: C.textoSec, fontFamily: F.medium }]}>Filtrar por matéria</Text>
               ) : (
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, flex: 1 }}>
                   {materiasFiltro.map(m => (
@@ -680,11 +680,11 @@ export default function Match({ navigation, route }: any) {
       {/* POPUP INFO */}
       <Modal visible={popupInfo} transparent animationType="fade">
         <View style={styles.overlayEscuro}>
-          <View style={styles.popupBox}>
-            <View style={styles.popupIcone}>
-              <Ionicons name="heart" size={32} color={CORES.rosa} />
+          <View style={[styles.popupBox, { backgroundColor: C.branco }]}>
+            <View style={[styles.popupIcone, { backgroundColor: modoEscuro ? CORES.rosa + '25' : '#FFE4EC' }]}>
+              <Ionicons name="people" size={32} color={CORES.rosa} />
             </View>
-            <Text style={styles.popupTitulo}>
+            <Text style={[styles.popupTitulo, { color: C.azulEscuro, fontFamily: F.black }]}>
               O que é o <Text style={{ fontStyle: 'italic', color: CORES.rosa }}>Match Acadêmico</Text>?
             </Text>
             <ScrollView style={{ maxHeight: height * 0.45 }} showsVerticalScrollIndicator={false}>
@@ -699,15 +699,15 @@ export default function Match({ navigation, route }: any) {
                     <Text style={styles.popupNumTxt}>{item.num}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.popupItemTitulo}>{item.titulo}</Text>
-                    <Text style={styles.popupItemDesc}>{item.desc}</Text>
+                    <Text style={[styles.popupItemTitulo, { color: C.azulEscuro, fontFamily: F.bold }]}>{item.titulo}</Text>
+                    <Text style={[styles.popupItemDesc, { color: C.textoSec, fontFamily: F.regular }]}>{item.desc}</Text>
                   </View>
                 </View>
               ))}
             </ScrollView>
             <TouchableOpacity style={styles.popupBtnPrimary} onPress={() => setPopupInfo(false)}>
               <Ionicons name="checkmark" size={18} color={CORES.branco} />
-              <Text style={styles.popupBtnTxt}>Entendido, vamos lá!</Text>
+              <Text style={[styles.popupBtnTxt, { fontFamily: F.bold }]}>Entendido, vamos lá!</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -716,8 +716,8 @@ export default function Match({ navigation, route }: any) {
       {/* POPUP MATÉRIA — multi-select com tags */}
       <Modal visible={popupMateria} transparent animationType="slide">
         <View style={styles.overlayEscuro}>
-          <View style={styles.materiaBox}>
-            <Text style={styles.materiaTitulo}>Filtrar por matéria</Text>
+          <View style={[styles.materiaBox, { backgroundColor: C.branco }]}>
+            <Text style={[styles.materiaTitulo, { color: C.azulEscuro, fontFamily: F.black }]}>Filtrar por matéria</Text>
 
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={styles.materiaTagsGrid}>
@@ -737,7 +737,7 @@ export default function Match({ navigation, route }: any) {
                       )}
                       <Text style={[
                         styles.materiaTagOpcaoTxt,
-                        selecionada && { color: CORES.branco },
+                        { color: selecionada ? CORES.branco : C.azulEscuro, fontFamily: F.bold },
                       ]}>
                         {m}
                       </Text>
@@ -752,7 +752,7 @@ export default function Match({ navigation, route }: any) {
                 style={styles.btnLimpar}
                 onPress={() => setMateriasFiltro([])}
               >
-                <Text style={styles.btnLimparTxt}>Limpar</Text>
+                <Text style={[styles.btnLimparTxt, { color: C.textoSec, fontFamily: F.bold }]}>Limpar</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.btnAplicar}
