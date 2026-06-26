@@ -17,29 +17,7 @@ import { useAppSettings } from '../contexts/AppSettingsContext';
 import { calcularFaseCoruja, calcularProgressoXp } from '../utils/gamification';
 
 // ── Fonte Poppins ──
-const F = {
-  regular:  'Poppins_400Regular',
-  medium:   'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold:     'Poppins_700Bold',
-  black:    'Poppins_800ExtraBold',
-};
-
-// ── Paleta estática ──
-const CORES = {
-  azulEscuro: '#0B2046',
-  rosa:       '#E51C6A',
-  amarelo:    '#FFC82C',
-  verde:      '#27ae60',
-  vermelho:   '#e74c3c',
-  laranja:    '#e67e22',
-  roxo:       '#8e44ad',
-  azulCeu:    '#3498db',
-  fundo:      '#F5F7FA',
-  branco:     '#FFFFFF',
-  cinzaClaro: '#EAEFF4',
-  textoSec:   '#8D99AE',
-};
+import { F, CORES } from '../constants/theme';
 
 // ════════════════════════════════════════════════════════════════════════
 //  ÁREAS DE CONHECIMENTO
@@ -185,6 +163,7 @@ const RadarChart = ({ scores, size, modoEscuro }: any) => {
     </Svg>
   );
 };
+
 
 // ════════════════════════════════════════════════════════════════════════
 //  COMPONENTE PRINCIPAL
@@ -342,8 +321,11 @@ export default function Perfil({ navigation, route }: any) {
           <Text style={{ color: CORES.rosa }}>MO</Text>
         </Text>
 
-        <TouchableOpacity style={[styles.btnMenu, { backgroundColor: C.branco }]}>
-          <Ionicons name="ellipsis-horizontal" size={18} color={C.azulEscuro} />
+        <TouchableOpacity
+          style={[styles.btnMenu, { backgroundColor: C.branco }]}
+          onPress={() => navigation.navigate('Leaderboard', { uid })}
+        >
+          <FontAwesome5 name="trophy" size={15} color={CORES.amarelo} />
         </TouchableOpacity>
       </View>
 
@@ -472,23 +454,16 @@ export default function Perfil({ navigation, route }: any) {
           </View>
         </FadeInView>
 
-        {/* ════════════════════════════════════════════════
-            CONQUISTAS & MEDALHAS (em fila com label embaixo)
-        ════════════════════════════════════════════════ */}
-        <FadeInView delay={120}>
-          <View style={styles.secao}>
-            <Text style={[styles.secaoTituloPrincipal, { color: C.azulEscuro, fontSize: fs(15) }]}>
-              Conquistas & Medalhas
-            </Text>
 
-            {medalhas.length === 0 ? (
-              <View style={[styles.medalhasVazio, { backgroundColor: C.branco }]}>
-                <FontAwesome5 name="medal" size={22} color={C.textoSec} style={{ opacity: 0.5 }} />
-                <Text style={[styles.medalhasVazioText, { color: C.textoSec, fontSize: fs(11) }]}>
-                  As conquistas habilitadas aparecerão aqui
-                </Text>
-              </View>
-            ) : (
+        {/* ════════════════════════════════════════════════
+            MEDALHAS ADMIN (em fila com label embaixo)
+        ════════════════════════════════════════════════ */}
+        {medalhas.length > 0 && (
+          <FadeInView delay={150}>
+            <View style={styles.secao}>
+              <Text style={[styles.secaoTituloPrincipal, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                Medalhas
+              </Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -515,9 +490,9 @@ export default function Perfil({ navigation, route }: any) {
                   </View>
                 ))}
               </ScrollView>
-            )}
-          </View>
-        </FadeInView>
+            </View>
+          </FadeInView>
+        )}
 
         {/* ════════════════════════════════════════════════
             MINHAS ESPECIALIDADES (radar + matérias ao lado — fiel à imagem)
@@ -536,6 +511,9 @@ export default function Perfil({ navigation, route }: any) {
                   size={150}
                   modoEscuro={modoEscuro}
                 />
+                <Text style={[styles.radarLegenda, { color: C.textoSec, fontSize: fs(9) }]}>
+                  Baseado nas suas matérias de tutoria
+                </Text>
               </View>
 
               {/* Matérias à direita (cards individuais) */}
@@ -979,12 +957,22 @@ const styles = StyleSheet.create({
 
   // SECAO
   secao:     { marginHorizontal: 16, marginTop: 22 },
-  secaoTituloPrincipal: { fontFamily: F.black, letterSpacing: -0.3, marginBottom: 10, paddingHorizontal: 2 },
+  secaoTituloPrincipal: { fontFamily: F.black, letterSpacing: -0.3, marginBottom: 4, paddingHorizontal: 2 },
+  secaoSubtitulo:       { fontFamily: F.regular, marginBottom: 12, paddingHorizontal: 2 },
+  conquistaSub:         { fontFamily: F.semibold, textAlign: 'center', marginTop: 1 },
   secaoHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, paddingHorizontal: 2 },
   secaoTitulo: { fontFamily: F.black, letterSpacing: -0.3 },
   secaoTituloComIcon: { flexDirection: 'row', alignItems: 'center', gap: 7 },
 
   // MEDALHAS
+  // CONQUISTAS
+  conquistasGrid:   { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingVertical: 4 },
+  conquistaItem:    { alignItems: 'center', gap: 5, width: 72 },
+  conquistaCirculo: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  conquistaEmoji:   { fontSize: 26 },
+  conquistaLabel:   { fontFamily: F.bold, textAlign: 'center', letterSpacing: -0.2 },
+  conquistaLock:    { position: 'absolute', bottom: 2, right: 2, backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 8, padding: 2 },
+
   medalhasRow: { gap: 18, paddingHorizontal: 4, paddingVertical: 6, paddingRight: 20 },
   medalhaItem: { alignItems: 'center', gap: 6, width: 76 },
   medalhaCirculo: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center' },
@@ -995,7 +983,8 @@ const styles = StyleSheet.create({
 
   // ESPECIALIDADES
   especCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 22, padding: 12, gap: 4, elevation: 1, shadowColor: CORES.azulEscuro, shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
-  especRadarBox: { width: 150, height: 150, justifyContent: 'center', alignItems: 'center' },
+  especRadarBox: { width: 150, justifyContent: 'center', alignItems: 'center' },
+  radarLegenda:  { textAlign: 'center', marginTop: 4, fontFamily: 'Poppins_400Regular', opacity: 0.75 },
   especListaBox: { flex: 1, gap: 8, paddingLeft: 4 },
   materiaPill: { paddingHorizontal: 16, paddingVertical: 14, borderRadius: 18, flexDirection: 'row', alignItems: 'center', gap: 8 },
   materiaDot: { width: 6, height: 6, borderRadius: 3 },

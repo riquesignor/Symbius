@@ -22,26 +22,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
 // ── Fonte Poppins (igual Index) ──
-const F = {
-  regular:  'Poppins_400Regular',
-  medium:   'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold:     'Poppins_700Bold',
-  black:    'Poppins_800ExtraBold',
-};
-
-// ── Paleta alinhada com Index ──
-const CORES = {
-  azulEscuro:      '#0B2046',
-  azulMedio:       '#1B3868',
-  rosa:            '#E51C6A',
-  amarelo:         '#FFC82C',
-  fundo:           '#F5F7FA',
-  branco:          '#FFFFFF',
-  cinzaClaro:      '#EAEFF4',
-  textoSec:        '#8D99AE',
-  preto:           '#1A1A2E',
-};
+import { F, CORES } from '../constants/theme';
 
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const MESES_ABREV = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
@@ -303,8 +284,17 @@ useEffect(() => {
       const [a, m] = ev.data.split('-').map(Number);
       return a === ano && m === mes + 1;
     });
-    if (filtroTipo === 'todos') return doMes;
-    return doMes.filter(ev => ev.tipo === filtroTipo);
+    const filtrados = filtroTipo === 'todos' ? doMes : doMes.filter(ev => ev.tipo === filtroTipo);
+
+    // Prioridade: próximos (>= hoje) primeiro em ordem crescente; vencidos (<hoje) por último em ordem decrescente
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const hojeStr = hoje.toISOString().split('T')[0]; // 'YYYY-MM-DD'
+
+    const proximos = filtrados.filter(ev => ev.data >= hojeStr).sort((a, b) => a.data.localeCompare(b.data));
+    const vencidos = filtrados.filter(ev => ev.data <  hojeStr).sort((a, b) => b.data.localeCompare(a.data));
+
+    return [...proximos, ...vencidos];
   }, [adminTodos, mes, ano, filtroTipo]);
 
   // ── Lembrete: salvar OU atualizar ──

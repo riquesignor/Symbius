@@ -33,6 +33,7 @@ import Configuracoes   from './src/screens/Configuracoes';
 import PerfilPublico   from 'src/screens/Perfilpublico';
 import Contato         from 'src/screens/Contato';
 import Ajuda           from 'src/screens/Ajuda';
+import Leaderboard     from 'src/screens/Leaderboard';
 
 const Stack = createStackNavigator();
 
@@ -192,6 +193,7 @@ export default function App() {
           <Stack.Screen name="PerfilPublico"   component={PerfilPublico} />
           <Stack.Screen name="Contatos"        component={Contato}/>
           <Stack.Screen name="Ajuda"           component={Ajuda} />
+          <Stack.Screen name="Leaderboard" component={Leaderboard} options={{ headerShown: false }} />
         </Stack.Navigator>
       </NavigationContainer>
     </AppSettingsProvider>

@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity,
   Image, SafeAreaView, StatusBar, Dimensions, Modal,
-  ActivityIndicator, FlatList, Vibration
+  ActivityIndicator, FlatList, Vibration, Animated, PanResponder,
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
 import {
@@ -19,26 +19,9 @@ import { useAppSettings } from '../contexts/AppSettingsContext';
 import { awardXpMatch } from '../services/gamificationService';
 
 // ── Fonte Poppins ──
-const F = {
-  regular:  'Poppins_400Regular',
-  medium:   'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold:     'Poppins_700Bold',
-  black:    'Poppins_800ExtraBold',
-};
+import { F, CORES } from '../constants/theme';
 
 const { width, height } = Dimensions.get('window');
-
-const CORES = {
-  azulEscuro:      '#0B2046',
-  rosa:            '#E51C6A',
-  amarelo:         '#FFC82C',
-  fundo:           '#F5F7FA',
-  cinzaClaro:      '#EAEFF4',
-  textoSecundario: '#8D99AE',
-  branco:          '#FFFFFF',
-  verde:           '#10B981',
-};
 
 const MATERIAS = [
   'Português', 'Redação', 'Matemática', 'Física', 'Química', 'Biologia',
@@ -153,6 +136,60 @@ export default function Match({ navigation, route }: any) {
   const [cardAtual,      setCardAtual]      = useState(0);
 
   const meuUid = route?.params?.uid;
+
+  // ── Swipe animation ──
+  const swipeX           = useRef(new Animated.Value(0)).current;
+  const swipeY           = useRef(new Animated.Value(0)).current;
+  const SWIPE_LIMIAR     = width * 0.30;
+  // Refs para callbacks frescos dentro do PanResponder
+  const candidatosRef    = useRef<any[]>([]);
+  const cardAtualRef     = useRef(0);
+  const enviarSolRef     = useRef<(uid: string) => void>(() => {});
+  const recusarRef       = useRef<() => void>(() => {});
+
+  // Sincroniza refs com state corrente
+  useEffect(() => { candidatosRef.current = candidatos; }, [candidatos]);
+  useEffect(() => { cardAtualRef.current  = cardAtual;  }, [cardAtual]);
+  // enviarSolRef e recusarRef são atualizados após as funções serem definidas (ver abaixo)
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder:  (_, g) => Math.abs(g.dx) > 5,
+      onPanResponderMove:           (_, g) => {
+        swipeX.setValue(g.dx);
+        swipeY.setValue(g.dy * 0.15);
+      },
+      onPanResponderRelease: (_, g) => {
+        const LIMIAR = width * 0.30;
+        if (g.dx > LIMIAR) {
+          Vibration.vibrate(40);
+          const destX = width * 1.5;
+          Animated.parallel([
+            Animated.timing(swipeX, { toValue: destX, duration: 220, useNativeDriver: true }),
+            Animated.timing(swipeY, { toValue: 30,    duration: 220, useNativeDriver: true }),
+          ]).start(() => {
+            swipeX.setValue(0); swipeY.setValue(0);
+            const c = candidatosRef.current[cardAtualRef.current];
+            if (c) enviarSolRef.current(c.id);
+          });
+        } else if (g.dx < -LIMIAR) {
+          Animated.parallel([
+            Animated.timing(swipeX, { toValue: -width * 1.5, duration: 220, useNativeDriver: true }),
+            Animated.timing(swipeY, { toValue: 30,           duration: 220, useNativeDriver: true }),
+          ]).start(() => {
+            swipeX.setValue(0); swipeY.setValue(0);
+            recusarRef.current();
+          });
+        } else {
+          Animated.parallel([
+            Animated.spring(swipeX, { toValue: 0, useNativeDriver: true }),
+            Animated.spring(swipeY, { toValue: 0, useNativeDriver: true }),
+          ]).start();
+        }
+      },
+    })
+  ).current;
 
   const matchUids    = matches.map(m => m.outro?.uid).filter(Boolean);
   const conversas    = useConversas(meuUid, matchUids);
@@ -285,6 +322,11 @@ export default function Match({ navigation, route }: any) {
 
   const recusarCard = () => setCardAtual(prev => prev + 1);
 
+  // Mantém refs sincronizados para uso dentro do PanResponder
+  // (useEffect roda após cada render, após todas as funções terem sido declaradas)
+  useEffect(() => { enviarSolRef.current = enviarSolicitacao; });
+  useEffect(() => { recusarRef.current   = recusarCard; });
+
   const responderSolicitacao = async (solId: string, deUid: string, aceitar: boolean) => {
     try {
       await updateDoc(doc(db, 'match_solicitacoes', solId), {
@@ -407,11 +449,55 @@ export default function Match({ navigation, route }: any) {
 
     const materias: string[] = modo === 'aprender' ? (card.ensinar || []) : (card.melhorar || []);
 
+    // Rotação proporcional ao deslocamento X
+    const rotate = swipeX.interpolate({
+      inputRange:  [-width / 2, 0, width / 2],
+      outputRange: ['-12deg',  '0deg', '12deg'],
+      extrapolate: 'clamp',
+    });
+    // Opacidade do overlay "CURTIR" (direita)
+    const opacidadeCurtir = swipeX.interpolate({
+      inputRange:  [0, width * 0.25],
+      outputRange: [0, 1],
+      extrapolate: 'clamp',
+    });
+    // Opacidade do overlay "PULAR" (esquerda)
+    const opacidadePular = swipeX.interpolate({
+      inputRange:  [-width * 0.25, 0],
+      outputRange: [1, 0],
+      extrapolate: 'clamp',
+    });
+
     return (
       <View style={styles.cardWrap}>
-        <View style={styles.matchCard}>
+        <Animated.View
+          style={[
+            styles.matchCard,
+            {
+              transform: [
+                { translateX: swipeX },
+                { translateY: swipeY },
+                { rotate },
+              ],
+            },
+          ]}
+          {...panResponder.panHandlers}
+        >
           <Image source={{ uri: getImageUri(card.foto) }} style={styles.cardFoto} />
           <View style={styles.cardOverlay} />
+
+          {/* Overlay CURTIR (verde, esquerda superior) */}
+          <Animated.View style={[styles.swiperLabel, styles.swiperLabelCurtir, { opacity: opacidadeCurtir }]}>
+            <Ionicons name="heart" size={22} color="#4CAF50" />
+            <Text style={[styles.swiperLabelTxt, { color: '#4CAF50' }]}>CURTIR</Text>
+          </Animated.View>
+
+          {/* Overlay PULAR (vermelho, direita superior) */}
+          <Animated.View style={[styles.swiperLabel, styles.swiperLabelPular, { opacity: opacidadePular }]}>
+            <Ionicons name="close" size={22} color="#FF5252" />
+            <Text style={[styles.swiperLabelTxt, { color: '#FF5252' }]}>PULAR</Text>
+          </Animated.View>
+
           <View style={styles.cardInfo}>
             <Text style={styles.cardNome}>{card.nome_completo}</Text>
             <Text style={styles.cardTurma}>{card.turma || card.ra || ''}</Text>
@@ -423,7 +509,7 @@ export default function Match({ navigation, route }: any) {
               ))}
             </View>
           </View>
-        </View>
+        </Animated.View>
 
         <Text style={styles.arenaContador}>{cardAtual + 1} de {candidatos.length}</Text>
 
@@ -431,6 +517,9 @@ export default function Match({ navigation, route }: any) {
           <TouchableOpacity style={styles.btnRecusar} onPress={recusarCard}>
             <Ionicons name="close" size={28} color="#FF5252" />
           </TouchableOpacity>
+          <Text style={[styles.arenaContador, { fontSize: 11, color: CORES.textoSec, marginHorizontal: 8 }]}>
+            arraste o card
+          </Text>
           <TouchableOpacity style={styles.btnAceitar} onPress={() => enviarSolicitacao(card.id)}>
             <Ionicons name="heart" size={28} color={CORES.branco} />
           </TouchableOpacity>
@@ -636,7 +725,7 @@ export default function Match({ navigation, route }: any) {
                   ))}
                 </View>
               )}
-              <Ionicons name="chevron-down" size={16} color={CORES.textoSecundario} />
+              <Ionicons name="chevron-down" size={16} color={CORES.textoSec} />
             </TouchableOpacity>
           </View>
 
@@ -781,7 +870,7 @@ const styles = StyleSheet.create({
   tabs:               { flexDirection: 'row', backgroundColor: CORES.branco, paddingHorizontal: 16, paddingBottom: 12, paddingTop: 8, gap: 8, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
   tab:                { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, backgroundColor: CORES.fundo },
   tabAtiva:           { backgroundColor: CORES.azulEscuro },
-  tabTxt:             { fontSize: 12, fontWeight: '700', color: CORES.textoSecundario },
+  tabTxt:             { fontSize: 12, fontWeight: '700', color: CORES.textoSec },
   tabTxtAtiva:        { color: CORES.branco },
   badge:              { backgroundColor: CORES.rosa, width: 18, height: 18, borderRadius: 9, justifyContent: 'center', alignItems: 'center', marginLeft: 2 },
   badgeTxt:           { color: CORES.branco, fontSize: 10, fontWeight: '900' },
@@ -791,7 +880,7 @@ const styles = StyleSheet.create({
   modoBtnAtivo:       { backgroundColor: CORES.azulEscuro },
   modoBtnTxt:         { fontSize: 13, fontWeight: '700', color: CORES.azulEscuro },
   materiaSelector:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: CORES.fundo, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: CORES.cinzaClaro, minHeight: 46 },
-  materiaSelectorTxt: { fontSize: 14, fontWeight: '600', color: CORES.textoSecundario },
+  materiaSelectorTxt: { fontSize: 14, fontWeight: '600', color: CORES.textoSec },
 
   // Tags no selector (resumo das selecionadas)
   tagMateriaFiltro:    { backgroundColor: CORES.azulEscuro, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
@@ -799,7 +888,12 @@ const styles = StyleSheet.create({
 
   // Card descobrir
   cardWrap:         { flex: 1, alignItems: 'center', paddingTop: 20, paddingHorizontal: 20 },
-  matchCard:        { width: '100%', height: height * 0.45, borderRadius: 28, overflow: 'hidden', elevation: 8, shadowColor: CORES.azulEscuro, shadowOpacity: 0.2, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } },
+  matchCard:        { width: '100%', height: height * 0.45, borderRadius: 28, overflow: 'hidden', elevation: 8, shadowColor: CORES.azulEscuro, shadowOpacity: 0.2, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, backgroundColor: CORES.azulEscuro },
+  // Swipe overlays
+  swiperLabel:      { position: 'absolute', top: 20, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 2.5, backgroundColor: 'rgba(255,255,255,0.15)' },
+  swiperLabelCurtir:{ left: 16, borderColor: '#4CAF50' },
+  swiperLabelPular: { right: 16, borderColor: '#FF5252' },
+  swiperLabelTxt:   { fontSize: 15, fontFamily: F.black, letterSpacing: 1 },
   cardFoto:         { width: '100%', height: '100%' },
   cardOverlay:      { ...StyleSheet.absoluteFillObject as any, backgroundColor: 'rgba(11,32,70,0.45)' },
   cardInfo:         { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20 },
@@ -808,14 +902,14 @@ const styles = StyleSheet.create({
   materiasRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   materiaTag:       { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   materiaTagTxt:    { color: CORES.branco, fontSize: 11, fontWeight: '700' },
-  arenaContador:    { marginTop: 12, fontSize: 12, color: CORES.textoSecundario, fontWeight: '600' },
+  arenaContador:    { marginTop: 12, fontSize: 12, color: CORES.textoSec, fontWeight: '600' },
   acoesRow:         { flexDirection: 'row', gap: 24, marginTop: 20 },
   btnRecusar:       { width: 64, height: 64, borderRadius: 32, backgroundColor: CORES.branco, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: '#FF5252', shadowOpacity: 0.2, shadowRadius: 8 },
   btnAceitar:       { width: 64, height: 64, borderRadius: 32, backgroundColor: CORES.rosa, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: CORES.rosa, shadowOpacity: 0.4, shadowRadius: 8 },
   btnRecarregar:    { marginTop: 16, backgroundColor: CORES.azulEscuro, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 16 },
   btnRecarregarTxt: { color: CORES.branco, fontWeight: '700' },
   centro:           { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
-  txtVazio:         { color: CORES.textoSecundario, fontSize: 15, fontWeight: '600', textAlign: 'center' },
+  txtVazio:         { color: CORES.textoSec, fontSize: 15, fontWeight: '600', textAlign: 'center' },
 
   // Cards de match / solicitação
   solCard:         { flexDirection: 'row', alignItems: 'center', backgroundColor: CORES.branco, padding: 14, borderRadius: 20, marginBottom: 10, elevation: 1, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4 },
@@ -824,7 +918,7 @@ const styles = StyleSheet.create({
   solInfo:         { flex: 1, marginLeft: 12 },
   solNome:         { fontSize: 15, fontWeight: '700', color: CORES.azulEscuro },
   solNomeNaoLido:  { fontWeight: '900' },
-  solTurma:        { fontSize: 11, color: CORES.textoSecundario, marginTop: 1 },
+  solTurma:        { fontSize: 11, color: CORES.textoSec, marginTop: 1 },
   solAcoes:        { flexDirection: 'row', gap: 8 },
   btnSolRecusar:   { width: 38, height: 38, borderRadius: 19, backgroundColor: '#FFF0F0', justifyContent: 'center', alignItems: 'center' },
   btnSolAceitar:   { width: 38, height: 38, borderRadius: 19, backgroundColor: CORES.verde, justifyContent: 'center', alignItems: 'center' },
@@ -841,12 +935,12 @@ const styles = StyleSheet.create({
   tagTipoTxt:   { fontSize: 9, fontWeight: '800' },
   tagMateria:   { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 7 },
   tagMateriaTxt:{ fontSize: 10, fontWeight: '700' },
-  tagMais:      { fontSize: 10, color: CORES.textoSecundario, fontWeight: '700' },
+  tagMais:      { fontSize: 10, color: CORES.textoSec, fontWeight: '700' },
 
   // Última mensagem
   ultimaMsg:        { fontSize: 13, color: '#6B7280', marginTop: 3 },
   ultimaMsgNaoLida: { color: CORES.azulEscuro, fontWeight: '700' },
-  msgTimestamp:     { fontSize: 11, color: CORES.textoSecundario, fontWeight: '500', marginLeft: 6 },
+  msgTimestamp:     { fontSize: 11, color: CORES.textoSec, fontWeight: '500', marginLeft: 6 },
 
   // Overlays / popups
   overlayEscuro: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -857,7 +951,7 @@ const styles = StyleSheet.create({
   popupNum:      { width: 32, height: 32, borderRadius: 16, backgroundColor: CORES.azulEscuro, justifyContent: 'center', alignItems: 'center' },
   popupNumTxt:   { color: CORES.branco, fontSize: 11, fontWeight: '900' },
   popupItemTitulo:{ fontSize: 14, fontWeight: '800', color: CORES.azulEscuro, marginBottom: 4 },
-  popupItemDesc: { fontSize: 13, color: CORES.textoSecundario, lineHeight: 18 },
+  popupItemDesc: { fontSize: 13, color: CORES.textoSec, lineHeight: 18 },
   popupBtnPrimary:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: CORES.rosa, paddingVertical: 14, borderRadius: 18, marginTop: 8 },
   popupBtnTxt:   { color: CORES.branco, fontWeight: '800', fontSize: 15 },
 
@@ -870,7 +964,7 @@ const styles = StyleSheet.create({
   materiaTagOpcaoTxt: { fontSize: 13, fontWeight: '700', color: CORES.azulEscuro },
   materiaBotoes:      { flexDirection: 'row', gap: 10, marginTop: 16 },
   btnLimpar:          { flex: 1, alignItems: 'center', paddingVertical: 13, borderRadius: 16, borderWidth: 1.5, borderColor: CORES.cinzaClaro },
-  btnLimparTxt:       { fontWeight: '700', color: CORES.textoSecundario, fontSize: 14 },
+  btnLimparTxt:       { fontWeight: '700', color: CORES.textoSec, fontSize: 14 },
   btnAplicar:         { flex: 2, alignItems: 'center', paddingVertical: 13, borderRadius: 16, backgroundColor: CORES.rosa },
   btnAplicarTxt:      { fontWeight: '800', color: CORES.branco, fontSize: 14 },
 });

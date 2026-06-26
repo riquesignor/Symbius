@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   Platform, Vibration, AppState,
-  Animated, TouchableOpacity, Image, Text, View, StyleSheet,
+  Animated, TouchableOpacity, Image, Text, View, StyleSheet, Modal,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -86,8 +86,10 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
     outroUid: string;
     outroNome: string;
   }
-  const [bannerMsg, setBannerMsg] = useState<BannerDados | null>(null);
-  const bannerAnim  = useRef(new Animated.Value(0)).current;  // 0 = invisível, 1 = visível
+  const [bannerMsg,     setBannerMsg]     = useState<BannerDados | null>(null);
+  const [bannerVisible, setBannerVisible] = useState(false); // controla o Modal
+  const bannerAnim  = useRef(new Animated.Value(0)).current; // 0=invisível 1=visível
+  const slideAnim   = useRef(new Animated.Value(-90)).current; // slide top-in
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Refs (evitam closures velhas dentro dos listeners)
@@ -103,25 +105,33 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
   // ── Helpers do banner ────────────────────────────────────
   const esconderBanner = () => {
     if (bannerTimer.current) clearTimeout(bannerTimer.current);
-    Animated.timing(bannerAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+    Animated.parallel([
+      Animated.timing(bannerAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(slideAnim,  { toValue: -90, duration: 220, useNativeDriver: true }),
+    ]).start(() => {
+      setBannerVisible(false);
       setBannerMsg(null);
     });
   };
 
   const mostrarBanner = (dados: BannerDados) => {
-    bannerAnim.setValue(0);       // reset antes do mount → view começa invisível
-    setBannerMsg(dados);          // dispara re-render → Animated.View monta
-    // A animação é iniciada no useEffect abaixo, APÓS o view existir no native side
     if (bannerTimer.current) clearTimeout(bannerTimer.current);
+    bannerAnim.setValue(0);
+    slideAnim.setValue(-90);
+    setBannerMsg(dados);
+    setBannerVisible(true);
     bannerTimer.current = setTimeout(esconderBanner, 4000);
   };
 
-  // Inicia fade-in SÓ após o Animated.View ter sido montado (resolve race com useNativeDriver)
+  // Anima entrada depois de bannerVisible = true (Modal já montado)
   useEffect(() => {
-    if (!bannerMsg) return;
-    Animated.timing(bannerAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+    if (!bannerVisible) return;
+    Animated.parallel([
+      Animated.timing(bannerAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.spring(slideAnim,  { toValue: 0, useNativeDriver: true, bounciness: 6 }),
+    ]).start();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bannerMsg]);
+  }, [bannerVisible]);
 
   // Ref para evitar stale closure nos listeners Firestore
   const mostrarBannerRef = useRef<(dados: BannerDados) => void>(() => {});
@@ -466,52 +476,66 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
 
   return (
     <NotificacaoContext.Provider value={{ conversaAtiva, setConversaAtiva, notificacoesChat, limparNotificacoesChat }}>
-      <View style={{ flex: 1, overflow: 'visible' }}>
-        {children}
+      {children}
 
-        {/* ── Banner in-app (foto + nome + prévia da mensagem) ── */}
-        {bannerMsg && (
+      {/* ── Banner in-app via Modal → sempre acima da navigation stack ── */}
+      <Modal
+        visible={bannerVisible}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={esconderBanner}
+      >
+        {/* Camada de fundo totalmente transparente, não bloqueia toques fora do card */}
+        <View style={bannerStyles.overlay} pointerEvents="box-none">
           <Animated.View
-            style={[bannerStyles.wrapper, { opacity: bannerAnim }]}
-            // @ts-ignore
-            pointerEvents="box-none"
+            style={[
+              bannerStyles.wrapper,
+              {
+                opacity: bannerAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
           >
             <TouchableOpacity
               activeOpacity={0.92}
               style={bannerStyles.card}
               onPress={() => {
-                esconderBanner();
                 const nav = (globalThis as any).navigationRef;
+                esconderBanner();
                 if (nav && bannerMsg)
                   nav.navigate('Chat', { outroUid: bannerMsg.outroUid, outroNome: bannerMsg.outroNome });
               }}
             >
               <Image source={{ uri: fotoUri }} style={bannerStyles.foto} />
               <View style={{ flex: 1 }}>
-                <Text style={bannerStyles.nome} numberOfLines={1}>{bannerMsg.nome}</Text>
-                <Text style={bannerStyles.corpo} numberOfLines={1}>{bannerMsg.corpo}</Text>
+                <Text style={bannerStyles.nome} numberOfLines={1}>{bannerMsg?.nome}</Text>
+                <Text style={bannerStyles.corpo} numberOfLines={1}>{bannerMsg?.corpo}</Text>
               </View>
               <TouchableOpacity onPress={esconderBanner} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Text style={bannerStyles.fechar}>✕</Text>
               </TouchableOpacity>
             </TouchableOpacity>
           </Animated.View>
-        )}
-      </View>
+        </View>
+      </Modal>
     </NotificacaoContext.Provider>
   );
 };
 
 // ════ ESTILOS DO BANNER ════
 const bannerStyles = StyleSheet.create({
+  // Camada do Modal — cobre tela inteira mas não captura toques fora do card
+  overlay: {
+    flex: 1,
+    pointerEvents: 'box-none',
+  },
+  // Card posicionado no topo da tela
   wrapper: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 54 : 36,
+    top: Platform.OS === 'ios' ? 54 : 40,
     left: 14,
     right: 14,
-    zIndex: 9999,
-    elevation: 20,
-    overflow: 'visible',
   },
   card: {
     flexDirection: 'row',
@@ -521,9 +545,10 @@ const bannerStyles = StyleSheet.create({
     padding: 12,
     gap: 12,
     shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 24,
   },
   foto:   { width: 44, height: 44, borderRadius: 22, backgroundColor: '#1B3868' },
   nome:   { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },

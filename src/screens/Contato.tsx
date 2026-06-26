@@ -7,14 +7,7 @@ import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 
-// ── Fontes Poppins ──
-const F = {
-  regular:  'Poppins_400Regular',
-  medium:   'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold:     'Poppins_700Bold',
-  black:    'Poppins_800ExtraBold',
-};
+import { F } from '../constants/theme';
 
 // ── Dados de contato (fonte: escolas.anchieta.br/contato) ──
 const CONTATOS = [

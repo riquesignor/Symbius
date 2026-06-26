@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity,
-  Image, SafeAreaView, StatusBar, Dimensions,
-  Modal, TouchableWithoutFeedback, Platform, FlatList
+  Image, SafeAreaView, StatusBar, Dimensions, TextInput,
+  Modal, TouchableWithoutFeedback, Platform, FlatList, RefreshControl,
+  Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient'; // ✅ NOVO — gradiente p/ contraste nos cards
 import { db } from '../config/firebaseConfig';
@@ -11,7 +12,6 @@ import {
   updateDoc, increment, arrayUnion, where, getDocs
 } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { RefreshControl } from 'react-native';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { useNotificacao, ChatNotif } from '../contexts/NotificacaoProvider';
 import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
@@ -31,25 +31,8 @@ const HIT_SLOP_MD  = { top: 14, bottom: 14, left: 14, right: 14 }; // botões 30
 const HIT_SLOP_DOT = { top: 18, bottom: 18, left: 14, right: 14 }; // pontos do carrossel
 
 // ✅ Fonte padrão — funciona com Poppins (se instalada) ou cai no system
-const F = {
-  regular:  'Poppins_400Regular',
-  medium:   'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold:     'Poppins_700Bold',
-  black:    'Poppins_800ExtraBold',
-};
-
-const CORES = {
-  azulEscuro:      '#0B2046',
-  azulMedio:       '#1B3868',
-  rosa:            '#E51C6A',
-  amarelo:         '#FFC82C',
-  fundo:           '#F5F7FA',
-  cinzaClaro:      '#EAEFF4',
-  cinzaInput:      '#F0F4F8',
-  textoSecundario: '#8D99AE',
-  branco:          '#FFFFFF',
-};
+import { F, CORES } from '../constants/theme';
+import { awardDailyCheckIn, CheckInResult, LevelUpInfo } from '../services/gamificationService';
 
 // ── Cores das categorias dos posts ──
 const CATEGORIA_CONFIG: Record<string, { color: string; bg: string; label: string; icon: any }> = {
@@ -90,7 +73,7 @@ const calcDias = (dataStr: string) => {
   if (diff === 0)  return { texto: 'É HOJE',           cor: '#e67e22' };
   if (diff === 1)  return { texto: 'É AMANHÃ',         cor: '#e67e22' };
   if (diff > 0)    return { texto: `FALTAM ${diff} DIAS`, cor: CORES.azulEscuro };
-  return { texto: '',  cor: CORES.textoSecundario };
+  return { texto: '',  cor: CORES.textoSec };
 };
 
 // ── Util: dias desde a publicação ──
@@ -136,6 +119,14 @@ export default function Index({ navigation, route }: any) {
 
   const [modalEvento, setModalEvento]           = useState(false);
   const [eventoSelecionado, setEventoSelecionado] = useState<any>(null);
+
+  // ── Check-in toast + level-up modal ──
+  const [checkInToast, setCheckInToast]   = useState<null | CheckInResult>(null);
+  const checkInOpacity = useRef(new Animated.Value(0)).current;
+  const checkInSlide   = useRef(new Animated.Value(40)).current;  // slide de baixo pra cima
+  const [levelUpInfo, setLevelUpInfo]     = useState<null | LevelUpInfo>(null);
+  const levelUpScale   = useRef(new Animated.Value(0.7)).current;
+  const levelUpOpacity = useRef(new Animated.Value(0)).current;
 
   const { cores: C, fonteScale, modoEscuro } = useAppSettings();
   const fs = (size: number) => size * fonteScale;
@@ -207,6 +198,43 @@ export default function Index({ navigation, route }: any) {
     if (!userData?.uid) return;
     carregarAgenda();
   }, [userData?.uid, serieFiltroAdm, isAdmin]);
+
+  // ── Daily check-in (roda 1x por dia ao entrar na home) ──
+  useEffect(() => {
+    if (!userData?.uid) return;
+    (async () => {
+      const res = await awardDailyCheckIn(userData.uid);
+      if (!res.ganhou) return;                          // já fez hoje — silencioso
+
+      // ── Toast ──
+      setCheckInToast(res);
+      checkInOpacity.setValue(0);
+      checkInSlide.setValue(40);
+      Animated.parallel([
+        Animated.timing(checkInOpacity, { toValue: 1, duration: 320, useNativeDriver: true }),
+        Animated.spring(checkInSlide,   { toValue: 0, friction: 6, tension: 80, useNativeDriver: true }),
+      ]).start();
+      const toastDuration = res.levelUp ? 2200 : 4000;
+      setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(checkInOpacity, { toValue: 0, duration: 260, useNativeDriver: true }),
+          Animated.timing(checkInSlide,   { toValue: 40, duration: 260, useNativeDriver: true }),
+        ]).start(() => {
+          setCheckInToast(null);
+          // ── Level-up modal (aparece após o toast sumir) ──
+          if (res.levelUp) {
+            setLevelUpInfo(res.levelUp);
+            levelUpScale.setValue(0.7);
+            levelUpOpacity.setValue(0);
+            Animated.parallel([
+              Animated.spring(levelUpScale,   { toValue: 1, friction: 5, tension: 90, useNativeDriver: true }),
+              Animated.timing(levelUpOpacity, { toValue: 1, duration: 280, useNativeDriver: true }),
+            ]).start();
+          }
+        });
+      }, toastDuration);
+    })();
+  }, [userData?.uid]);
 
   const carregarAgenda = async () => {
     try {
@@ -325,6 +353,20 @@ export default function Index({ navigation, route }: any) {
     () => posts.filter(postValido),
     [posts]
   );
+
+  // ── Busca no feed ──────────────────────────────────────────
+  const [termoBusca, setTermoBusca] = useState('');
+
+  const postsFiltrados = useMemo(() => {
+    const termo = termoBusca.trim().toLowerCase();
+    if (!termo) return postsValidos;
+    return postsValidos.filter(p => {
+      const titulo    = (p.titulo    || '').toLowerCase();
+      const categoria = (p.categoria || '').toLowerCase();
+      const catLabel  = (CATEGORIA_CONFIG[p.categoria]?.label || '').toLowerCase();
+      return titulo.includes(termo) || categoria.includes(termo) || catLabel.includes(termo);
+    });
+  }, [postsValidos, termoBusca]);
 
   // ✅ Pares pra carrossel (2 por slide)
   const slidesDestaque = useMemo(() => {
@@ -678,6 +720,28 @@ export default function Index({ navigation, route }: any) {
         </View>
       </View>
 
+      {/* ═══ BARRA DE BUSCA ═══ */}
+      <View style={[styles.searchWrap, { backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
+        <View style={[styles.searchBox, { backgroundColor: C.fundo }]}>
+          <MaterialIcons name="search" size={18} color={C.textoSec} />
+          <TextInput
+            style={[styles.searchInput, { color: C.azulEscuro, fontFamily: F.regular }]}
+            placeholder="Buscar posts..."
+            placeholderTextColor={C.textoSec}
+            value={termoBusca}
+            onChangeText={setTermoBusca}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+            accessibilityLabel="Campo de busca de posts"
+          />
+          {termoBusca.length > 0 && (
+            <TouchableOpacity onPress={() => setTermoBusca('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <MaterialIcons name="close" size={16} color={C.textoSec} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
@@ -790,7 +854,25 @@ export default function Index({ navigation, route }: any) {
           </View>
         </View>
 
-        {slidesDestaque.length > 0 ? (
+        {/* ─ Resultados de busca (substitui o carrossel quando há termo) ─ */}
+        {termoBusca.trim().length > 0 ? (
+          <View style={{ paddingHorizontal: 18, paddingTop: 8 }}>
+            {postsFiltrados.length === 0 ? (
+              <View style={[styles.destEmpty, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}>
+                <MaterialIcons name="search-off" size={32} color={C.cinzaClaro} />
+                <Text style={[styles.destEmptyText, { color: C.textoSec, fontSize: fs(13) }]}>
+                  Nenhum post encontrado para "{termoBusca}"
+                </Text>
+              </View>
+            ) : (
+              postsFiltrados.map(post => (
+                <View key={post.id} style={{ marginBottom: 10 }}>
+                  {renderDestaqueCard(post)}
+                </View>
+              ))
+            )}
+          </View>
+        ) : slidesDestaque.length > 0 ? (
           <>
             <FlatList
               ref={carrosselRef}
@@ -1542,6 +1624,75 @@ export default function Index({ navigation, route }: any) {
         </View>
       </Modal>
 
+      {/* ── Modal de level-up ── */}
+      {levelUpInfo && (
+        <Modal transparent visible animationType="none" statusBarTranslucent onRequestClose={() => setLevelUpInfo(null)}>
+          <TouchableWithoutFeedback onPress={() => setLevelUpInfo(null)}>
+            <View style={levelUpStyles.backdrop}>
+              <TouchableWithoutFeedback>
+                <Animated.View style={[
+                  levelUpStyles.card,
+                  { backgroundColor: modoEscuro ? '#0B2046' : CORES.branco,
+                    opacity: levelUpOpacity,
+                    transform: [{ scale: levelUpScale }] },
+                ]}>
+                  {/* Gradiente de fundo decorativo */}
+                  <LinearGradient
+                    colors={[CORES.azulEscuro, CORES.azulMedio]}
+                    style={levelUpStyles.header}
+                  >
+                    <Text style={levelUpStyles.headerLabel}>🎉 SUBIU DE NÍVEL!</Text>
+                    <Text style={levelUpStyles.animalEmoji}>{levelUpInfo.iconeAnimal}</Text>
+                    <Text style={levelUpStyles.subfaseEmoji}>{levelUpInfo.iconeSubfase}</Text>
+                  </LinearGradient>
+
+                  <View style={levelUpStyles.body}>
+                    <Text style={[levelUpStyles.nivelTitulo, { color: modoEscuro ? CORES.amarelo : CORES.azulEscuro }]}>
+                      {levelUpInfo.nomeSubfase} {levelUpInfo.nomeAnimal}
+                    </Text>
+                    <Text style={[levelUpStyles.conceito, { color: C.textoSec }]}>
+                      {levelUpInfo.conceitoRank}
+                    </Text>
+                    <TouchableOpacity
+                      style={[levelUpStyles.btnFechar, { backgroundColor: CORES.rosa }]}
+                      onPress={() => setLevelUpInfo(null)}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={levelUpStyles.btnFecharText}>Incrível! 🚀</Text>
+                    </TouchableOpacity>
+                  </View>
+                </Animated.View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+      )}
+
+      {/* ── Toast de check-in diário ── */}
+      {checkInToast && (
+        <Modal transparent visible animationType="none" statusBarTranslucent onRequestClose={() => setCheckInToast(null)}>
+          <View style={toastStyles.overlay} pointerEvents="none">
+            <Animated.View style={[
+              toastStyles.card,
+              { backgroundColor: modoEscuro ? '#1B3868' : CORES.branco,
+                opacity: checkInOpacity,
+                transform: [{ translateY: checkInSlide }] },
+            ]}>
+              <Text style={toastStyles.emoji}>🌱</Text>
+              <View>
+                <Text style={[toastStyles.titulo, { color: modoEscuro ? '#fff' : CORES.azulEscuro }]}>
+                  Check-in do dia!
+                </Text>
+                <Text style={[toastStyles.subtitulo, { color: CORES.textoSec }]}>
+                  +{checkInToast.xp} XP · +{checkInToast.moedas} Sementes
+                  {checkInToast.streak > 1 ? `  🔥 ${checkInToast.streak} dias seguidos` : ''}
+                </Text>
+              </View>
+            </Animated.View>
+          </View>
+        </Modal>
+      )}
+
     </SafeAreaView>
   );
 }
@@ -1554,6 +1705,9 @@ const styles = StyleSheet.create({
 
   // NAVBAR
   navbar:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, minHeight: 64, borderBottomWidth: 1 },
+  searchWrap:    { paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: 1 },
+  searchBox:     { flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8, gap: 8 },
+  searchInput:   { flex: 1, fontSize: 14, padding: 0 },
   logoWrap:      { position: 'relative', flexDirection: 'row', alignItems: 'center' },
   dotAmarelo:    { position: 'absolute', top: 2, left: -4, width: 7, height: 7, borderRadius: 4, backgroundColor: CORES.amarelo, zIndex: 1 },
   logoText:      { fontFamily: F.black, letterSpacing: -1 },
@@ -1593,8 +1747,8 @@ const styles = StyleSheet.create({
   btnNovoPost:        { width: 30, height: 30, borderRadius: 15, backgroundColor: CORES.rosa, justifyContent: 'center', alignItems: 'center' },
   navDestBtn:         { width: 30, height: 30, borderRadius: 15, borderWidth: 0.5, justifyContent: 'center', alignItems: 'center' },
 
-  slideWrap:     { width, paddingHorizontal: 18, flexDirection: 'row', gap: 10 },
-  destCard:      { aspectRatio: 1, borderRadius: 20, padding: 14, justifyContent: 'space-between', overflow: 'hidden', elevation: 4, shadowColor: CORES.azulEscuro, shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
+  slideWrap:     { width, paddingHorizontal: 18, flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  destCard:      { width: DESTAQUE_W, height: DESTAQUE_W, borderRadius: 20, padding: 14, justifyContent: 'space-between', overflow: 'hidden', elevation: 4, shadowColor: CORES.azulEscuro, shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   // 🗑 destOverlay removido — substituído por <LinearGradient> dentro do card (correção #2)
   destTopo:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   destBadge:     { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
@@ -1704,4 +1858,77 @@ const styles = StyleSheet.create({
   viewsText:         { fontFamily: F.black, color: CORES.rosa },
   modalDivider:      { height: 3, width: 40, borderRadius: 2, alignSelf: 'center', marginVertical: 24 },
   modalConteudo:     { lineHeight: 26, fontFamily: F.medium },
+});
+
+// ── Modal de level-up ──
+const levelUpStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  card: {
+    width: '100%',
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 24,
+  },
+  header: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 20,
+    gap: 4,
+  },
+  headerLabel:  { fontFamily: F.black, fontSize: 13, color: CORES.amarelo, letterSpacing: 1.5, marginBottom: 8 },
+  animalEmoji:  { fontSize: 52 },
+  subfaseEmoji: { fontSize: 26, marginTop: 4 },
+  body: {
+    padding: 24,
+    alignItems: 'center',
+    gap: 10,
+  },
+  nivelTitulo:  { fontFamily: F.black,    fontSize: 22, textAlign: 'center' },
+  conceito:     { fontFamily: F.medium,   fontSize: 13, textAlign: 'center', lineHeight: 19, opacity: 0.85 },
+  btnFechar: {
+    marginTop: 8,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 14,
+    width: '100%',
+    alignItems: 'center',
+  },
+  btnFecharText:{ fontFamily: F.bold, fontSize: 15, color: '#fff' },
+});
+
+// ── Toast de check-in (separado para manter escopos limpos) ──
+const toastStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingBottom: Platform.OS === 'ios' ? 44 : 32,
+  },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 16,
+    minWidth: 240,
+  },
+  emoji:    { fontSize: 28 },
+  titulo:   { fontFamily: F.bold,    fontSize: 13, marginBottom: 1 },
+  subtitulo:{ fontFamily: F.medium,  fontSize: 12 },
 });

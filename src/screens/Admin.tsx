@@ -19,30 +19,7 @@ import {
 } from 'react-native-chart-kit';
 
 // ── Fonte Poppins ──
-const F = {
-  regular:  'Poppins_400Regular',
-  medium:   'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold:     'Poppins_700Bold',
-  black:    'Poppins_800ExtraBold',
-};
-
-const CORES = {
-  azulEscuro: '#0B2046',
-  azulMedio:  '#1B3868',
-  rosa:       '#E51C6A',
-  amarelo:    '#FFC82C',
-  fundo:      '#F5F7FA',
-  branco:     '#FFFFFF',
-  cinzaClaro: '#EAEFF4',
-  textoSec:   '#8D99AE',
-  preto:      '#1A1A2E',
-  verde:      '#27ae60',
-  vermelho:   '#e74c3c',
-  laranja:    '#e67e22',
-  roxo:       '#8e44ad',
-  azulCeu:    '#3498db',
-};
+import { F, CORES } from '../constants/theme';
 
 const CAT_LABELS: Record<string, string> = {
   destaque:      'Destaques',

@@ -13,28 +13,7 @@ import { useAppSettings } from '../contexts/AppSettingsContext';
 import { calcularFaseCoruja, calcularProgressoXp } from '../utils/gamification';
 
 // ── Fonte Poppins ──
-const F = {
-  regular:  'Poppins_400Regular',
-  medium:   'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold:     'Poppins_700Bold',
-  black:    'Poppins_800ExtraBold',
-};
-
-const CORES = {
-  azulEscuro: '#0B2046',
-  rosa:       '#E51C6A',
-  amarelo:    '#FFC82C',
-  verde:      '#27ae60',
-  vermelho:   '#e74c3c',
-  laranja:    '#e67e22',
-  roxo:       '#8e44ad',
-  azulCeu:    '#3498db',
-  fundo:      '#F5F7FA',
-  branco:     '#FFFFFF',
-  cinzaClaro: '#EAEFF4',
-  textoSec:   '#8D99AE',
-};
+import { F, CORES } from '../constants/theme';
 
 // ════ ÁREAS DE CONHECIMENTO (igual ao Perfil) ════
 const AREAS = [
@@ -500,6 +479,9 @@ export default function PerfilPublico({ navigation, route }: any) {
             <View style={[styles.especCard, { backgroundColor: C.branco }]}>
               <View style={styles.especRadarBox}>
                 <RadarChart scores={radarScores} size={150} modoEscuro={modoEscuro} />
+                <Text style={[styles.radarLegenda, { color: C.textoSec, fontSize: fs(9) }]}>
+                  Matérias de tutoria
+                </Text>
               </View>
               <View style={styles.especListaBox}>
                 {topMaterias.length === 0 ? (
@@ -694,7 +676,8 @@ const styles = StyleSheet.create({
 
   // ESPECIALIDADES
   especCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 22, padding: 12, gap: 4, elevation: 1, shadowColor: CORES.azulEscuro, shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
-  especRadarBox: { width: 150, height: 150, justifyContent: 'center', alignItems: 'center' },
+  especRadarBox: { width: 150, justifyContent: 'center', alignItems: 'center' },
+  radarLegenda:  { textAlign: 'center', marginTop: 4, fontFamily: 'Poppins_400Regular', opacity: 0.75 },
   especListaBox: { flex: 1, gap: 8, paddingLeft: 4 },
   materiaPill: { paddingHorizontal: 16, paddingVertical: 14, borderRadius: 18, flexDirection: 'row', alignItems: 'center', gap: 8 },
   materiaDot: { width: 6, height: 6, borderRadius: 3 },

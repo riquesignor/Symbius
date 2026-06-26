@@ -12,44 +12,7 @@
   import { doc, getDoc, updateDoc } from 'firebase/firestore';
   import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 
-  // ── Fonte Poppins ──
-  const F = {
-    regular:  'Poppins_400Regular',
-    medium:   'Poppins_500Medium',
-    semibold: 'Poppins_600SemiBold',
-    bold:     'Poppins_700Bold',
-    black:    'Poppins_800ExtraBold',
-  };
-
-  const CORES = {
-    azulEscuro:      '#0B2046',
-    azulMedio:       '#1B3868',
-    rosa:            '#E51C6A',
-    amarelo:         '#FFC82C',
-    fundo:           '#F5F7FA',
-    branco:          '#FFFFFF',
-    cinzaClaro:      '#EAEFF4',
-    textoSec:        '#8D99AE',
-    preto:           '#1A1A2E',
-    verde:           '#27ae60',
-    vermelho:        '#e74c3c',
-    roxo:            '#8e44ad',      
-    laranja:         '#e67e22',      
-  };
-
-  const CORES_DARK = {
-    azulEscuro:      '#FFFFFF',
-    azulMedio:       '#E0E0E0',
-    rosa:            '#FF5C97',
-    amarelo:         '#FFC82C',
-    fundo:           '#0F1419',
-    branco:          '#1A1F26',
-    cinzaClaro:      '#2A2F36',
-    textoSec:        '#7A8595',
-    preto:           '#FFFFFF',
-    verde:           '#27ae60',
-    vermelho:        '#e74c3c',
-  };
+  import { F, CORES, CORES_DARK } from '../constants/theme';
 
   const TAMANHOS_FONTE = ['Pequeno', 'Normal', 'Grande'];
   const SONS_NOTIF     = ['Nenhum', 'Leve', 'Normal', 'Forte'];

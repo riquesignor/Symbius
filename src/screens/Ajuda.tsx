@@ -7,38 +7,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 
-// ── Fontes Poppins ──
-const F = {
-  regular:  'Poppins_400Regular',
-  medium:   'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold:     'Poppins_700Bold',
-  black:    'Poppins_800ExtraBold',
-};
-
-const CORES_LIGHT = {
-  azulEscuro: '#0B2046',
-  azulMedio:  '#1B3868',
-  rosa:       '#E51C6A',
-  amarelo:    '#FFC82C',
-  fundo:      '#F5F7FA',
-  branco:     '#FFFFFF',
-  cinzaClaro: '#EAEFF4',
-  textoSec:   '#8D99AE',
-  verde:      '#27ae60',
-};
-
-const CORES_DARK = {
-  azulEscuro: '#FFFFFF',
-  azulMedio:  '#E0E0E0',
-  rosa:       '#FF5C97',
-  amarelo:    '#FFC82C',
-  fundo:      '#0F1419',
-  branco:     '#1A1F26',
-  cinzaClaro: '#2A2F36',
-  textoSec:   '#7A8595',
-  verde:      '#27ae60',
-};
+import { F, CORES as CORES_LIGHT, CORES_DARK } from '../constants/theme';
 
 // ── Dados do FAQ ──
 const SECOES = [

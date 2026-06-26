@@ -17,14 +17,7 @@ import * as Notifications from 'expo-notifications';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { useNotificacao } from '../contexts/NotificacaoProvider';
 
-// ── Fonte Poppins ──
-const F = {
-  regular:  'Poppins_400Regular',
-  medium:   'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold:     'Poppins_700Bold',
-  black:    'Poppins_800ExtraBold',
-};
+import { F } from '../constants/theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const IMG_MAX = 220;

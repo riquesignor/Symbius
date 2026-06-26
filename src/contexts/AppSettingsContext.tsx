@@ -3,46 +3,12 @@ import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../config/firebaseConfig';
-
-// ════════════════════════════════════════════════════════════════════════
-// 🎨 PALETAS
-// ════════════════════════════════════════════════════════════════════════
-const CORES_LIGHT = {
-  azulEscuro:  '#0B2046',
-  azulMedio:   '#1B3868',
-  rosa:        '#E51C6A',
-  amarelo:     '#FFC82C',
-  fundo:       '#F5F7FA',
-  branco:      '#FFFFFF',
-  cinzaClaro:  '#EAEFF4',
-  textoSec:    '#8D99AE',
-  preto:       '#1A1A2E',
-  verde:       '#27ae60',
-  vermelho:    '#e74c3c',
-  roxo:        '#8e44ad',
-  laranja:     '#e67e22',
-};
-
-const CORES_DARK = {
-  azulEscuro:  '#FFFFFF',  // texto principal vira branco no dark
-  azulMedio:   '#E0E0E0',
-  rosa:        '#FF5C97',
-  amarelo:     '#FFC82C',
-  fundo:       '#0F1419',  // fundo principal escuro
-  branco:      '#1A1F26',  // cards ficam escuros
-  cinzaClaro:  '#2A2F36',  // bordas escuras
-  textoSec:    '#7A8595',
-  preto:       '#FFFFFF',
-  verde:       '#27ae60',
-  vermelho:    '#e74c3c',
-  roxo:        '#a569d8',
-  laranja:     '#e67e22',
-};
+import { CORES as CORES_LIGHT, CORES_DARK, Tema } from '../constants/theme';
 
 // ════════════════════════════════════════════════════════════════════════
 // 🧩 TIPOS
 // ════════════════════════════════════════════════════════════════════════
-type Cores = typeof CORES_LIGHT;
+type Cores = Tema;
 
 interface AppSettingsContextType {
   // Aparência

@@ -10,15 +10,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const CORES = {
-  azulEscuro: '#0B2046',
-  rosa: '#E51C6A',
-  amarelo: '#FFC82C',
-  fundo: '#F5F7FA',
-  cinzaClaro: '#EAEFF4',
-  textoSecundario: '#8D99AE',
-  branco: '#FFFFFF',
-};
+import { CORES } from '../constants/theme';
 
 // ✅ Nova lista de categorias alinhada com o Index.tsx
 const CATEGORIAS_OPCOES = [
@@ -161,7 +153,7 @@ export default function EditorPost({ route, navigation }: any) {
             <MaterialIcons name={catAtual.icon as any} size={20} color={CORES.rosa} />
             <Text style={styles.catSelectorText}>{catAtual.label}</Text>
           </View>
-          <Ionicons name="chevron-down" size={18} color={CORES.textoSecundario} />
+          <Ionicons name="chevron-down" size={18} color={CORES.textoSec} />
         </TouchableOpacity>
 
         {/* CAPA */}
@@ -183,7 +175,7 @@ export default function EditorPost({ route, navigation }: any) {
           value={titulo}
           onChangeText={setTitulo}
           placeholder="Ex: Inscrições abertas para OBMEP"
-          placeholderTextColor={CORES.textoSecundario}
+          placeholderTextColor={CORES.textoSec}
         />
 
         {/* SUBTÍTULO */}
@@ -193,7 +185,7 @@ export default function EditorPost({ route, navigation }: any) {
           value={subtitulo}
           onChangeText={setSubtitulo}
           placeholder="Resumo rápido do post..."
-          placeholderTextColor={CORES.textoSecundario}
+          placeholderTextColor={CORES.textoSec}
         />
 
         {/* AUTOR + TAGS */}
@@ -205,7 +197,7 @@ export default function EditorPost({ route, navigation }: any) {
               value={autor}
               onChangeText={setAutor}
               placeholder="Ex: Direção"
-              placeholderTextColor={CORES.textoSecundario}
+              placeholderTextColor={CORES.textoSec}
             />
           </View>
           <View style={{ flex: 1 }}>
@@ -215,7 +207,7 @@ export default function EditorPost({ route, navigation }: any) {
               value={tagsInput}
               onChangeText={setTagsInput}
               placeholder="Ex: Exatas, Avisos"
-              placeholderTextColor={CORES.textoSecundario}
+              placeholderTextColor={CORES.textoSec}
             />
           </View>
         </View>
@@ -229,7 +221,7 @@ export default function EditorPost({ route, navigation }: any) {
           multiline
           numberOfLines={8}
           placeholder="Escreva o texto completo do post aqui..."
-          placeholderTextColor={CORES.textoSecundario}
+          placeholderTextColor={CORES.textoSec}
           textAlignVertical="top"
         />
 
@@ -285,7 +277,7 @@ const styles = StyleSheet.create({
   headerTitle:     { fontSize: 15, fontWeight: '900', color: CORES.azulEscuro, letterSpacing: 1 },
   scrollContent:   { padding: 24 },
   row:             { flexDirection: 'row' },
-  label:           { fontSize: 11, fontWeight: '800', color: CORES.textoSecundario, letterSpacing: 0.8, marginBottom: 8, marginTop: 4 },
+  label:           { fontSize: 11, fontWeight: '800', color: CORES.textoSec, letterSpacing: 0.8, marginBottom: 8, marginTop: 4 },
   input:           { backgroundColor: CORES.fundo, borderRadius: 14, padding: 16, fontSize: 14, color: CORES.azulEscuro, borderWidth: 1, borderColor: CORES.cinzaClaro, marginBottom: 18 },
   textArea:        { height: 160 },
 
@@ -308,5 +300,5 @@ const styles = StyleSheet.create({
   catOpcao:        { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
   catOpcaoText:    { fontSize: 15, fontWeight: '700', color: CORES.azulEscuro },
   btnFechar:       { marginTop: 16, backgroundColor: CORES.fundo, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  btnFecharText:   { fontWeight: '800', color: CORES.textoSecundario, fontSize: 14 },
+  btnFecharText:   { fontWeight: '800', color: CORES.textoSec, fontSize: 14 },
 });
