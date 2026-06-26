@@ -1,7 +1,4 @@
-/**
- * Service de Gamificação
- * Lida com triggers, validações e atualizações de XP/Moedas
- */
+
 
 import { db } from '../config/firebaseConfig';
 import { doc, updateDoc, getDoc, increment, serverTimestamp } from 'firebase/firestore';
@@ -12,11 +9,7 @@ import {
   calcularNivel,
 } from '../utils/gamification';
 
-/**
- * Awarded XP quando um match é concluído com avaliação 5⭐
- * @param meuUid - UID do usuário logado
- * @returns Promise com sucesso ou erro
- */
+
 export const awardXpMatch = async (meuUid: string): Promise<boolean> => {
   try {
     if (!meuUid) throw new Error('UID não fornecido');
@@ -87,14 +80,7 @@ export interface CheckInResult {
   levelUp:  LevelUpInfo | null; // null = sem mudança de nível
 }
 
-/**
- * Award XP daily check-in — com sistema de streak de dias consecutivos.
- * Usa o campo `ultimo_checkin_dia` (YYYY-MM-DD) para controle independente
- * do `ultimo_acesso` (timestamp de presença online).
- *
- * @param meuUid - UID do usuário logado
- * @returns CheckInResult com resultado e streak atual
- */
+
 export const awardDailyCheckIn = async (meuUid: string): Promise<CheckInResult> => {
   const fallback: CheckInResult = { ganhou: false, streak: 0, xp: 0, moedas: 0, levelUp: null };
   try {
@@ -148,12 +134,7 @@ export const awardDailyCheckIn = async (meuUid: string): Promise<CheckInResult> 
   }
 };
 
-/**
- * Award XP quando uma resposta no fórum recebe upvote ou selo de resolução
- * @param meuUid - UID do usuário logado
- * @param foiValidada - true se a resposta recebeu upvote ou selo de resolução
- * @returns Promise com sucesso ou erro
- */
+
 export const awardXpForum = async (
   meuUid: string,
   foiValidada: boolean
@@ -188,11 +169,7 @@ export const awardXpForum = async (
   }
 };
 
-/**
- * Award XP quando o aluno pede ajuda e finaliza uma dúvida
- * @param meuUid - UID do usuário logado
- * @returns Promise com sucesso ou erro
- */
+
 export const awardXpPedirAjuda = async (meuUid: string): Promise<boolean> => {
   try {
     if (!meuUid) throw new Error('UID não fornecido');
@@ -218,13 +195,7 @@ export const awardXpPedirAjuda = async (meuUid: string): Promise<boolean> => {
   }
 };
 
-/**
- * Comprar cosmético (gasta Moedas)
- * @param meuUid - UID do usuário
- * @param idCosmetico - ID do cosmético
- * @param precoCosmetico - Preço em Moedas
- * @returns Promise com sucesso ou erro
- */
+
 export const comprarCosmetico = async (
   meuUid: string,
   idCosmetico: string,
@@ -268,12 +239,7 @@ export const comprarCosmetico = async (
   }
 };
 
-/**
- * Equipar cosmético (mostrar no mascote)
- * @param meuUid - UID do usuário
- * @param idCosmetico - ID do cosmético
- * @returns Promise com sucesso ou erro
- */
+
 export const equiparCosmetico = async (
   meuUid: string,
   idCosmetico: string

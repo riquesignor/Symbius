@@ -1,15 +1,4 @@
-/**
- * theme.ts — fonte única de verdade para fontes e cores do JUMO
- *
- * Para trocar o tema visual do app inteiro, edite apenas este arquivo.
- * Todas as telas importam F, CORES e CORES_DARK daqui.
- *
- * Estrutura:
- *   F          — famílias de fonte (Poppins ou qualquer outra)
- *   CORES      — paleta de cores no modo claro
- *   CORES_DARK — paleta de cores no modo escuro
- *   getTheme   — helper que retorna a paleta certa dado modoEscuro
- */
+
 
 // ─── Famílias de fonte ────────────────────────────────────────────────
 export const F = {

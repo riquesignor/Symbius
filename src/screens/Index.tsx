@@ -21,11 +21,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 const { width, height } = Dimensions.get('window');
 const DESTAQUE_W = (width - 18 * 2 - 10) / 2;
 
-// ✅ Tempo (em dias) que um post fica visível na home após ser publicado
 const DIAS_VALIDADE_POST = 30;
 
-// ✅ Acessibilidade — hitSlop expande a área de toque sem mudar o visual.
-// Padrão WCAG 2.5.5: alvo mínimo de 44×44 pt.
+
 const HIT_SLOP_SM  = { top: 10, bottom: 10, left: 10, right: 10 }; // botões 34→54
 const HIT_SLOP_MD  = { top: 14, bottom: 14, left: 14, right: 14 }; // botões 30→58
 const HIT_SLOP_DOT = { top: 18, bottom: 18, left: 14, right: 14 }; // pontos do carrossel
@@ -133,9 +131,7 @@ export default function Index({ navigation, route }: any) {
 
   const catBg = (cfg: any) => modoEscuro ? cfg.color + '25' : cfg.bg;
 
-  // ✅ Acessibilidade #1 — cor de texto secundário com contraste mínimo de ~5:1
-  // O `C.textoSec` original (#8D99AE) falhava no WCAG AA para textos pequenos.
-  // Usamos esta cor reforçada nos rótulos de seção e metadados pequenos.
+  
   const textoSecAcc = modoEscuro ? '#B8C0CC' : '#5C6678';
 
   const carrosselRef = useRef<FlatList>(null);
@@ -245,9 +241,7 @@ export default function Index({ navigation, route }: any) {
 
       const itens: any[] = [];
 
-      // ✅ LEMBRETES — agora buscamos da subcollection do RA
       if (userData?.uid) {
-        // ✅ Não usa RA se for inválido (admin com "N/A", etc)
         const raLimpo = userData.ra?.replace(/[\/\\]/g, '');
         const raValido = raLimpo && raLimpo !== 'N/A' && raLimpo.length > 0;
         const userIdentifier = raValido ? raLimpo : userData.uid;
@@ -259,7 +253,6 @@ export default function Index({ navigation, route }: any) {
         } catch (e) { console.error('Erro lembretes:', e); }
       }
 
-      // ✅ EVENTOS ADMIN — busca de todas as 4 collections
       for (const tipo of Object.keys(TIPO_COLLECTION)) {
         const subName = TIPO_COLLECTION[tipo];
         const subRef = collection(db, 'eventos_admin', 'tipos', subName);
@@ -271,7 +264,6 @@ export default function Index({ navigation, route }: any) {
             const ev = { id: d.id, fonte: 'admin', ...d.data() };
             const series: string[] = ev.series || [];
 
-            // ✅ Normaliza: pega só o primeiro dígito de cada série
             const seriesNumeros = series.map(s => String(s).match(/\d/)?.[0] || '');
 
             let incluir = false;
@@ -306,7 +298,6 @@ export default function Index({ navigation, route }: any) {
         return dt >= hoje && dt <= limite;
       }).sort((a, b) => a.data.localeCompare(b.data));
 
-      // ✅ NOTIFICAÇÕES — lembretes vencidos + provas próximas
       const notifs: any[] = [];
 
       // Lembretes vencidos
@@ -348,7 +339,6 @@ export default function Index({ navigation, route }: any) {
     }
   };
 
-  // ✅ Posts válidos (todas categorias, dentro da validade)
   const postsValidos = useMemo(
     () => posts.filter(postValido),
     [posts]
@@ -368,7 +358,6 @@ export default function Index({ navigation, route }: any) {
     });
   }, [postsValidos, termoBusca]);
 
-  // ✅ Pares pra carrossel (2 por slide)
   const slidesDestaque = useMemo(() => {
     const pares: any[] = [];
     for (let i = 0; i < postsValidos.length; i += 2) {
@@ -411,8 +400,7 @@ export default function Index({ navigation, route }: any) {
     const config = CATEGORIA_CONFIG[post.categoria] || CATEGORIA_CONFIG.avisos;
     const novo   = ehNovo(post);
 
-    // ✅ Acessibilidade #5 e #9 — label completa lida pelo leitor de tela.
-    // Inclui categoria (badge), título, contagem e flag "novo".
+    
     const a11yLabel = [
       config.label,
       post.titulo,
@@ -450,8 +438,7 @@ export default function Index({ navigation, route }: any) {
           : <View style={[StyleSheet.absoluteFillObject, { backgroundColor: CORES.azulEscuro }]} />
         }
 
-        {/* ✅ Acessibilidade #2 — gradiente garante contraste do texto */}
-        {/* sobre qualquer imagem de capa, independente do conteúdo dela. */}
+        
         <LinearGradient
           colors={
             modoEscuro
@@ -468,7 +455,6 @@ export default function Index({ navigation, route }: any) {
             <MaterialIcons name={config.icon} size={9} color={config.color} />
             <Text
               style={[styles.destBadgeText, { color: config.color, fontSize: fs(8) }]}
-              // ✅ #9 — badge é apenas reforço visual; label já é lido no card
               accessibilityElementsHidden
               importantForAccessibility="no"
             >
@@ -509,7 +495,6 @@ export default function Index({ navigation, route }: any) {
     const [, m, d] = item.data.split('-').map(Number);
     const cont    = calcDias(item.data);
 
-    // ✅ Acessibilidade — leitor de tela anuncia o card completo
     const a11yLabel = [
       config.label,
       item.titulo,
@@ -561,7 +546,6 @@ export default function Index({ navigation, route }: any) {
           <Text style={[styles.agTitulo, { color: C.azulEscuro, fontSize: fs(13) }]} numberOfLines={1}>
             {item.titulo}
           </Text>
-          {/* ✅ #1 — texto secundário com contraste reforçado */}
           <Text style={[styles.agMeta, { color: textoSecAcc, fontSize: fs(10) }]}>
             {item.fonte === 'lembrete'
               ? 'Meu lembrete pessoal'
@@ -797,7 +781,6 @@ export default function Index({ navigation, route }: any) {
         {/* ═══ DESTAQUES ═══ */}
         <View style={styles.secaoHeader}>
           <View accessible accessibilityRole="header">
-            {/* ✅ #1 — eyebrow com contraste reforçado */}
             <Text style={[styles.secaoEyebrow, { color: textoSecAcc, fontSize: fs(10) }]}>
               EM DESTAQUE
             </Text>
@@ -822,7 +805,6 @@ export default function Index({ navigation, route }: any) {
               style={[styles.navDestBtn, { backgroundColor: C.fundo, borderColor: C.cinzaClaro }]}
               onPress={() => irParaSlide(destaqueIdx - 1)}
               disabled={slidesDestaque.length <= 1}
-              // ✅ Acessibilidade #4 — área de toque expandida pra 44+px sem mudar o visual
               hitSlop={HIT_SLOP_MD}
               accessibilityRole="button"
               accessibilityLabel="Slide anterior"
@@ -969,7 +951,6 @@ export default function Index({ navigation, route }: any) {
               <Ionicons name="calendar" size={14} color={C.azulEscuro} />
             </View>
             <View>
-              {/* ✅ #1 — eyebrow com contraste reforçado */}
               <Text style={[styles.secaoEyebrow, { color: textoSecAcc, fontSize: fs(10) }]}>
                 PRÓXIMOS 7 DIAS
               </Text>
@@ -1051,7 +1032,6 @@ export default function Index({ navigation, route }: any) {
             styles.agEmpty,
             { backgroundColor: C.branco, borderColor: C.cinzaClaro }
           ]}>
-            {/* ✅ Acessibilidade #7 — emoji decorativo, oculto do leitor de tela */}
             <View
               style={[styles.agEmptyIcon, { backgroundColor: C.fundo }]}
               accessibilityElementsHidden
@@ -1108,7 +1088,6 @@ export default function Index({ navigation, route }: any) {
           accessibilityHint="Abre o calendário completo"
         />
 
-        {/* ✅ Acessibilidade #6 — botão central agora tem label visível + accessibilityLabel */}
         <View style={styles.centerTab}>
           <TouchableOpacity
             style={[styles.centerBtn, { borderColor: C.branco }]}
@@ -1697,9 +1676,7 @@ export default function Index({ navigation, route }: any) {
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════
-// 🎨 STYLESHEET — sem cores hardcoded em elementos dinâmicos
-// ════════════════════════════════════════════════════════════════════════
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
@@ -1715,7 +1692,6 @@ const styles = StyleSheet.create({
   btnEdit:       { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5 },
   btnSino:       { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center', position: 'relative' },
 
-  // ✅ Badge de notificação agora cabe o número (era 8x8 com texto dentro — quebrado)
   dotNotifBadge: { position: 'absolute', top: -2, right: -2, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 4, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5 },
   dotNotifText:  { color: '#FFF', fontSize: 9, fontFamily: F.bold, textAlign: 'center', lineHeight: 11 },
 
@@ -1761,7 +1737,6 @@ const styles = StyleSheet.create({
   destEditBadge: { position: 'absolute', top: 8, right: 8, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
 
   indicadores:    { flexDirection: 'row', justifyContent: 'center', gap: 4, marginTop: 12, paddingHorizontal: 18 },
-  // ✅ Wrapper tappável dos pontos — área real >= 44pt (correção #3)
   indicadorTouch: { width: 44, height: 30, alignItems: 'center', justifyContent: 'center' },
   indicador:      { width: 5, height: 5, borderRadius: 3 },
 
@@ -1803,7 +1778,6 @@ const styles = StyleSheet.create({
   tabLabel:      { fontFamily: F.semibold, marginTop: 3 },
   centerTab:     { flex: 1, alignItems: 'center', justifyContent: 'center' },
   centerBtn:     { width: 54, height: 54, borderRadius: 27, backgroundColor: CORES.rosa, justifyContent: 'center', alignItems: 'center', marginTop: -22, borderWidth: 4, elevation: 6, shadowColor: CORES.rosa, shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
-  // ✅ Label visível abaixo do botão central, alinhada com o padrão das outras abas (correção #6)
   centerLabel:   { marginTop: -2, fontFamily: F.bold },
 
   // MENU MAIS

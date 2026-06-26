@@ -208,12 +208,10 @@ export default function Chat({ route, navigation }: any) {
   const insets = useSafeAreaInsets();
   const { outroUid, outroNome } = route.params || {};
 
-  // ✅ ADICIONAR: pegar settings de notificação, cores e escala de fonte
   const { notifGeral, somNotif, vibracao, cores: C, fonteScale, modoEscuro } = useAppSettings();
   const fs = (size: number) => size * fonteScale;
 
-  // ✅ Avisa o provider global qual conversa está aberta (pra ele NÃO
-  // disparar notificação de uma conversa que o usuário já está vendo)
+  
   const { setConversaAtiva } = useNotificacao();
 
   const scrollRef        = useRef<ScrollView>(null);
@@ -303,8 +301,6 @@ export default function Chat({ route, navigation }: any) {
     const unsub = onSnapshot(firestoreDoc(db, "usuarios", outroUid), (snap) => {
       if (snap.exists()) {
         const d = snap.data();
-        // ✅ Só mostra "online" se a pessoa PERMITE (statusOnline !== false).
-        // Se ela desativou nas Configurações, aparece sempre offline.
         setOnlineStatus(d.online === true && d.statusOnline !== false);
         setOutroDigitando(!!d.digitandoEm);
       }
@@ -351,9 +347,6 @@ export default function Chat({ route, navigation }: any) {
         return { docId: d.id, id: d.id, ...d.data() };
       });
       setMessages(msgs);
-      // 🔔 Notificações de mensagem agora são tratadas globalmente
-      // pelo NotificacaoProvider (funciona em qualquer tela, sem duplicar).
-      setLoading(false);
     }, (e) => {
       console.log("Erro onSnapshot mensagens:", e.message);
       setLoading(false);

@@ -15,7 +15,6 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RefreshControl } from 'react-native';
-// ✅ ADICIONAR: Notificações
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -54,7 +53,6 @@ const TIPO_COLLECTION: Record<string, { sub: string; prefix: string }> = {
   Evento:  { sub: 'eventos',  prefix: 'evt' },
 };
 
-// Path completo: eventos_admin/tipos/{sub}/{id}
 const PARENT_DOC = 'tipos';
 
 // ── Utils ──
@@ -115,10 +113,8 @@ export default function Calendario({ navigation, route }: any) {
   const { width: winW, height: winH } = useWindowDimensions();
   const CEL_SIZE = Math.floor((winW - 32) / 7);
 
-  // ✅ NOVO — Pega configs globais do contexto
   const { cores: C, fonteScale, modoEscuro } = useAppSettings();
 
-  // ✅ NOVO — Helper de fonte escalada (deixa o JSX mais limpo)
   const fs = (size: number) => size * fonteScale;
 
   const uid     = route?.params?.uid;
@@ -133,7 +129,6 @@ useEffect(() => {
     const snap = await getDoc(doc(db, 'usuarios', uid));
     if (snap.exists()) {
       const dados = snap.data();
-      // ✅ Limpa RA inválido (admin com "N/A", barras, etc)
       const raLimpo = dados.ra?.replace(/[\/\\]/g, '');
       const raValido = raLimpo && raLimpo !== 'N/A' && raLimpo.length > 0;
       setUserRA(raValido ? raLimpo : uid);
@@ -167,12 +162,10 @@ useEffect(() => {
   const [eventoDetalhe,   setEventoDetalhe]   = useState<any>(null);
   const [diaSelecionado,  setDiaSelecionado]  = useState('');
 
-  // ✅ Modal de confirmação customizado (substitui Alert.alert)
   const [confirm, setConfirm] = useState<{
     titulo: string; msg: string; btn: string; onOk: () => void
   } | null>(null);
 
-  // ✅ Toast de feedback
   const [toast, setToast] = useState('');
   useEffect(() => {
     if (!toast) return;
@@ -187,7 +180,6 @@ useEffect(() => {
   const [lembreTitulo, setLembreTitulo] = useState('');
   const [lembreDesc,   setLembreDesc]   = useState('');
   const [salvandoLemb, setSalvandoLemb] = useState(false);
-  // ✅ Edição de lembrete pessoal
   const [lembEditandoId, setLembEditandoId] = useState<string | null>(null);
 
   // ── Form admin ──
@@ -199,7 +191,6 @@ useEffect(() => {
   const [salvandoAdm,  setSalvandoAdm]  = useState(false);
   const [modalTipoEvt, setModalTipoEvt] = useState(false);
   const [modalDataEvt, setModalDataEvt] = useState(false);
-  // ✅ Edição de evento admin
   const [admEditandoId, setAdmEditandoId] = useState<string | null>(null);
 
   // Seletor de data
@@ -235,7 +226,6 @@ useEffect(() => {
   } catch (e) { console.error('Erro lembretes:', e); }
 };
 
-  // ✅ ADICIONAR: Listener de novos eventos (Opção A)
   const carregarEventosAdmin = async () => {
   try {
     const mapa = new Map<string, any[]>();
@@ -245,7 +235,6 @@ useEffect(() => {
       const config = TIPO_COLLECTION[tipo];
       let snap;
       
-      // Path: eventos_admin/tipos/{eventos|avisos|provas|feriados}
       const subRef = collection(db, 'eventos_admin', PARENT_DOC, config.sub);
 
       if (isAdmin) {
@@ -275,10 +264,7 @@ useEffect(() => {
   } catch (e) { console.error('Erro eventos admin:', e); }
 };
 
-  // 🔔 Notificações de novos eventos agora são tratadas globalmente pelo
-  // NotificacaoProvider (funciona em qualquer tela, sem duplicar).
-
-  // ✅ Filtro: mês selecionado + tipo
+  
   const eventosFiltrados = useMemo(() => {
     const doMes = adminTodos.filter(ev => {
       const [a, m] = ev.data.split('-').map(Number);
@@ -316,7 +302,6 @@ useEffect(() => {
       descricao: capitalizarPrimeira(lembreDesc.trim()),
     };
     if (lembEditandoId) {
-      // ✅ Edição
       await updateDoc(doc(db, 'lembretes', userRA, 'lembretes', lembEditandoId), dados);
       setLembretes(prev => {
         const nova = new Map(prev);
@@ -358,7 +343,6 @@ useEffect(() => {
     setLembreTitulo(''); setLembreDesc('');
   };
 
-  // ✅ Excluir com modal customizado
   const pedirConfirmacaoExcluirLembrete = (id: string) => {
   setConfirm({
     titulo: 'Excluir lembrete?',
@@ -421,7 +405,6 @@ useEffect(() => {
       series:    adminSeries,
     };
 
-    // ✅ Pega a collection correta baseada no tipo
     const config = TIPO_COLLECTION[adminTipo];
     if (!config) {
     setToast('Tipo inválido');
@@ -441,7 +424,6 @@ useEffect(() => {
       await carregarEventosAdmin();
       setToast('Evento atualizado');
     } else {
-      // ✅ PRIMEIRO garante que o doc pai 'tipos' existe
       await setDoc(doc(db, 'eventos_admin', PARENT_DOC), 
         { _placeholder: true }, 
         { merge: true }

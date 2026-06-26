@@ -5,9 +5,7 @@ import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firest
 import { db, auth } from '../config/firebaseConfig';
 import { CORES as CORES_LIGHT, CORES_DARK, Tema } from '../constants/theme';
 
-// ════════════════════════════════════════════════════════════════════════
-// 🧩 TIPOS
-// ════════════════════════════════════════════════════════════════════════
+
 type Cores = Tema;
 
 interface AppSettingsContextType {
@@ -50,9 +48,7 @@ interface AppSettingsContextType {
 
 const AppSettingsContext = createContext<AppSettingsContextType | undefined>(undefined);
 
-// ════════════════════════════════════════════════════════════════════════
-// 🏭 PROVIDER
-// ════════════════════════════════════════════════════════════════════════
+
 export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // ── States ──
   const [modoEscuro, setModoEscuroState] = useState(false);
@@ -226,9 +222,7 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   );
 };
 
-// ════════════════════════════════════════════════════════════════════════
-// 🪝 HOOK
-// ════════════════════════════════════════════════════════════════════════
+
 export const useAppSettings = () => {
   const ctx = useContext(AppSettingsContext);
   if (!ctx) {

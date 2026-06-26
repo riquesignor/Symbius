@@ -13,10 +13,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Polygon, Circle, Line, Text as SvgText, G } from 'react-native-svg';
 import { useAppSettings } from '../contexts/AppSettingsContext';
-// ✅ GAMIFICAÇÃO
 import { calcularFaseCoruja, calcularProgressoXp } from '../utils/gamification';
 
-// ── Fonte Poppins ──
 import { F, CORES } from '../constants/theme';
 
 // ════════════════════════════════════════════════════════════════════════
@@ -69,9 +67,7 @@ const FadeInView = ({ children, delay = 0, style }: any) => {
   );
 };
 
-// ════════════════════════════════════════════════════════════════════════
-//  RADAR CHART pequeno (estilo da imagem)
-// ════════════════════════════════════════════════════════════════════════
+
 const RadarChart = ({ scores, size, modoEscuro }: any) => {
   const cx = size / 2;
   const cy = size / 2;
@@ -165,9 +161,7 @@ const RadarChart = ({ scores, size, modoEscuro }: any) => {
 };
 
 
-// ════════════════════════════════════════════════════════════════════════
-//  COMPONENTE PRINCIPAL
-// ════════════════════════════════════════════════════════════════════════
+
 export default function Perfil({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const uid = route?.params?.uid;
@@ -305,9 +299,7 @@ export default function Perfil({ navigation, route }: any) {
         </View>
       )}
 
-      {/* ════════════════════════════════════════════════
-          HEADER MINIMALISTA (logo JUMO no centro)
-      ════════════════════════════════════════════════ */}
+     
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
@@ -333,9 +325,7 @@ export default function Perfil({ navigation, route }: any) {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 50, paddingTop: 6 }}
       >
-        {/* ════════════════════════════════════════════════
-            HERO HORIZONTAL (foto à esquerda, nome à direita)
-        ════════════════════════════════════════════════ */}
+        
         <FadeInView delay={0}>
           <View style={[styles.heroCard, { backgroundColor: C.branco }]}>
             <View style={styles.fotoWrap}>
@@ -370,9 +360,7 @@ export default function Perfil({ navigation, route }: any) {
           </View>
         </FadeInView>
 
-        {/* ════════════════════════════════════════════════
-            XP & MOEDAS (GAMIFICAÇÃO MVP)
-        ════════════════════════════════════════════════ */}
+        
         <FadeInView delay={100}>
           <View style={styles.secao}>
             <Text style={[styles.secaoTituloPrincipal, { color: C.azulEscuro, fontSize: fs(15) }]}>
@@ -381,7 +369,6 @@ export default function Perfil({ navigation, route }: any) {
 
             {usuario ? (
               <View style={[styles.xpCard, { backgroundColor: C.branco }]}>
-                {/* Fase Coruja + XP */}
                 <View style={styles.xpCardTop}>
                   <View style={styles.corujhBox}>
                     <Text style={[styles.corujaEmoji, { fontSize: fs(48) }]}>
@@ -455,9 +442,7 @@ export default function Perfil({ navigation, route }: any) {
         </FadeInView>
 
 
-        {/* ════════════════════════════════════════════════
-            MEDALHAS ADMIN (em fila com label embaixo)
-        ════════════════════════════════════════════════ */}
+       
         {medalhas.length > 0 && (
           <FadeInView delay={150}>
             <View style={styles.secao}>
@@ -494,9 +479,7 @@ export default function Perfil({ navigation, route }: any) {
           </FadeInView>
         )}
 
-        {/* ════════════════════════════════════════════════
-            MINHAS ESPECIALIDADES (radar + matérias ao lado — fiel à imagem)
-        ════════════════════════════════════════════════ */}
+        {/*MINHAS ESPECIALIDADES (radar + matérias ao lado — fiel à imagem)*/}
         <FadeInView delay={240}>
           <View style={styles.secao}>
             <Text style={[styles.secaoTituloPrincipal, { color: C.azulEscuro, fontSize: fs(15) }]}>
@@ -550,9 +533,7 @@ export default function Perfil({ navigation, route }: any) {
           </View>
         </FadeInView>
 
-        {/* ════════════════════════════════════════════════
-            POSSO ENSINAR
-        ════════════════════════════════════════════════ */}
+        {/* Quero ensinar*/}
         <FadeInView delay={360}>
           <View style={styles.secao}>
             <View style={styles.secaoHeaderRow}>
@@ -602,9 +583,7 @@ export default function Perfil({ navigation, route }: any) {
           </View>
         </FadeInView>
 
-        {/* ════════════════════════════════════════════════
-            QUERO MELHORAR
-        ════════════════════════════════════════════════ */}
+        {/* QUERO MELHORAR*/}
         <FadeInView delay={480}>
           <View style={styles.secao}>
             <View style={styles.secaoHeaderRow}>
@@ -654,9 +633,7 @@ export default function Perfil({ navigation, route }: any) {
           </View>
         </FadeInView>
 
-        {/* ════════════════════════════════════════════════
-            SOBRE MIM
-        ════════════════════════════════════════════════ */}
+        {/*SOBRE MIM*/}
         <FadeInView delay={600}>
           <View style={styles.secao}>
             <View style={styles.secaoHeaderRow}>
@@ -689,9 +666,8 @@ export default function Perfil({ navigation, route }: any) {
           </View>
         </FadeInView>
 
-        {/* ════════════════════════════════════════════════
-            INFORMAÇÕES ACADÊMICAS
-        ════════════════════════════════════════════════ */}
+        {/* 
+            INFORMAÇÕES ACADÊMICAS*/}
         <FadeInView delay={720}>
           <View style={styles.secao}>
             <Text style={[styles.secaoTituloPrincipal, { color: C.azulEscuro, fontSize: fs(15) }]}>
@@ -729,9 +705,7 @@ export default function Perfil({ navigation, route }: any) {
           </View>
         </FadeInView>
 
-        {/* ════════════════════════════════════════════════
-            SAIR DA CONTA
-        ════════════════════════════════════════════════ */}
+        {/*SAIR DA CONTA*/}
         <FadeInView delay={840}>
           <TouchableOpacity
             style={styles.btnSair}

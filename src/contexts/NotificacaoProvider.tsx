@@ -180,7 +180,7 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
     })();
   }, []);
 
-  // ════ 2️⃣ CARREGA UID + SÉRIE ════
+  // ════ CARREGA UID + SÉRIE ════
   useEffect(() => {
     (async () => {
       const uid = await AsyncStorage.getItem('uid');
@@ -193,7 +193,7 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
     })();
   }, []);
 
-  // ════ 2️⃣b ONLINE STATUS GLOBAL ════
+  // ════  ONLINE STATUS GLOBAL ════
   // Marca online ao logar; atualiza conforme AppState; marca offline ao sair
   useEffect(() => {
     if (!uidAtual) return;
@@ -217,7 +217,7 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
     };
   }, [uidAtual]);
 
-  // ════ 3️⃣ LISTENER — CHAT (todas as conversas do usuário) ════
+  // ════ LISTENER — CHAT (todas as conversas do usuário) ════
   useEffect(() => {
     if (!uidAtual) return;
     let primeiraCarga = true; // não notifica a leva inicial ao abrir o app
@@ -329,7 +329,7 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
     }
   };
 
-  // ════ 4️⃣ LISTENER — MATCH (solicitações recebidas) ════
+  // ════ LISTENER — MATCH (solicitações recebidas) ════
   useEffect(() => {
     if (!uidAtual) return;
     let primeiraCarga = true;
@@ -384,7 +384,7 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
     }
   };
 
-  // ════ 5️⃣ LISTENER — EVENTOS (novos eventos da série do aluno) ════
+  // ════ LISTENER — EVENTOS (novos eventos da série do aluno) ════
   useEffect(() => {
     if (!uidAtual || !serie) return;
     const unsubs: (() => void)[] = [];
@@ -441,7 +441,7 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
     }
   };
 
-  // ════ 6️⃣ TOQUE NA NOTIFICAÇÃO → abre a tela certa ════
+  // ════ TOQUE NA NOTIFICAÇÃO → abre a tela certa ════
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data: any = response.notification.request.content.data;
@@ -460,7 +460,7 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
     return () => sub.remove();
   }, [uidAtual]);
 
-  // ════ 7️⃣ ZERA BADGE AO VOLTAR PRO APP ════
+  // ════ ZERA BADGE AO VOLTAR PRO APP ════
   useEffect(() => {
     const handler = AppState.addEventListener('change', (state) => {
       if (state === 'active') Notifications.setBadgeCountAsync(0);

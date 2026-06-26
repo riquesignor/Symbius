@@ -17,13 +17,11 @@ import { F, CORES } from '../constants/theme';
 const SERIES = ['Todas', '1º', '2º', '3º'];
 
 // ── Cores do pódio ──────────────────────────────────────────────────────
-const PODIO_COR   = ['#FFD700', '#C0C0C0', '#CD7F32']; // ouro / prata / bronze
-const PODIO_H     = [88, 72, 60];                       // altura das colunas
+const PODIO_COR   = ['#FFD700', '#C0C0C0', '#CD7F32']; 
+const PODIO_H     = [88, 72, 60];                       
 const PODIO_LABEL = ['🥇', '🥈', '🥉'];
 
-// ════════════════════════════════════════════════════════════════════════
-//  LEADERBOARD
-// ════════════════════════════════════════════════════════════════════════
+
 export default function Leaderboard({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const { cores: C, fonteScale, modoEscuro } = useAppSettings();

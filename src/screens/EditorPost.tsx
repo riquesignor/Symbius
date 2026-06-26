@@ -12,7 +12,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CORES } from '../constants/theme';
 
-// ✅ Nova lista de categorias alinhada com o Index.tsx
 const CATEGORIAS_OPCOES = [
   { label: 'Avisos',        value: 'avisos',        icon: 'campaign'     },
   { label: 'Destaques',     value: 'destaque',       icon: 'star'         },
@@ -33,7 +32,6 @@ export default function EditorPost({ route, navigation }: any) {
   const [tagsInput,  setTagsInput]  = useState(current?.tags ? current.tags.join(', ') : '');
   const [loading,    setLoading]    = useState(false);
 
-  // ✅ Categoria agora é selecionável no editor
   const [categoria,       setCategoria]       = useState(current?.categoria || categoriaParam || 'avisos');
   const [showCatModal,    setShowCatModal]    = useState(false);
 

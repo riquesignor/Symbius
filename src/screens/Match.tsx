@@ -11,11 +11,9 @@ import {
 } from 'firebase/firestore';
 import { Ionicons, FontAwesome5, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-// ✅ ADICIONAR: Notificações
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppSettings } from '../contexts/AppSettingsContext';
-// ✅ GAMIFICAÇÃO — Import do service
 import { awardXpMatch } from '../services/gamificationService';
 
 // ── Fonte Poppins ──
@@ -232,7 +230,6 @@ export default function Match({ navigation, route }: any) {
   }, [meusDados, modo, materiasFiltro.join(','), interagidosCarregado]);
 
   // ── Ouve solicitações pendentes recebidas ──
-  // ✅ ADICIONAR: notificação de nova solicitação
   useEffect(() => {
     if (!meuUid) return;
     const q = query(
@@ -248,8 +245,7 @@ export default function Match({ navigation, route }: any) {
         return { id: d.id, ...data, remetente: rSnap.data() };
       }))).filter(Boolean);
 
-      // 🔔 Notificações de match agora são tratadas globalmente pelo
-      // NotificacaoProvider (funciona em qualquer tela, sem duplicar).
+      
       setSolicitacoes(lista);
     });
     return () => unsub();
@@ -386,15 +382,11 @@ export default function Match({ navigation, route }: any) {
     );
   };
 
-  // ✅ GAMIFICAÇÃO — Finalizar match com avaliação 5⭐
   const finalizarMatchComAvaliacao = async (outroUid: string, avaliacao: number) => {
     if (avaliacao === 5 && meuUid) {
-      // Quando o usuário avalia com 5 ⭐, award XP
       const sucesso = await awardXpMatch(meuUid);
       if (sucesso) {
-        // Mostrar toast de sucesso
         console.log('✅ Match concluído com sucesso! +50 XP, +15 Moedas');
-        // TODO: Adicionar toast visual aqui
       } else {
         console.warn('⚠️ Não foi possível registrar XP (limite diário atingido?)');
       }
@@ -926,7 +918,6 @@ const styles = StyleSheet.create({
   // Avatar com bolinha online (canto inferior direito — igual Instagram)
   avatarWrap:    { position: 'relative' },
   bolinhaOnline: { position: 'absolute', bottom: 1, right: 1, width: 13, height: 13, borderRadius: 7, backgroundColor: CORES.verde, borderWidth: 2, borderColor: CORES.branco },
-  // Badge de mensagem não lida (ponto rosa menor, separado do online)
   badgeNaoLida:  { width: 10, height: 10, borderRadius: 5, backgroundColor: CORES.rosa, marginLeft: 8, alignSelf: 'center' },
 
   // Tags inline no match

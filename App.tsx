@@ -61,7 +61,6 @@ export default function App() {
     Poppins_800ExtraBold,
   });
 
-  // ✅ ADICIONAR: Tornar navigator global (pra notificação saber abrir chat)
   useEffect(() => {
   if (navigationRef && navigationRef.current) {
     (globalThis as any).navigationRef = navigationRef.current;
@@ -69,7 +68,6 @@ export default function App() {
   }
 }, [navigationRef]);
 
-  // ✅ ADICIONAR: Pedir permissão de notificações
   useEffect(() => {
     const pedirPermissaoNotif = async () => {
       try {
@@ -85,7 +83,6 @@ export default function App() {
     pedirPermissaoNotif();
   }, []);
 
-  // ✅ ADICIONAR: Lidar quando user toca em notificação
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data;
@@ -105,14 +102,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // ✅ Verifica se existe sessão salva no AsyncStorage ("lembrar login")
     const verificarSessao = async () => {
       try {
         const uid = await AsyncStorage.getItem('uid');
         if (uid) {
           const docSnap = await getDoc(doc(db, 'usuarios', uid));
           if (docSnap.exists() && docSnap.data().status === 1) {
-            // ✅ Todo mundo (aluno, gremista, admin) entra direto no Index
             setInitialUid(uid);
             setInitialRoute('Index');
             return;
