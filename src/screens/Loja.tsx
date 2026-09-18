@@ -11,11 +11,11 @@ import { useAppSettings } from '../contexts/AppSettingsContext';
 import { atingiuAnimal } from '../utils/gamification';
 import { COSMETICOS, Cosmetico } from '../constants/cosmeticos';
 import { comprarCosmetico, equiparCosmetico } from '../services/gamificationService';
-import { CORES_SABE } from './Boasvindas';
+import { CORES_SYMBIUS } from './Boasvindas';
 import { F } from '../constants/theme';
 
 // ══════════════════════════════════════════════════════════════════════
-// ⚠️  TELA DE TESTE — Loja de Cosméticos no visual novo ("Sabé"), ligada
+// ⚠️  TELA DE TESTE — Loja de Cosméticos no visual novo ("Symbius"), ligada
 // ao back-end atual (COSMETICOS, comprarCosmetico/equiparCosmetico — nada
 // de item mockado). As abas do mockup (Básicos/Rewards) mapeiam pro campo
 // real `prestigio` de cada cosmético.
@@ -77,12 +77,12 @@ export default function Loja({ navigation, route }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={CORES_SABE.fundo} />
+      <StatusBar barStyle="dark-content" backgroundColor={CORES_SYMBIUS.fundo} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top || 12 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Ionicons name="chevron-back" size={24} color={CORES_SABE.texto} />
+          <Ionicons name="chevron-back" size={24} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
         <Text style={[styles.headerTitulo, { fontSize: fs(17) }]}>Loja de Cosméticos</Text>
         <View style={styles.saldoPill}>
@@ -110,7 +110,7 @@ export default function Loja({ navigation, route }: any) {
       </View>
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 60 }} color={CORES_SABE.verdeEscuro} size="large" />
+        <ActivityIndicator style={{ marginTop: 60 }} color={CORES_SYMBIUS.verdeEscuro} size="large" />
       ) : (
         <ScrollView contentContainerStyle={styles.grid} showsVerticalScrollIndicator={false}>
           {itensDaAba.map(item => {
@@ -140,10 +140,10 @@ export default function Loja({ navigation, route }: any) {
                 )}
 
                 {carregandoEsse ? (
-                  <ActivityIndicator color={CORES_SABE.verdeEscuro} size="small" style={{ marginTop: 8 }} />
+                  <ActivityIndicator color={CORES_SYMBIUS.verdeEscuro} size="small" style={{ marginTop: 8 }} />
                 ) : bloqueado ? (
                   <View style={[styles.btnAcao, styles.btnBloqueado]}>
-                    <Ionicons name="lock-closed" size={14} color={CORES_SABE.textoSec} />
+                    <Ionicons name="lock-closed" size={14} color={CORES_SYMBIUS.textoSec} />
                   </View>
                 ) : possui ? (
                   <TouchableOpacity
@@ -175,55 +175,55 @@ export default function Loja({ navigation, route }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: CORES_SABE.fundo },
+  container: { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
 
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 18, paddingBottom: 14, gap: 10,
   },
-  headerTitulo: { flex: 1, color: CORES_SABE.texto, fontFamily: F.black },
+  headerTitulo: { flex: 1, color: CORES_SYMBIUS.texto, fontFamily: F.black },
   saldoPill: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: CORES_SABE.fundoCard, borderWidth: 1, borderColor: CORES_SABE.borda,
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
     paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14,
   },
-  saldoTxt: { color: CORES_SABE.verdeEscuro, fontFamily: F.black },
+  saldoTxt: { color: CORES_SYMBIUS.verdeEscuro, fontFamily: F.black },
 
   abasRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 18, paddingBottom: 14 },
   abaPill: {
     paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-    borderWidth: 1, borderColor: CORES_SABE.borda, backgroundColor: CORES_SABE.fundoCard,
+    borderWidth: 1, borderColor: CORES_SYMBIUS.borda, backgroundColor: CORES_SYMBIUS.fundoCard,
   },
-  abaPillAtiva: { backgroundColor: CORES_SABE.verdeEscuro, borderColor: CORES_SABE.verdeEscuro },
-  abaTxt: { color: CORES_SABE.textoSec, fontFamily: F.bold },
-  abaTxtAtiva: { color: CORES_SABE.fundo },
+  abaPillAtiva: { backgroundColor: CORES_SYMBIUS.verdeEscuro, borderColor: CORES_SYMBIUS.verdeEscuro },
+  abaTxt: { color: CORES_SYMBIUS.textoSec, fontFamily: F.bold },
+  abaTxtAtiva: { color: CORES_SYMBIUS.fundo },
 
   grid: {
     paddingHorizontal: 16, paddingTop: 4, paddingBottom: 30,
     flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between',
   },
   card: {
-    width: '47%', backgroundColor: CORES_SABE.fundoCard, borderRadius: 16,
-    padding: 14, marginBottom: 4, borderWidth: 1, borderColor: CORES_SABE.borda,
+    width: '47%', backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 16,
+    padding: 14, marginBottom: 4, borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
   },
-  cardEquipado: { borderColor: CORES_SABE.verdeEscuro, borderWidth: 1.5 },
+  cardEquipado: { borderColor: CORES_SYMBIUS.verdeEscuro, borderWidth: 1.5 },
   iconeWrap: {
-    width: 52, height: 52, borderRadius: 26, backgroundColor: CORES_SABE.fundo,
+    width: 52, height: 52, borderRadius: 26, backgroundColor: CORES_SYMBIUS.fundo,
     alignItems: 'center', justifyContent: 'center', marginBottom: 10,
   },
-  itemNome: { color: CORES_SABE.texto, fontFamily: F.bold, marginBottom: 4 },
-  itemPreco: { color: CORES_SABE.textoSec, fontFamily: F.semibold, marginBottom: 10 },
-  itemBloqueado: { color: CORES_SABE.textoSec, fontFamily: F.semibold, marginBottom: 10, lineHeight: 14 },
+  itemNome: { color: CORES_SYMBIUS.texto, fontFamily: F.bold, marginBottom: 4 },
+  itemPreco: { color: CORES_SYMBIUS.textoSec, fontFamily: F.semibold, marginBottom: 10 },
+  itemBloqueado: { color: CORES_SYMBIUS.textoSec, fontFamily: F.semibold, marginBottom: 10, lineHeight: 14 },
 
   btnAcao: { borderRadius: 12, paddingVertical: 9, alignItems: 'center' },
-  btnBloqueado: { backgroundColor: CORES_SABE.fundo },
-  btnComprar: { backgroundColor: CORES_SABE.verdeEscuro },
-  btnDesabilitado: { backgroundColor: CORES_SABE.fundo },
-  btnEquipar: { backgroundColor: CORES_SABE.fundo, borderWidth: 1, borderColor: CORES_SABE.borda },
-  btnEquipado: { backgroundColor: CORES_SABE.verdeEscuro },
+  btnBloqueado: { backgroundColor: CORES_SYMBIUS.fundo },
+  btnComprar: { backgroundColor: CORES_SYMBIUS.verdeEscuro },
+  btnDesabilitado: { backgroundColor: CORES_SYMBIUS.fundo },
+  btnEquipar: { backgroundColor: CORES_SYMBIUS.fundo, borderWidth: 1, borderColor: CORES_SYMBIUS.borda },
+  btnEquipado: { backgroundColor: CORES_SYMBIUS.verdeEscuro },
   btnAcaoTxt: { fontFamily: F.bold },
-  btnAcaoTxtComprar: { color: CORES_SABE.fundo },
-  btnAcaoTxtDesabilitado: { color: CORES_SABE.textoSec },
-  btnAcaoTxtEquipar: { color: CORES_SABE.texto },
-  btnAcaoTxtEquipado: { color: CORES_SABE.fundo },
+  btnAcaoTxtComprar: { color: CORES_SYMBIUS.fundo },
+  btnAcaoTxtDesabilitado: { color: CORES_SYMBIUS.textoSec },
+  btnAcaoTxtEquipar: { color: CORES_SYMBIUS.texto },
+  btnAcaoTxtEquipado: { color: CORES_SYMBIUS.fundo },
 });

@@ -20,38 +20,38 @@ import {
 
 // ── Fonte Poppins ──
 import { F } from '../constants/theme';
-import { CORES_SABE, CORES_SABE_DARK } from './Boasvindas';
+import { CORES_SYMBIUS, CORES_SYMBIUS_DARK } from './Boasvindas';
 
-// ── Shadow de paleta sabé (mesma técnica de Match/Perfil/Configuracoes/
+// ── Shadow de paleta Symbius (mesma técnica de Match/Perfil/Configuracoes/
 // Calendario): a lógica desta tela usa CORES.xxx (import direto, fixo
 // claro) e C.xxx (via useAppSettings, muda com modoEscuro). ──
 const CORES = {
-  azulEscuro: CORES_SABE.verdeEscuro,
-  azulCeu:    CORES_SABE.azul,
-  branco:     CORES_SABE.fundoCard,
-  cinzaClaro: CORES_SABE.borda,
-  textoSec:   CORES_SABE.textoSec,
-  amarelo:    CORES_SABE.laranja,
-  laranja:    CORES_SABE.laranjaTexto,
-  verde:      CORES_SABE.sucesso,
-  rosa:       CORES_SABE.laranjaTexto,
+  azulEscuro: CORES_SYMBIUS.verdeEscuro,
+  azulCeu:    CORES_SYMBIUS.azul,
+  branco:     CORES_SYMBIUS.fundoCard,
+  cinzaClaro: CORES_SYMBIUS.borda,
+  textoSec:   CORES_SYMBIUS.textoSec,
+  amarelo:    CORES_SYMBIUS.laranja,
+  laranja:    CORES_SYMBIUS.laranjaTexto,
+  verde:      CORES_SYMBIUS.sucesso,
+  rosa:       CORES_SYMBIUS.laranjaTexto,
   vermelho:   '#D64545',
 };
 const CORES_LOCAL_CLARO = {
-  azulEscuro: CORES_SABE.verdeEscuro,
-  branco:     CORES_SABE.fundoCard,
-  cinzaClaro: CORES_SABE.borda,
-  fundo:      CORES_SABE.fundo,
-  textoSec:   CORES_SABE.textoSec,
-  amarelo:    CORES_SABE.laranja,
+  azulEscuro: CORES_SYMBIUS.verdeEscuro,
+  branco:     CORES_SYMBIUS.fundoCard,
+  cinzaClaro: CORES_SYMBIUS.borda,
+  fundo:      CORES_SYMBIUS.fundo,
+  textoSec:   CORES_SYMBIUS.textoSec,
+  amarelo:    CORES_SYMBIUS.laranja,
 };
 const CORES_LOCAL_ESCURO = {
-  azulEscuro: CORES_SABE.verdeMedio,
-  branco:     CORES_SABE_DARK.fundoCard,
-  cinzaClaro: CORES_SABE_DARK.fundoSuave,
-  fundo:      CORES_SABE_DARK.fundo,
-  textoSec:   CORES_SABE_DARK.textoSec,
-  amarelo:    CORES_SABE.laranja,
+  azulEscuro: CORES_SYMBIUS.verdeMedio,
+  branco:     CORES_SYMBIUS_DARK.fundoCard,
+  cinzaClaro: CORES_SYMBIUS_DARK.fundoSuave,
+  fundo:      CORES_SYMBIUS_DARK.fundo,
+  textoSec:   CORES_SYMBIUS_DARK.textoSec,
+  amarelo:    CORES_SYMBIUS.laranja,
 };
 
 const CAT_LABELS: Record<string, string> = {
@@ -121,8 +121,11 @@ export default function Admin({ navigation, route }: any) {
   const { width: winW } = useWindowDimensions();
   const uid = route?.params?.uid;
 
-  const { cores: _coresContexto, fonteScale, modoEscuro } = useAppSettings();
-  const C = modoEscuro ? CORES_LOCAL_ESCURO : CORES_LOCAL_CLARO;
+  const { cores: _coresContexto, fonteScale, modoEscuro: _modoEscuroReal } = useAppSettings();
+  // Paleta Symbius ainda não tem modo escuro definitivo (pendente) — fixado
+  // em claro por ora, independente do toggle real de Modo Escuro.
+  const modoEscuro = false;
+  const C = CORES_LOCAL_CLARO;
   const fs = (size: number) => size * fonteScale;
 
   const [posts,    setPosts]    = useState<any[]>([]);
@@ -298,7 +301,7 @@ export default function Admin({ navigation, route }: any) {
   const chartConfigBase = useMemo(() => ({
     backgroundColor: C.branco, backgroundGradientFrom: C.branco, backgroundGradientTo: C.branco,
     decimalPlaces: 0,
-    color: (opacity = 1) => `rgba(232,163,61,${opacity})`, // laranja sabé — linha do gráfico
+    color: (opacity = 1) => `rgba(232,163,61,${opacity})`, // laranja Symbius — linha do gráfico
     labelColor: (opacity = 1) => modoEscuro ? `rgba(180,190,200,${opacity})` : `rgba(141,153,174,${opacity})`,
     style: { borderRadius: 16 },
     propsForDots: { r: '5', strokeWidth: '2', stroke: CORES.rosa },

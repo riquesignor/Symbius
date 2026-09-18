@@ -3,13 +3,13 @@ import {
   Modal, StyleSheet, Text, View, TouchableOpacity, Animated,
 } from 'react-native';
 import { LevelUpInfo } from '../services/gamificationService';
-import { CORES_SABE } from '../screens/Boasvindas';
-import { NIVEL_GRADIENTE, NIVEL_NUMERO, animalPorNome } from '../constants/temaSabe';
+import { CORES_SYMBIUS } from '../screens/Boasvindas';
+import { NIVEL_GRADIENTE, NIVEL_NUMERO, animalPorNome } from '../constants/temaSymbius';
 import NivelUpFundoGradiente from './NivelUpFundoGradiente';
 import { F } from '../constants/theme';
 
 // ══════════════════════════════════════════════════════════════════════
-// Modal de "novo nível alcançado", no estilo sabé: tela cheia, gradiente
+// Modal de "novo nível alcançado", no estilo Symbius: tela cheia, gradiente
 // radial exclusivo de cada animal (extraído pixel-a-pixel do mockup).
 // Reaproveita o mesmo LevelUpInfo já calculado pelo gamificationService
 // (nada de dado fake) — só a casca visual mudou.
@@ -20,7 +20,7 @@ interface Props {
   onFechar: () => void;
 }
 
-export default function NivelUpSabeModal({ info, onFechar }: Props) {
+export default function NivelUpSymbiusModal({ info, onFechar }: Props) {
   const scale   = useRef(new Animated.Value(0.85)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -80,7 +80,7 @@ const styles = StyleSheet.create({
   },
   btn: {
     marginTop: 32, width: '100%', paddingVertical: 15, borderRadius: 26,
-    backgroundColor: CORES_SABE.creme, alignItems: 'center',
+    backgroundColor: CORES_SYMBIUS.creme, alignItems: 'center',
   },
   btnTxt: { fontSize: 15, fontFamily: F.bold },
 });

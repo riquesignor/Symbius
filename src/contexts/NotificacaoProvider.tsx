@@ -167,8 +167,8 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
           }
         }
         if (Platform.OS === 'android') {
-          await Notifications.setNotificationChannelAsync('jumo', {
-            name: 'JUMO',
+          await Notifications.setNotificationChannelAsync('symbius', {
+            name: 'Symbius',
             importance: Notifications.AndroidImportance.HIGH,
             vibrationPattern: [0, 250, 250, 250],
             lightColor: '#E51C6A',

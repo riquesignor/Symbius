@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 
 import { F } from '../constants/theme';
+import { TEMA_SYMBIUS } from '../constants/temaSymbius';
 
 // ── Dados de contato (fonte: escolas.anchieta.br/contato) ──
 const CONTATOS = [
@@ -38,7 +39,7 @@ const CONTATOS = [
     descricao: 'Ouvidoria e atendimento geral',
     icone: 'mail-outline' as const,
     tipo: 'email',
-    url: 'mailto:ouvidoria@anchieta.br?subject=Contato%20via%20App%20JUMO',
+    url: 'mailto:ouvidoria@anchieta.br?subject=Contato%20via%20App%20Symbius',
     cor: '#E51C6A',
   },
   {
@@ -151,7 +152,10 @@ function ContatoCard({
 // ── Tela principal ──
 export default function Contato({ navigation }: any) {
   const insets  = useSafeAreaInsets();
-  const { cores: C, fonteScale } = useAppSettings();
+  const { fonteScale } = useAppSettings();
+  // Paleta Symbius fixa (claro) — mesma técnica de shadow usada em
+  // Match/Perfil/Configuracoes/Calendario/Admin/FeedResumos.
+  const C = TEMA_SYMBIUS;
   const fs = (n: number) => Math.round(n * fonteScale);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;

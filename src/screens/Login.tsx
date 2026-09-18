@@ -8,7 +8,7 @@ import { db, auth } from '../config/firebaseConfig';
 import { signOut, sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth';
 import { collection, query, where, getDocs, updateDoc, doc, getDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CORES_SABE } from './Boasvindas';
+import { CORES_SYMBIUS } from './Boasvindas';
 import { F } from '../constants/theme';
 
 export default function Login({ navigation }: any) {
@@ -112,7 +112,7 @@ export default function Login({ navigation }: any) {
 
           {/* LOGO */}
           <View style={styles.logoWrap}>
-            <Text style={styles.logoText}>sabé</Text>
+            <Text style={styles.logoText}>Symbius</Text>
             <Text style={styles.logoSlogan}>aprenda junto</Text>
           </View>
 
@@ -124,7 +124,7 @@ export default function Login({ navigation }: any) {
             <TextInput
               style={styles.input}
               placeholder="Digite aqui..."
-              placeholderTextColor={CORES_SABE.textoTerciario}
+              placeholderTextColor={CORES_SYMBIUS.textoTerciario}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
@@ -136,7 +136,7 @@ export default function Login({ navigation }: any) {
             <TextInput
               style={styles.input}
               placeholder="Digite aqui..."
-              placeholderTextColor={CORES_SABE.textoTerciario}
+              placeholderTextColor={CORES_SYMBIUS.textoTerciario}
               value={senha}
               onChangeText={setSenha}
               secureTextEntry={secureText}
@@ -154,7 +154,7 @@ export default function Login({ navigation }: any) {
               disabled={loading || !email || !senha}
             >
               {loading
-                ? <ActivityIndicator color={CORES_SABE.creme} />
+                ? <ActivityIndicator color={CORES_SYMBIUS.creme} />
                 : <Text style={styles.btnEntrarText}>Entrar</Text>
               }
             </TouchableOpacity>
@@ -187,7 +187,7 @@ export default function Login({ navigation }: any) {
             <TextInput
               style={styles.input}
               placeholder="seu.email@escola.com"
-              placeholderTextColor={CORES_SABE.textoTerciario}
+              placeholderTextColor={CORES_SYMBIUS.textoTerciario}
               value={emailReset}
               onChangeText={setEmailReset}
               keyboardType="email-address"
@@ -196,7 +196,7 @@ export default function Login({ navigation }: any) {
 
             <View style={styles.modalBtns}>
               <TouchableOpacity 
-                style={[styles.modalBtn, { backgroundColor: CORES_SABE.fundoSuave }]}
+                style={[styles.modalBtn, { backgroundColor: CORES_SYMBIUS.fundoSuave }]}
                 onPress={() => {
                   setModalReset(false);
                   setEmailReset('');
@@ -206,14 +206,14 @@ export default function Login({ navigation }: any) {
               </TouchableOpacity>
               
               <TouchableOpacity 
-                style={[styles.modalBtn, { backgroundColor: CORES_SABE.verdeEscuro }]}
+                style={[styles.modalBtn, { backgroundColor: CORES_SYMBIUS.verdeEscuro }]}
                 onPress={handleResetEmail}
                 disabled={loadingReset}
               >
                 {loadingReset ? (
-                  <ActivityIndicator color={CORES_SABE.creme} size="small" />
+                  <ActivityIndicator color={CORES_SYMBIUS.creme} size="small" />
                 ) : (
-                  <Text style={[styles.modalBtnText, { color: CORES_SABE.creme }]}>Enviar</Text>
+                  <Text style={[styles.modalBtnText, { color: CORES_SYMBIUS.creme }]}>Enviar</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -225,26 +225,26 @@ export default function Login({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: CORES_SABE.fundo },
+  container: { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
   scroll:    { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40, paddingHorizontal: 28 },
 
   // TOAST
   toast: {
     position: 'absolute', top: 20, alignSelf: 'center',
-    backgroundColor: CORES_SABE.verdeEscuro, paddingVertical: 12, paddingHorizontal: 24,
+    backgroundColor: CORES_SYMBIUS.verdeEscuro, paddingVertical: 12, paddingHorizontal: 24,
     borderRadius: 24, zIndex: 999, elevation: 5,
   },
-  toastText: { color: CORES_SABE.creme, fontFamily: F.bold, fontSize: 14 },
+  toastText: { color: CORES_SYMBIUS.creme, fontFamily: F.bold, fontSize: 14 },
 
   // LOGO
   logoWrap: { marginBottom: 32, alignItems: 'center' },
-  logoText:  { fontSize: 40, fontFamily: F.bold, letterSpacing: -0.5, color: CORES_SABE.verdeEscuro },
-  logoSlogan: { fontSize: 13, color: CORES_SABE.textoSec, fontFamily: F.semibold, marginTop: 2 },
+  logoText:  { fontSize: 40, fontFamily: F.bold, letterSpacing: -0.5, color: CORES_SYMBIUS.verdeEscuro },
+  logoSlogan: { fontSize: 13, color: CORES_SYMBIUS.textoSec, fontFamily: F.semibold, marginTop: 2 },
 
   // CARD
   card: {
     width: '100%',
-    backgroundColor: CORES_SABE.fundoSuave,
+    backgroundColor: CORES_SYMBIUS.fundoSuave,
     borderRadius: 32,
     padding: 32,
     shadowColor: '#000',
@@ -255,50 +255,50 @@ const styles = StyleSheet.create({
   },
 
   // FIELDS
-  fieldLabel: { fontSize: 15, fontFamily: F.bold, color: CORES_SABE.texto, marginBottom: 8 },
+  fieldLabel: { fontSize: 15, fontFamily: F.bold, color: CORES_SYMBIUS.texto, marginBottom: 8 },
   input: {
-    backgroundColor: CORES_SABE.fundoCard,
+    backgroundColor: CORES_SYMBIUS.fundoCard,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: CORES_SABE.borda,
+    borderColor: CORES_SYMBIUS.borda,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 15,
-    color: CORES_SABE.texto,
+    color: CORES_SYMBIUS.texto,
     marginBottom: 18,
   },
 
   // ESQUECEU
-  forgotText: { fontSize: 13, color: CORES_SABE.textoSec, marginBottom: 20, textAlign: 'right' },
+  forgotText: { fontSize: 13, color: CORES_SYMBIUS.textoSec, marginBottom: 20, textAlign: 'right' },
 
   // BOTÃO ENTRAR
   btnEntrar: {
-    backgroundColor: CORES_SABE.verdeEscuro,
+    backgroundColor: CORES_SYMBIUS.verdeEscuro,
     borderRadius: 18,
     paddingVertical: 16,
     alignItems: 'center',
     marginBottom: 14,
     elevation: 3,
-    shadowColor: CORES_SABE.verdeEscuro,
+    shadowColor: CORES_SYMBIUS.verdeEscuro,
     shadowOpacity: 0.15,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
   },
-  btnEntrarText: { color: CORES_SABE.creme, fontSize: 16, fontFamily: F.bold, letterSpacing: 0.5 },
+  btnEntrarText: { color: CORES_SYMBIUS.creme, fontSize: 16, fontFamily: F.bold, letterSpacing: 0.5 },
 
   // RODAPÉ
   footer: { alignItems: 'center', marginTop: 16, gap: 12 },
-  footerText: { fontSize: 13, color: CORES_SABE.textoSec },
+  footerText: { fontSize: 13, color: CORES_SYMBIUS.textoSec },
   btnCriarConta: {
     width: '100%',
-    backgroundColor: CORES_SABE.fundoCard,
+    backgroundColor: CORES_SYMBIUS.fundoCard,
     borderRadius: 18,
     borderWidth: 2,
-    borderColor: CORES_SABE.verdeEscuro,
+    borderColor: CORES_SYMBIUS.verdeEscuro,
     paddingVertical: 14,
     alignItems: 'center',
   },
-  btnCriarContaText: { fontSize: 16, fontFamily: F.bold, color: CORES_SABE.verdeEscuro, letterSpacing: 0.5 },
+  btnCriarContaText: { fontSize: 16, fontFamily: F.bold, color: CORES_SYMBIUS.verdeEscuro, letterSpacing: 0.5 },
 
   // MODAL
   modalOverlay: {
@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
   modalBox: {
     width: '85%',
     maxWidth: 360,
-    backgroundColor: CORES_SABE.fundoCard,
+    backgroundColor: CORES_SYMBIUS.fundoCard,
     borderRadius: 16,
     padding: 24,
     elevation: 5,
@@ -318,12 +318,12 @@ const styles = StyleSheet.create({
   modalTitulo: {
     fontSize: 18,
     fontFamily: F.bold,
-    color: CORES_SABE.texto,
+    color: CORES_SYMBIUS.texto,
     marginBottom: 6,
   },
   modalSub: {
     fontSize: 13,
-    color: CORES_SABE.textoSec,
+    color: CORES_SYMBIUS.textoSec,
     marginBottom: 16,
   },
   modalBtns: {
@@ -340,6 +340,6 @@ const styles = StyleSheet.create({
   modalBtnText: {
     fontSize: 14,
     fontFamily: F.bold,
-    color: CORES_SABE.texto,
+    color: CORES_SYMBIUS.texto,
   },
 });

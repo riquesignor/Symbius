@@ -16,14 +16,14 @@ import { useAppSettings } from '../contexts/AppSettingsContext';
 import { calcularFaseCoruja, calcularProgressoXp } from '../utils/gamification';
 
 import { F } from '../constants/theme';
-import { TEMA_SABE as CORES, CORES_SABE } from '../constants/temaSabe';
-import SabeTabBar from '../components/SabeTabBar';
+import { TEMA_SYMBIUS as CORES, CORES_SYMBIUS } from '../constants/temaSymbius';
+import SymbiusTabBar from '../components/SymbiusTabBar';
 
 // ════════════════════════════════════════════════════════════════════════
 //  ÁREAS DE CONHECIMENTO
 // ════════════════════════════════════════════════════════════════════════
 // Cores fixas (não seguem o tema ativo) — o radar de matérias precisa das 5
-// sempre distintas entre si, então ficam desacopladas de CORES/TEMA_SABE.
+// sempre distintas entre si, então ficam desacopladas de CORES/TEMA_SYMBIUS.
 const AREAS = [
   { key: 'exatas',     label: 'Exatas',      cor: '#3498db' },
   { key: 'humanas',    label: 'Humanas',     cor: '#e67e22' },
@@ -166,69 +166,69 @@ const RadarChart = ({ scores, size, modoEscuro }: any) => {
 
 
 
-// ── Estilos do novo cabeçalho/hero do Perfil (pixel-fiel ao mockup sabé) ──
+// ── Estilos do novo cabeçalho/hero do Perfil (pixel-fiel ao mockup Symbius) ──
 const heroStyles = StyleSheet.create({
   topHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingBottom: 8,
   },
-  topHeaderTitulo: { fontFamily: F.bold, color: CORES_SABE.texto },
+  topHeaderTitulo: { fontFamily: F.bold, color: CORES_SYMBIUS.texto },
 
   heroWrap: { alignItems: 'center', paddingHorizontal: 24, paddingTop: 8, paddingBottom: 4 },
   avatarWrap: { position: 'relative' },
   avatar: { width: 88, height: 88, borderRadius: 44 },
   avatarPlaceholder: {
-    backgroundColor: CORES_SABE.fundoSuave, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: CORES_SYMBIUS.fundoSuave, justifyContent: 'center', alignItems: 'center',
   },
   avatarBadge: {
     position: 'absolute', bottom: -4, right: -4, width: 32, height: 32, borderRadius: 16,
-    backgroundColor: CORES_SABE.fundoSuave, borderWidth: 2, borderColor: CORES_SABE.fundo,
+    backgroundColor: CORES_SYMBIUS.fundoSuave, borderWidth: 2, borderColor: CORES_SYMBIUS.fundo,
     justifyContent: 'center', alignItems: 'center',
   },
   fotoEditBtn: {
     position: 'absolute', top: -2, right: -2, width: 22, height: 22, borderRadius: 11,
-    backgroundColor: CORES_SABE.verdeEscuro, justifyContent: 'center', alignItems: 'center',
-    borderWidth: 2, borderColor: CORES_SABE.fundo,
+    backgroundColor: CORES_SYMBIUS.verdeEscuro, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: CORES_SYMBIUS.fundo,
   },
 
-  nome: { fontFamily: F.black, color: CORES_SABE.texto, marginTop: 14, textAlign: 'center' },
-  handle: { fontFamily: F.medium, color: CORES_SABE.textoSec, marginTop: 2 },
+  nome: { fontFamily: F.black, color: CORES_SYMBIUS.texto, marginTop: 14, textAlign: 'center' },
+  handle: { fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 2 },
 
   levelPill: {
     flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10,
-    backgroundColor: CORES_SABE.fundoSuave, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14,
+    backgroundColor: CORES_SYMBIUS.fundoSuave, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14,
   },
-  levelPillTxt: { fontFamily: F.bold, color: CORES_SABE.texto },
+  levelPillTxt: { fontFamily: F.bold, color: CORES_SYMBIUS.texto },
 
   xpBarWrap: { width: '100%', maxWidth: 220, marginTop: 12 },
-  xpBarLabel: { fontFamily: F.medium, color: CORES_SABE.textoSec, marginBottom: 6, textAlign: 'center' },
-  xpBarBg: { width: '100%', height: 6, borderRadius: 3, backgroundColor: CORES_SABE.borda, overflow: 'hidden' },
-  xpBarFill: { height: 6, borderRadius: 3, backgroundColor: CORES_SABE.verdeEscuro },
+  xpBarLabel: { fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginBottom: 6, textAlign: 'center' },
+  xpBarBg: { width: '100%', height: 6, borderRadius: 3, backgroundColor: CORES_SYMBIUS.borda, overflow: 'hidden' },
+  xpBarFill: { height: 6, borderRadius: 3, backgroundColor: CORES_SYMBIUS.verdeEscuro },
 
   papelTabs: {
-    flexDirection: 'row', gap: 6, backgroundColor: CORES_SABE.fundoSuave,
+    flexDirection: 'row', gap: 6, backgroundColor: CORES_SYMBIUS.fundoSuave,
     padding: 4, borderRadius: 14, marginTop: 18, width: '100%', maxWidth: 260,
   },
   papelTab: { flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center' },
-  papelTabAtivo: { backgroundColor: CORES_SABE.verdeEscuro },
-  papelTabTxt: { fontFamily: F.semibold, color: CORES_SABE.textoSec },
-  papelTabTxtAtivo: { fontFamily: F.bold, color: CORES_SABE.creme },
+  papelTabAtivo: { backgroundColor: CORES_SYMBIUS.verdeEscuro },
+  papelTabTxt: { fontFamily: F.semibold, color: CORES_SYMBIUS.textoSec },
+  papelTabTxtAtivo: { fontFamily: F.bold, color: CORES_SYMBIUS.creme },
 
   conquistasRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 22, paddingHorizontal: 8 },
   conquistaItem: { alignItems: 'center', gap: 6, flex: 1 },
   conquistaCirculo: {
-    width: 52, height: 52, borderRadius: 26, backgroundColor: CORES_SABE.fundoSuave,
+    width: 52, height: 52, borderRadius: 26, backgroundColor: CORES_SYMBIUS.fundoSuave,
     justifyContent: 'center', alignItems: 'center',
   },
-  conquistaNum: { fontFamily: F.bold, color: CORES_SABE.texto },
-  conquistaLabel: { fontFamily: F.medium, color: CORES_SABE.textoSec, textAlign: 'center' },
+  conquistaNum: { fontFamily: F.bold, color: CORES_SYMBIUS.texto },
+  conquistaLabel: { fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, textAlign: 'center' },
 
   btnEditarPerfil: {
     width: '100%', marginTop: 20, paddingVertical: 14, borderRadius: 16,
-    backgroundColor: CORES_SABE.fundoSuave, borderWidth: 1, borderColor: CORES_SABE.borda2,
+    backgroundColor: CORES_SYMBIUS.fundoSuave, borderWidth: 1, borderColor: CORES_SYMBIUS.borda2,
     alignItems: 'center',
   },
-  btnEditarPerfilTxt: { fontFamily: F.bold, color: CORES_SABE.texto },
+  btnEditarPerfilTxt: { fontFamily: F.bold, color: CORES_SYMBIUS.texto },
 });
 
 export default function Perfil({ navigation, route }: any) {
@@ -236,9 +236,9 @@ export default function Perfil({ navigation, route }: any) {
   const uid = route?.params?.uid;
 
   const { fonteScale } = useAppSettings();
-  // ── TELA DE TESTE (Sabé): paleta verde fixa, ignora o tema real do usuário.
-  const modoEscuro = false; // paleta sabé agora é modo claro
-  const C = CORES; // CORES já é TEMA_SABE (import aliasado acima)
+  // ── TELA DE TESTE (Symbius): paleta verde fixa, ignora o tema real do usuário.
+  const modoEscuro = false; // paleta Symbius agora é modo claro
+  const C = CORES; // CORES já é TEMA_SYMBIUS (import aliasado acima)
   const fs = (size: number) => size * fonteScale;
 
   const [usuario,      setUsuario]      = useState<any>(null);
@@ -419,7 +419,7 @@ export default function Perfil({ navigation, route }: any) {
             style={[styles.btnMenu, { backgroundColor: C.branco }]}
             onPress={() => navigation.navigate('Leaderboard', { uid })}
           >
-            <FontAwesome5 name="trophy" size={15} color={CORES_SABE.laranja} />
+            <FontAwesome5 name="trophy" size={15} color={CORES_SYMBIUS.laranja} />
           </TouchableOpacity>
         </View>
       </View>
@@ -436,7 +436,7 @@ export default function Perfil({ navigation, route }: any) {
                 <Image source={{ uri: usuario.foto }} style={heroStyles.avatar} />
               ) : (
                 <View style={[heroStyles.avatar, heroStyles.avatarPlaceholder]}>
-                  <Text style={{ fontSize: fs(34), color: CORES_SABE.textoSec }}>
+                  <Text style={{ fontSize: fs(34), color: CORES_SYMBIUS.textoSec }}>
                     {usuario.nome_completo?.charAt(0)?.toUpperCase() || '?'}
                   </Text>
                 </View>
@@ -445,7 +445,7 @@ export default function Perfil({ navigation, route }: any) {
                 <Text style={{ fontSize: 16 }}>{calcularFaseCoruja(usuario.xp_total || 0).icone}</Text>
               </View>
               <TouchableOpacity style={heroStyles.fotoEditBtn} activeOpacity={0.8}>
-                <Ionicons name="camera" size={11} color={CORES_SABE.creme} />
+                <Ionicons name="camera" size={11} color={CORES_SYMBIUS.creme} />
               </TouchableOpacity>
             </View>
 
@@ -1085,7 +1085,7 @@ export default function Perfil({ navigation, route }: any) {
         </View>
       </Modal>
 
-      <SabeTabBar ativa="perfil" navigation={navigation} uid={uid} />
+      <SymbiusTabBar ativa="perfil" navigation={navigation} uid={uid} />
     </SafeAreaView>
   );
 }

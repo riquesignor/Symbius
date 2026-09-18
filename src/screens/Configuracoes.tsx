@@ -14,36 +14,36 @@
   import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 
   import { F } from '../constants/theme';
-  import { CORES_SABE, CORES_SABE_DARK } from './Boasvindas';
+  import { CORES_SYMBIUS, CORES_SYMBIUS_DARK } from './Boasvindas';
 
   // ── Shadow de paleta: a lógica desta tela (Section/SettingRow com C.xxx /
   // cores.xxx) foi escrita em cima de CORES/CORES_DARK do theme.ts antigo.
   // Em vez de reescrever tudo, sombreamos esses dois nomes localmente com a
-  // paleta sabé — mesma técnica usada em Match.tsx/Perfil.tsx. ──
+  // paleta Symbius — mesma técnica usada em Match.tsx/Perfil.tsx. ──
   const CORES = {
-    azulEscuro: CORES_SABE.verdeEscuro,
-    branco:     CORES_SABE.fundoCard,
-    fundo:      CORES_SABE.fundo,
-    cinzaClaro: CORES_SABE.borda,
-    textoSec:   CORES_SABE.textoSec,
-    preto:      CORES_SABE.texto,
-    amarelo:    CORES_SABE.laranja,
-    laranja:    CORES_SABE.laranjaTexto,
-    verde:      CORES_SABE.sucesso,
+    azulEscuro: CORES_SYMBIUS.verdeEscuro,
+    branco:     CORES_SYMBIUS.fundoCard,
+    fundo:      CORES_SYMBIUS.fundo,
+    cinzaClaro: CORES_SYMBIUS.borda,
+    textoSec:   CORES_SYMBIUS.textoSec,
+    preto:      CORES_SYMBIUS.texto,
+    amarelo:    CORES_SYMBIUS.laranja,
+    laranja:    CORES_SYMBIUS.laranjaTexto,
+    verde:      CORES_SYMBIUS.sucesso,
     rosa:       '#C9667E',
     roxo:       '#9B7EBD',
     vermelho:   '#D64545',
   };
   const CORES_DARK = {
-    azulEscuro: CORES_SABE.verdeMedio,
-    branco:     CORES_SABE_DARK.fundoCard,
-    fundo:      CORES_SABE_DARK.fundo,
-    cinzaClaro: CORES_SABE_DARK.fundoSuave,
-    textoSec:   CORES_SABE_DARK.textoSec,
-    preto:      CORES_SABE_DARK.texto,
-    amarelo:    CORES_SABE.laranja,
-    laranja:    CORES_SABE.laranjaTexto,
-    verde:      CORES_SABE.sucesso,
+    azulEscuro: CORES_SYMBIUS.verdeMedio,
+    branco:     CORES_SYMBIUS_DARK.fundoCard,
+    fundo:      CORES_SYMBIUS_DARK.fundo,
+    cinzaClaro: CORES_SYMBIUS_DARK.fundoSuave,
+    textoSec:   CORES_SYMBIUS_DARK.textoSec,
+    preto:      CORES_SYMBIUS_DARK.texto,
+    amarelo:    CORES_SYMBIUS.laranja,
+    laranja:    CORES_SYMBIUS.laranjaTexto,
+    verde:      CORES_SYMBIUS.sucesso,
     rosa:       '#D98099',
     roxo:       '#B29BCB',
     vermelho:   '#E06666',
@@ -118,8 +118,10 @@
     const [notifDescartadas, setNotifDescartadas] = useState<Set<string>>(new Set());
     const [modalHistorico, setModalHistorico] = useState(!!route?.params?.abrirNotificacoes);
 
-    // Cores dinâmicas baseadas no modo
-    const C = modoEscuro ? CORES_DARK : CORES;
+    // Cores dinâmicas baseadas no modo — paleta Symbius ainda não tem modo
+    // escuro definitivo (pendente), fixado em claro por ora. O toggle real
+    // (modoEscuro/toggleModoEscuro) continua funcionando pras telas antigas.
+    const C = CORES;
 
     // Tamanho de fonte multiplier
     const fonteScale = tamanhoFonte === 'Pequeno' ? 0.9 : tamanhoFonte === 'Grande' ? 1.15 : 1;
@@ -380,12 +382,12 @@
     };
 
     const enviarFeedback = () => {
-      abrirURL('mailto:contato@anchieta.br?subject=Feedback JUMO&body=Olá, gostaria de enviar um feedback sobre o app...');
+      abrirURL('mailto:contato@anchieta.br?subject=Feedback Symbius&body=Olá, gostaria de enviar um feedback sobre o app...');
     };
 
     // ════ ROW COMPONENT ════
     const SettingRow = ({ icon, iconCor, label, descricao, toggle, onToggle, valor, onPress, perigo, ultimo }: any) => {
-      const cores = modoEscuro ? CORES_DARK : CORES;
+      const cores = CORES;
       return (
         <TouchableOpacity
           style={[
@@ -433,7 +435,7 @@
 
     // ════ SECTION COMPONENT ════
     const Section = ({ eyebrow, titulo, children }: any) => {
-      const cores = modoEscuro ? CORES_DARK : CORES;
+      const cores = CORES;
       return (
         <View style={styles.section}>
           <Text style={[styles.sectionEyebrow, { color: cores.rosa, fontSize: 9 * fonteScale }]}>
@@ -482,7 +484,7 @@
             <Text style={styles.headerTitulo}>Configurações</Text>
           </View>
           <TouchableOpacity style={styles.headerIconWrap} onPress={() => toggleModoEscuro(!modoEscuro)}>
-            <Ionicons name={modoEscuro ? 'moon' : 'sunny'} size={18} color={CORES.amarelo} />
+            <Ionicons name="sunny" size={18} color={CORES.amarelo} />
           </TouchableOpacity>
         </View>
 
@@ -674,8 +676,8 @@
           {/* RODAPÉ */}
           <FadeInView delay={600}>
             <View style={styles.rodape}>
-              <Text style={[styles.rodapeJumo, { color: C.azulEscuro }]}>
-                JU<Text style={{ color: C.rosa }}>MO</Text>
+              <Text style={[styles.rodapeSymbius, { color: C.azulEscuro }]}>
+                Symbi<Text style={{ color: C.rosa }}>us</Text>
               </Text>
               <Text style={[styles.rodapeTxt, { color: C.textoSec }]}>
                 feito com 💛 pela Anchieta
@@ -997,7 +999,7 @@
 
     // RODAPE
     rodape:              { alignItems: 'center', paddingVertical: 24, gap: 4 },
-    rodapeJumo:          { fontFamily: F.black, fontSize: 24, letterSpacing: -0.5 },
+    rodapeSymbius:          { fontFamily: F.black, fontSize: 24, letterSpacing: -0.5 },
     rodapeTxt:           { fontFamily: F.medium, fontSize: 11 },
 
     // MODAIS

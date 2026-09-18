@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet } from 'react-native';
 import Svg, { Defs, RadialGradient as SvgRadialGradient, Stop, Rect } from 'react-native-svg';
 import { Animal } from '../utils/gamification';
-import { NIVEL_GRADIENTE } from '../constants/temaSabe';
+import { NIVEL_GRADIENTE } from '../constants/temaSymbius';
 
 // ── Fundo com gradiente radial "circle at 50% 35%" — um por animal ──────
 // Equivalente ao CSS `radial-gradient(circle at 50% 35%, c1, c2 75%)` do

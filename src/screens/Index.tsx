@@ -17,21 +17,22 @@ import { calcularNivel, calcularProgressoXp } from '../utils/gamification';
 import { awardDailyCheckIn, CheckInResult, LevelUpInfo } from '../services/gamificationService';
 import { useNotificacao } from '../contexts/NotificacaoProvider';
 import { F } from '../constants/theme';
-import { CORES_SABE } from './Boasvindas';
-import NivelUpSabeModal from '../components/NivelUpSabeModal';
-import SabeTabBar from '../components/SabeTabBar';
+import { CORES_SYMBIUS } from './Boasvindas';
+import NivelUpSymbiusModal from '../components/NivelUpSymbiusModal';
+import SymbiusTabBar from '../components/SymbiusTabBar';
 
 // ══════════════════════════════════════════════════════════════════════
-// Home ("Sabé"), ligada ao back-end atual (mesma coleção `usuarios`, mesmo
+// Home ("Symbius"), ligada ao back-end atual (mesma coleção `usuarios`, mesmo
 // serviço de gamificação, mesma coleção `posts` do mural original). As
 // funções de mural/post/admin/notificações do Index original foram
-// restauradas aqui (com o visual sabé) a partir de Index.legado.tsx, que
+// restauradas aqui (com o visual Symbius) a partir de Index.legado.tsx, que
 // continua guardado como referência.
 // ══════════════════════════════════════════════════════════════════════
 
 const { width } = Dimensions.get('window');
 const PAD_H = 20;
 const DESTAQUE_W = (width - PAD_H * 2 - 12) / 2;
+const LARGURA_ANTIGO = (width - 44 - 12) / 2; // largura de card dentro do notifSheet (padding 22 de cada lado)
 
 const DIAS_VALIDADE_POST = 30;
 const HIT_SLOP_SM = { top: 10, bottom: 10, left: 10, right: 10 };
@@ -62,10 +63,10 @@ const postValido = (post: any) => {
 };
 
 const ACOES = [
-  { chave: 'match',   label: 'Encontrar match', icone: 'location-outline'    as const, cor: CORES_SABE.verdeMedio },
-  { chave: 'duvida',  label: 'Tirar dúvida',    icone: 'help-buoy-outline'   as const, cor: CORES_SABE.laranja },
-  { chave: 'resumo',  label: 'Postar resumo',   icone: 'book-outline'        as const, cor: CORES_SABE.azul },
-  { chave: 'ranking', label: 'Ver ranking',     icone: 'bar-chart-outline'   as const, cor: CORES_SABE.laranja },
+  { chave: 'match',   label: 'Encontrar match', icone: 'location-outline'    as const, cor: CORES_SYMBIUS.verdeMedio },
+  { chave: 'duvida',  label: 'Tirar dúvida',    icone: 'help-buoy-outline'   as const, cor: CORES_SYMBIUS.laranja },
+  { chave: 'resumo',  label: 'Postar resumo',   icone: 'book-outline'        as const, cor: CORES_SYMBIUS.azul },
+  { chave: 'ranking', label: 'Ver ranking',     icone: 'bar-chart-outline'   as const, cor: CORES_SYMBIUS.laranja },
 ];
 
 export default function Index({ navigation, route }: any) {
@@ -84,6 +85,9 @@ export default function Index({ navigation, route }: any) {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedPost, setSelectedPost] = useState<any>(null);
   const carrosselRef = useRef<FlatList>(null);
+
+  // ── Publicações antigas (fora da janela de 30 dias do mural) ──
+  const [modalAntigos, setModalAntigos] = useState(false);
 
   // ── Notificações (histórico aberto direto aqui, sem navegar pra Config) ──
   const [modalNotif, setModalNotif] = useState(false);
@@ -202,6 +206,10 @@ export default function Index({ navigation, route }: any) {
   }, [userData?.ultimo_checkin_ts]);
 
   const postsValidos = useMemo(() => posts.filter(postValido), [posts]);
+  // Posts fora da janela de 30 dias — hoje eram "perdidos pra sempre" no
+  // mural; ficam disponíveis aqui pra quem quiser ver via "Ver publicações
+  // antigas" (já vêm ordenados por data desc, mesma ordem de `posts`).
+  const postsAntigos = useMemo(() => posts.filter(p => !postValido(p)), [posts]);
 
   const postsFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -244,6 +252,13 @@ export default function Index({ navigation, route }: any) {
     } catch (e) {}
   };
 
+  // Fecha o modal de "publicações antigas" antes de abrir o post em cima,
+  // pra não ter dois Modal do RN abertos ao mesmo tempo.
+  const abrirPostAntigo = (post: any) => {
+    setModalAntigos(false);
+    visualizarPost(post);
+  };
+
   const irPara = (destino: string, params: any = {}) => {
     if (!uid) return;
     navigation.navigate(destino, { uid, ...params });
@@ -267,17 +282,20 @@ export default function Index({ navigation, route }: any) {
   };
 
   // ── Card de destaque (capa real + categoria como badge) ──
-  const renderDestaqueCard = (post: any) => {
+  // `opts` permite reusar o mesmo card no grid de "publicações antigas"
+  // (largura diferente + fecha o modal de antigas antes de abrir o post).
+  const renderDestaqueCard = (post: any, opts?: { largura?: number; onAbrir?: () => void }) => {
     const config = CATEGORIA_CONFIG[post.categoria] || CATEGORIA_CONFIG.avisos;
     const novo = ehNovo(post);
+    const largura = opts?.largura ?? DESTAQUE_W;
 
     return (
       <TouchableOpacity
         key={post.id}
-        style={[styles.destCard, { width: DESTAQUE_W }]}
+        style={[styles.destCard, { width: largura }]}
         onPress={() => modoEdicao && isSuperAdmin
           ? navigation.navigate('EditorPost', { postId: post.id, categoria: post.categoria, current: post })
-          : visualizarPost(post)
+          : (opts?.onAbrir ? opts.onAbrir() : visualizarPost(post))
         }
         activeOpacity={0.85}
         accessibilityRole="button"
@@ -285,7 +303,7 @@ export default function Index({ navigation, route }: any) {
       >
         {post.capa
           ? <Image source={{ uri: post.capa }} style={StyleSheet.absoluteFill} accessibilityElementsHidden importantForAccessibility="no" />
-          : <View style={[StyleSheet.absoluteFill, { backgroundColor: CORES_SABE.verdeEscuro }]} />
+          : <View style={[StyleSheet.absoluteFill, { backgroundColor: CORES_SYMBIUS.verdeEscuro }]} />
         }
         <LinearGradient
           colors={['rgba(31,61,43,0.05)', 'rgba(31,61,43,0.45)', 'rgba(20,35,25,0.90)']}
@@ -326,7 +344,7 @@ export default function Index({ navigation, route }: any) {
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, styles.centro]}>
-        <ActivityIndicator size="large" color={CORES_SABE.verdeEscuro} />
+        <ActivityIndicator size="large" color={CORES_SYMBIUS.verdeEscuro} />
       </SafeAreaView>
     );
   }
@@ -338,7 +356,7 @@ export default function Index({ navigation, route }: any) {
 
         {/* HEADER */}
         <View style={styles.topoMarca}>
-          <Text style={styles.marca}>sabé</Text>
+          <Text style={styles.marca}>Symbius</Text>
           <View style={styles.headerIcones}>
             {temPermissaoDeStaff && (
               <TouchableOpacity
@@ -349,7 +367,7 @@ export default function Index({ navigation, route }: any) {
                 accessibilityLabel={modoEdicao ? 'Desativar modo editor' : 'Ativar modo editor'}
                 accessibilityState={{ checked: modoEdicao }}
               >
-                <FontAwesome5 name="pen" size={11} color={modoEdicao ? CORES_SABE.creme : CORES_SABE.verdeEscuro} />
+                <FontAwesome5 name="pen" size={11} color={modoEdicao ? CORES_SYMBIUS.creme : CORES_SYMBIUS.verdeEscuro} />
               </TouchableOpacity>
             )}
             <TouchableOpacity
@@ -360,11 +378,11 @@ export default function Index({ navigation, route }: any) {
               accessibilityLabel="Notificações"
               accessibilityHint="Toque duplo para ver suas notificações"
             >
-              <Ionicons name="notifications-outline" size={20} color={CORES_SABE.texto} />
+              <Ionicons name="notifications-outline" size={20} color={CORES_SYMBIUS.texto} />
               {totalNotificacoesAtivas > 0 && <View style={styles.dotNotif} />}
             </TouchableOpacity>
             <TouchableOpacity onPress={() => irPara('Loja')} hitSlop={HIT_SLOP_SM} style={{ marginLeft: 14 }}>
-              <Ionicons name="bag-outline" size={20} color={CORES_SABE.texto} />
+              <Ionicons name="bag-outline" size={20} color={CORES_SYMBIUS.texto} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setMiniMenuAberto(true)}
@@ -374,7 +392,7 @@ export default function Index({ navigation, route }: any) {
               accessibilityLabel="Mais opções"
               accessibilityHint="Abre o menu com dúvidas, contato e admin"
             >
-              <Ionicons name="ellipsis-horizontal" size={20} color={CORES_SABE.texto} />
+              <Ionicons name="ellipsis-horizontal" size={20} color={CORES_SYMBIUS.texto} />
             </TouchableOpacity>
           </View>
         </View>
@@ -384,11 +402,11 @@ export default function Index({ navigation, route }: any) {
 
         {/* BUSCA */}
         <View style={styles.buscaWrap}>
-          <Ionicons name="search-outline" size={16} color={CORES_SABE.textoMuted} />
+          <Ionicons name="search-outline" size={16} color={CORES_SYMBIUS.textoMuted} />
           <TextInput
             style={styles.buscaInput}
             placeholder="Buscar posts, dúvidas, assuntos..."
-            placeholderTextColor={CORES_SABE.textoMuted}
+            placeholderTextColor={CORES_SYMBIUS.textoMuted}
             value={busca}
             onChangeText={setBusca}
             returnKeyType="search"
@@ -396,14 +414,14 @@ export default function Index({ navigation, route }: any) {
           />
           {busca.length > 0 && (
             <TouchableOpacity onPress={() => setBusca('')} hitSlop={HIT_SLOP_SM}>
-              <Ionicons name="close" size={16} color={CORES_SABE.textoMuted} />
+              <Ionicons name="close" size={16} color={CORES_SYMBIUS.textoMuted} />
             </TouchableOpacity>
           )}
         </View>
 
         {modoEdicao && (
           <View style={styles.alertEdicao} accessibilityRole="alert" accessibilityLabel="Modo editor ativado">
-            <Ionicons name="alert-circle" size={14} color={CORES_SABE.creme} />
+            <Ionicons name="alert-circle" size={14} color={CORES_SYMBIUS.creme} />
             <Text style={styles.txtEdicao}>MODO EDITOR ATIVADO</Text>
           </View>
         )}
@@ -422,7 +440,7 @@ export default function Index({ navigation, route }: any) {
                 hitSlop={HIT_SLOP_MD}
                 accessibilityLabel="Criar novo post"
               >
-                <MaterialIcons name="add" size={16} color={CORES_SABE.creme} />
+                <MaterialIcons name="add" size={16} color={CORES_SYMBIUS.creme} />
               </TouchableOpacity>
             )}
             <TouchableOpacity
@@ -432,7 +450,7 @@ export default function Index({ navigation, route }: any) {
               hitSlop={HIT_SLOP_MD}
               accessibilityLabel="Slide anterior"
             >
-              <Ionicons name="chevron-back" size={14} color={CORES_SABE.textoSec} />
+              <Ionicons name="chevron-back" size={14} color={CORES_SYMBIUS.textoSec} />
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.navDestBtn, styles.navDestBtnAtivo]}
@@ -441,7 +459,7 @@ export default function Index({ navigation, route }: any) {
               hitSlop={HIT_SLOP_MD}
               accessibilityLabel="Próximo slide"
             >
-              <Ionicons name="chevron-forward" size={14} color={CORES_SABE.creme} />
+              <Ionicons name="chevron-forward" size={14} color={CORES_SYMBIUS.creme} />
             </TouchableOpacity>
           </View>
         </View>
@@ -450,7 +468,7 @@ export default function Index({ navigation, route }: any) {
           <View style={{ marginBottom: 6 }}>
             {postsFiltrados.length === 0 ? (
               <View style={styles.destEmpty}>
-                <MaterialIcons name="search-off" size={30} color={CORES_SABE.borda2} />
+                <MaterialIcons name="search-off" size={30} color={CORES_SYMBIUS.borda2} />
                 <Text style={styles.destEmptyText}>Nenhum post encontrado para "{busca}"</Text>
               </View>
             ) : (
@@ -492,18 +510,32 @@ export default function Index({ navigation, route }: any) {
           </>
         ) : (
           <View style={styles.destEmpty}>
-            <Ionicons name="newspaper-outline" size={30} color={CORES_SABE.borda2} />
+            <Ionicons name="newspaper-outline" size={30} color={CORES_SYMBIUS.borda2} />
             <Text style={styles.destEmptyText}>Nenhum post recente.</Text>
             {modoEdicao && isSuperAdmin && (
               <TouchableOpacity
                 style={styles.btnPrimeiroPost}
                 onPress={() => navigation.navigate('EditorPost', { categoria: 'destaque' })}
               >
-                <MaterialIcons name="add" size={14} color={CORES_SABE.creme} />
+                <MaterialIcons name="add" size={14} color={CORES_SYMBIUS.creme} />
                 <Text style={styles.btnPrimeiroPostText}>Criar primeiro post</Text>
               </TouchableOpacity>
             )}
           </View>
+        )}
+
+        {busca.trim().length === 0 && postsAntigos.length > 0 && (
+          <TouchableOpacity
+            style={styles.btnVerAntigos}
+            onPress={() => setModalAntigos(true)}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`Ver publicações antigas, ${postsAntigos.length} no total`}
+          >
+            <Ionicons name="time-outline" size={14} color={CORES_SYMBIUS.laranjaTexto} />
+            <Text style={styles.btnVerAntigosTxt}>Ver publicações antigas ({postsAntigos.length})</Text>
+            <Ionicons name="chevron-forward" size={14} color={CORES_SYMBIUS.laranjaTexto} />
+          </TouchableOpacity>
         )}
 
         {/* AÇÕES RÁPIDAS */}
@@ -511,7 +543,7 @@ export default function Index({ navigation, route }: any) {
           {ACOES.map((a) => (
             <TouchableOpacity key={a.chave} style={styles.acaoCard} activeOpacity={0.85} onPress={() => handleAcao(a.chave)}>
               <View style={[styles.acaoIconeWrap, { backgroundColor: a.cor }]}>
-                <Ionicons name={a.icone} size={20} color={CORES_SABE.creme} />
+                <Ionicons name={a.icone} size={20} color={CORES_SYMBIUS.creme} />
               </View>
               <Text style={styles.acaoLabel}>{a.label}</Text>
             </TouchableOpacity>
@@ -553,7 +585,7 @@ export default function Index({ navigation, route }: any) {
               </Text>
             </View>
             {processandoCheckIn
-              ? <ActivityIndicator color={CORES_SABE.creme} />
+              ? <ActivityIndicator color={CORES_SYMBIUS.creme} />
               : (
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={styles.desafioXp}>+10 XP</Text>
@@ -566,8 +598,8 @@ export default function Index({ navigation, route }: any) {
 
       </ScrollView>
 
-      <SabeTabBar ativa="inicio" navigation={navigation} uid={uid} />
-      <NivelUpSabeModal info={levelUpInfo} onFechar={() => setLevelUpInfo(null)} />
+      <SymbiusTabBar ativa="inicio" navigation={navigation} uid={uid} />
+      <NivelUpSymbiusModal info={levelUpInfo} onFechar={() => setLevelUpInfo(null)} />
 
       {/* MODAL — leitura do post */}
       <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
@@ -577,7 +609,7 @@ export default function Index({ navigation, route }: any) {
               ? <Image source={{ uri: selectedPost.capa }} style={StyleSheet.absoluteFill} />
               : (
                 <View style={[StyleSheet.absoluteFill, styles.modalCoverVazia]}>
-                  <Text style={styles.modalMarca}>sabé</Text>
+                  <Text style={styles.modalMarca}>Symbius</Text>
                 </View>
               )
             }
@@ -600,7 +632,7 @@ export default function Index({ navigation, route }: any) {
               <View style={styles.modalMeta}>
                 <View style={styles.autorRow}>
                   <View style={styles.autorAvatar}>
-                    <MaterialIcons name="person" size={16} color={CORES_SABE.creme} />
+                    <MaterialIcons name="person" size={16} color={CORES_SYMBIUS.creme} />
                   </View>
                   <View>
                     <Text style={styles.autorNome}>{selectedPost?.autor || 'Gestão'}</Text>
@@ -608,7 +640,7 @@ export default function Index({ navigation, route }: any) {
                   </View>
                 </View>
                 <View style={styles.viewsPill}>
-                  <Ionicons name="eye" size={13} color={CORES_SABE.laranja} />
+                  <Ionicons name="eye" size={13} color={CORES_SYMBIUS.laranja} />
                   <Text style={styles.viewsText}>{selectedPost?.visualizacoes || 0} views</Text>
                 </View>
               </View>
@@ -635,7 +667,7 @@ export default function Index({ navigation, route }: any) {
 
             {totalNotificacoesAtivas === 0 ? (
               <View style={{ alignItems: 'center', paddingVertical: 36 }}>
-                <Ionicons name="notifications-off" size={36} color={CORES_SABE.borda2} />
+                <Ionicons name="notifications-off" size={36} color={CORES_SYMBIUS.borda2} />
                 <Text style={styles.notifVaziaTxt}>Nenhuma notificação</Text>
               </View>
             ) : (
@@ -652,8 +684,8 @@ export default function Index({ navigation, route }: any) {
                           navigation.navigate('Chat', { outroUid: item.outroUid, outroNome: item.outroNome });
                         }}
                       >
-                        <View style={[styles.notifIconWrap, { backgroundColor: CORES_SABE.laranjaTexto + '18' }]}>
-                          <Ionicons name="chatbubble-ellipses" size={16} color={CORES_SABE.laranjaTexto} />
+                        <View style={[styles.notifIconWrap, { backgroundColor: CORES_SYMBIUS.laranjaTexto + '18' }]}>
+                          <Ionicons name="chatbubble-ellipses" size={16} color={CORES_SYMBIUS.laranjaTexto} />
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.notifCardTitulo} numberOfLines={1}>{item.nome}</Text>
@@ -669,8 +701,8 @@ export default function Index({ navigation, route }: any) {
                     <Text style={[styles.notifGrupoLabel, { marginTop: notificacoesChat.length > 0 ? 12 : 0 }]}>AGENDA</Text>
                     {notificacoesAgenda.filter(n => !notifDescartadas.has(n.id)).map(item => (
                       <View key={item.id} style={styles.notifCard}>
-                        <View style={[styles.notifIconWrap, { backgroundColor: (item.tipo === 'lembrete_vencido' ? '#e74c3c' : CORES_SABE.laranja) + '18' }]}>
-                          <Ionicons name={item.icon} size={16} color={item.tipo === 'lembrete_vencido' ? '#e74c3c' : CORES_SABE.laranja} />
+                        <View style={[styles.notifIconWrap, { backgroundColor: (item.tipo === 'lembrete_vencido' ? '#e74c3c' : CORES_SYMBIUS.laranja) + '18' }]}>
+                          <Ionicons name={item.icon} size={16} color={item.tipo === 'lembrete_vencido' ? '#e74c3c' : CORES_SYMBIUS.laranja} />
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.notifCardTitulo} numberOfLines={1}>{item.titulo}</Text>
@@ -690,6 +722,44 @@ export default function Index({ navigation, route }: any) {
         </View>
       </Modal>
 
+      {/* MODAL — publicações antigas (fora da janela de 30 dias) */}
+      <Modal visible={modalAntigos} transparent animationType="slide" onRequestClose={() => setModalAntigos(false)}>
+        <View style={styles.notifOverlay}>
+          <View style={[styles.notifSheet, { maxHeight: '85%' }]}>
+            <View style={styles.notifHandle} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.secaoEyebrow}>MURAL</Text>
+                <Text style={styles.notifTitulo}>Publicações antigas</Text>
+              </View>
+              <TouchableOpacity onPress={() => setModalAntigos(false)} hitSlop={HIT_SLOP_SM}>
+                <Ionicons name="close" size={22} color={CORES_SYMBIUS.textoSec} />
+              </TouchableOpacity>
+            </View>
+
+            {postsAntigos.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 36 }}>
+                <Ionicons name="archive-outline" size={36} color={CORES_SYMBIUS.borda2} />
+                <Text style={styles.notifVaziaTxt}>Nenhuma publicação antiga</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={postsAntigos}
+                keyExtractor={(p) => p.id}
+                numColumns={2}
+                columnWrapperStyle={{ gap: 12 }}
+                contentContainerStyle={{ gap: 12, paddingBottom: 8 }}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item }) => renderDestaqueCard(item, {
+                  largura: LARGURA_ANTIGO,
+                  onAbrir: () => abrirPostAntigo(item),
+                })}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {/* MENU "MAIS" — dúvidas / contato / admin */}
       <Modal visible={miniMenuAberto} transparent animationType="fade" onRequestClose={() => setMiniMenuAberto(false)}>
         <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMiniMenuAberto(false)}>
@@ -698,15 +768,22 @@ export default function Index({ navigation, route }: any) {
               style={styles.menuItem}
               onPress={() => { setMiniMenuAberto(false); irPara('Ajuda'); }}
             >
-              <Ionicons name="help-circle" size={17} color={CORES_SABE.verdeEscuro} />
+              <Ionicons name="help-circle" size={17} color={CORES_SYMBIUS.verdeEscuro} />
               <Text style={styles.menuItemText}>Dúvidas / Ajuda</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => { setMiniMenuAberto(false); navigation.navigate('Contatos'); }}
             >
-              <Ionicons name="call" size={17} color={CORES_SABE.verdeEscuro} />
+              <Ionicons name="call" size={17} color={CORES_SYMBIUS.verdeEscuro} />
               <Text style={styles.menuItemText}>Contato</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => { setMiniMenuAberto(false); irPara('Configuracoes'); }}
+            >
+              <Ionicons name="settings" size={17} color={CORES_SYMBIUS.verdeEscuro} />
+              <Text style={styles.menuItemText}>Configurações</Text>
             </TouchableOpacity>
             {isAdmin && (
               <>
@@ -715,7 +792,7 @@ export default function Index({ navigation, route }: any) {
                   style={styles.menuItem}
                   onPress={() => { setMiniMenuAberto(false); irPara('Admin'); }}
                 >
-                  <Ionicons name="shield-checkmark" size={17} color={CORES_SABE.verdeEscuro} />
+                  <Ionicons name="shield-checkmark" size={17} color={CORES_SYMBIUS.verdeEscuro} />
                   <Text style={styles.menuItemText}>Painel Admin</Text>
                 </TouchableOpacity>
               </>
@@ -728,61 +805,61 @@ export default function Index({ navigation, route }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: CORES_SABE.fundo },
+  container: { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
   centro: { justifyContent: 'center', alignItems: 'center' },
   scroll: { paddingHorizontal: PAD_H, paddingTop: 8, paddingBottom: 24 },
 
   topoMarca: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  marca: { fontSize: 22, fontFamily: F.bold, color: CORES_SABE.verdeEscuro },
+  marca: { fontSize: 22, fontFamily: F.bold, color: CORES_SYMBIUS.verdeEscuro },
   headerIcones: { flexDirection: 'row', alignItems: 'center' },
   btnEdit: {
     width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: CORES_SABE.fundoSuave, borderWidth: 1, borderColor: CORES_SABE.borda2,
+    backgroundColor: CORES_SYMBIUS.fundoSuave, borderWidth: 1, borderColor: CORES_SYMBIUS.borda2,
   },
-  btnEditAtivo: { backgroundColor: CORES_SABE.verdeEscuro, borderColor: CORES_SABE.verdeEscuro },
+  btnEditAtivo: { backgroundColor: CORES_SYMBIUS.verdeEscuro, borderColor: CORES_SYMBIUS.verdeEscuro },
   dotNotif: {
     position: 'absolute', top: -1, right: -1, width: 8, height: 8, borderRadius: 4,
-    backgroundColor: CORES_SABE.laranjaTexto, borderWidth: 1.5, borderColor: CORES_SABE.fundo,
+    backgroundColor: CORES_SYMBIUS.laranjaTexto, borderWidth: 1.5, borderColor: CORES_SYMBIUS.fundo,
   },
 
-  saudacao: { fontSize: 21, fontFamily: F.black, color: CORES_SABE.texto, marginTop: 14 },
-  subSaudacao: { fontSize: 13.5, color: CORES_SABE.textoSec, fontFamily: F.medium, marginTop: 2 },
+  saudacao: { fontSize: 21, fontFamily: F.black, color: CORES_SYMBIUS.texto, marginTop: 14 },
+  subSaudacao: { fontSize: 13.5, color: CORES_SYMBIUS.textoSec, fontFamily: F.medium, marginTop: 2 },
 
   buscaWrap: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: CORES_SABE.fundoSuave, borderRadius: 14, paddingHorizontal: 14,
+    backgroundColor: CORES_SYMBIUS.fundoSuave, borderRadius: 14, paddingHorizontal: 14,
     paddingVertical: 12, marginTop: 16,
   },
-  buscaInput: { flex: 1, color: CORES_SABE.texto, fontSize: 13, fontFamily: F.regular },
+  buscaInput: { flex: 1, color: CORES_SYMBIUS.texto, fontSize: 13, fontFamily: F.regular },
 
   alertEdicao: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: CORES_SABE.verdeEscuro,
+    flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: CORES_SYMBIUS.verdeEscuro,
     borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12, marginTop: 14,
   },
-  txtEdicao: { color: CORES_SABE.creme, fontSize: 11.5, fontFamily: F.bold, letterSpacing: 0.4 },
+  txtEdicao: { color: CORES_SYMBIUS.creme, fontSize: 11.5, fontFamily: F.bold, letterSpacing: 0.4 },
 
   secaoHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 20, marginBottom: 10 },
-  secaoEyebrow: { fontSize: 10, fontFamily: F.bold, color: CORES_SABE.textoSec, letterSpacing: 0.6 },
-  secaoTitulo: { fontSize: 16, fontFamily: F.black, color: CORES_SABE.texto, marginTop: 2 },
-  secaoTituloSimples: { fontSize: 13, fontFamily: F.bold, color: CORES_SABE.texto, marginTop: 20, marginBottom: 10 },
+  secaoEyebrow: { fontSize: 10, fontFamily: F.bold, color: CORES_SYMBIUS.textoSec, letterSpacing: 0.6 },
+  secaoTitulo: { fontSize: 16, fontFamily: F.black, color: CORES_SYMBIUS.texto, marginTop: 2 },
+  secaoTituloSimples: { fontSize: 13, fontFamily: F.bold, color: CORES_SYMBIUS.texto, marginTop: 20, marginBottom: 10 },
 
   navDestRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   btnNovoPost: {
-    width: 28, height: 28, borderRadius: 14, backgroundColor: CORES_SABE.laranjaTexto,
+    width: 28, height: 28, borderRadius: 14, backgroundColor: CORES_SYMBIUS.laranjaTexto,
     justifyContent: 'center', alignItems: 'center',
   },
   navDestBtn: {
-    width: 26, height: 26, borderRadius: 13, backgroundColor: CORES_SABE.fundoSuave,
-    borderWidth: 1, borderColor: CORES_SABE.borda2, justifyContent: 'center', alignItems: 'center',
+    width: 26, height: 26, borderRadius: 13, backgroundColor: CORES_SYMBIUS.fundoSuave,
+    borderWidth: 1, borderColor: CORES_SYMBIUS.borda2, justifyContent: 'center', alignItems: 'center',
   },
-  navDestBtnAtivo: { backgroundColor: CORES_SABE.verdeEscuro, borderColor: CORES_SABE.verdeEscuro },
+  navDestBtnAtivo: { backgroundColor: CORES_SYMBIUS.verdeEscuro, borderColor: CORES_SYMBIUS.verdeEscuro },
 
   slideWrap: { flexDirection: 'row', gap: 12, paddingRight: 12 },
   destCard: { height: 150, borderRadius: 16, overflow: 'hidden', justifyContent: 'space-between', padding: 10 },
   destTopo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   destBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
   destBadgeText: { fontSize: 8, fontFamily: F.bold, letterSpacing: 0.3 },
-  destNovoBadge: { backgroundColor: CORES_SABE.laranjaTexto, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
+  destNovoBadge: { backgroundColor: CORES_SYMBIUS.laranjaTexto, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
   destNovoText: { color: '#FFF', fontSize: 9, fontFamily: F.bold },
   destTitulo: { color: '#FFF', fontSize: 14, fontFamily: F.bold, lineHeight: 18 },
   destMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
@@ -793,19 +870,19 @@ const styles = StyleSheet.create({
   },
 
   destEmpty: {
-    alignItems: 'center', gap: 8, backgroundColor: CORES_SABE.fundoCard, borderRadius: 16,
-    borderWidth: 1, borderColor: CORES_SABE.borda, paddingVertical: 28, paddingHorizontal: 16,
+    alignItems: 'center', gap: 8, backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 16,
+    borderWidth: 1, borderColor: CORES_SYMBIUS.borda, paddingVertical: 28, paddingHorizontal: 16,
   },
-  destEmptyText: { color: CORES_SABE.textoMuted, fontSize: 12.5, fontFamily: F.medium, textAlign: 'center' },
+  destEmptyText: { color: CORES_SYMBIUS.textoMuted, fontSize: 12.5, fontFamily: F.medium, textAlign: 'center' },
   btnPrimeiroPost: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: CORES_SABE.verdeEscuro,
+    flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: CORES_SYMBIUS.verdeEscuro,
     borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9, marginTop: 6,
   },
-  btnPrimeiroPostText: { color: CORES_SABE.creme, fontSize: 12, fontFamily: F.bold },
+  btnPrimeiroPostText: { color: CORES_SYMBIUS.creme, fontSize: 12, fontFamily: F.bold },
 
   indicadores: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 10 },
-  indicador: { width: 6, height: 6, borderRadius: 3, backgroundColor: CORES_SABE.borda2 },
-  indicadorAtivo: { width: 18, backgroundColor: CORES_SABE.verdeEscuro },
+  indicador: { width: 6, height: 6, borderRadius: 3, backgroundColor: CORES_SYMBIUS.borda2 },
+  indicadorAtivo: { width: 18, backgroundColor: CORES_SYMBIUS.verdeEscuro },
 
   acoesGrid: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginTop: 20 },
   acaoCard: { flex: 1, alignItems: 'center', gap: 6 },
@@ -813,91 +890,97 @@ const styles = StyleSheet.create({
     width: 44, height: 44, borderRadius: 14,
     justifyContent: 'center', alignItems: 'center',
   },
-  acaoLabel: { color: CORES_SABE.texto, fontSize: 10.5, fontFamily: F.semibold, textAlign: 'center' },
+  acaoLabel: { color: CORES_SYMBIUS.texto, fontSize: 10.5, fontFamily: F.semibold, textAlign: 'center' },
 
   cardProgresso: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: CORES_SABE.fundoCard, borderRadius: 16, padding: 14,
-    borderWidth: 1, borderColor: CORES_SABE.borda,
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 16, padding: 14,
+    borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
   },
   progressoIconeWrap: {
-    width: 44, height: 44, borderRadius: 22, backgroundColor: CORES_SABE.fundoSuave,
+    width: 44, height: 44, borderRadius: 22, backgroundColor: CORES_SYMBIUS.fundoSuave,
     justifyContent: 'center', alignItems: 'center',
   },
   progressoIcone: { fontSize: 22 },
-  progressoTitulo: { color: CORES_SABE.texto, fontSize: 14, fontFamily: F.bold },
-  progressoSub: { color: CORES_SABE.textoMuted, fontSize: 11, fontFamily: F.medium, marginTop: 4, marginBottom: 6 },
-  progressoMoedas: { color: CORES_SABE.laranja, fontSize: 12, fontFamily: F.bold },
-  barraFundo: { height: 6, backgroundColor: CORES_SABE.borda, borderRadius: 3, overflow: 'hidden' },
-  barraPreenchida: { height: 6, backgroundColor: CORES_SABE.verdeEscuro, borderRadius: 3 },
+  progressoTitulo: { color: CORES_SYMBIUS.texto, fontSize: 14, fontFamily: F.bold },
+  progressoSub: { color: CORES_SYMBIUS.textoMuted, fontSize: 11, fontFamily: F.medium, marginTop: 4, marginBottom: 6 },
+  progressoMoedas: { color: CORES_SYMBIUS.laranja, fontSize: 12, fontFamily: F.bold },
+  barraFundo: { height: 6, backgroundColor: CORES_SYMBIUS.borda, borderRadius: 3, overflow: 'hidden' },
+  barraPreenchida: { height: 6, backgroundColor: CORES_SYMBIUS.verdeEscuro, borderRadius: 3 },
 
   cardDesafio: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: CORES_SABE.verdeEscuro, borderRadius: 16, padding: 16,
+    backgroundColor: CORES_SYMBIUS.verdeEscuro, borderRadius: 16, padding: 16,
     marginTop: 8,
   },
-  desafioLabel: { color: CORES_SABE.creme, fontSize: 13, fontFamily: F.bold },
+  desafioLabel: { color: CORES_SYMBIUS.creme, fontSize: 13, fontFamily: F.bold },
   desafioTitulo: { color: '#C7D4C2', fontSize: 12, fontFamily: F.medium, marginTop: 2 },
-  desafioXp: { color: CORES_SABE.creme, fontSize: 12, fontFamily: F.bold },
+  desafioXp: { color: CORES_SYMBIUS.creme, fontSize: 12, fontFamily: F.bold },
   desafioMoedas: { color: '#C7D4C2', fontSize: 11, fontFamily: F.medium, marginTop: 2 },
 
   // ── Modal de leitura do post ──
-  modalWrap: { flex: 1, backgroundColor: CORES_SABE.fundo },
+  modalWrap: { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
   modalCover: { height: 220 },
-  modalCoverVazia: { backgroundColor: CORES_SABE.verdeEscuro, justifyContent: 'center', alignItems: 'center' },
-  modalMarca: { color: CORES_SABE.creme, fontSize: 30, fontFamily: F.black },
+  modalCoverVazia: { backgroundColor: CORES_SYMBIUS.verdeEscuro, justifyContent: 'center', alignItems: 'center' },
+  modalMarca: { color: CORES_SYMBIUS.creme, fontSize: 30, fontFamily: F.black },
   modalCoverOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.18)' },
   btnFechar: {
     position: 'absolute', top: 44, left: 16, width: 34, height: 34, borderRadius: 17,
     backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center',
   },
-  modalBody: { flex: 1, backgroundColor: CORES_SABE.fundoCard, marginTop: -20, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
+  modalBody: { flex: 1, backgroundColor: CORES_SYMBIUS.fundoCard, marginTop: -20, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
-  tag: { backgroundColor: CORES_SABE.fundoLaranjaClaro, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
-  tagText: { color: CORES_SABE.laranjaTexto, fontSize: 11, fontFamily: F.bold },
-  modalTitulo: { fontSize: 22, fontFamily: F.black, color: CORES_SABE.texto },
-  modalSub: { fontSize: 14, fontFamily: F.medium, color: CORES_SABE.textoSec, marginTop: 6 },
+  tag: { backgroundColor: CORES_SYMBIUS.fundoLaranjaClaro, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  tagText: { color: CORES_SYMBIUS.laranjaTexto, fontSize: 11, fontFamily: F.bold },
+  modalTitulo: { fontSize: 22, fontFamily: F.black, color: CORES_SYMBIUS.texto },
+  modalSub: { fontSize: 14, fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 6 },
   modalMeta: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: CORES_SABE.fundoSuave, borderRadius: 12, padding: 10, marginTop: 16,
+    backgroundColor: CORES_SYMBIUS.fundoSuave, borderRadius: 12, padding: 10, marginTop: 16,
   },
   autorRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  autorAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: CORES_SABE.verdeEscuro, justifyContent: 'center', alignItems: 'center' },
-  autorNome: { color: CORES_SABE.texto, fontSize: 12.5, fontFamily: F.bold },
-  autorRole: { color: CORES_SABE.textoMuted, fontSize: 10, fontFamily: F.regular },
-  viewsPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: CORES_SABE.fundoCard, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 },
-  viewsText: { color: CORES_SABE.texto, fontSize: 11, fontFamily: F.semibold },
-  modalDivider: { height: 1, backgroundColor: CORES_SABE.borda, marginVertical: 18 },
-  modalConteudo: { color: CORES_SABE.texto, fontSize: 14.5, fontFamily: F.regular, lineHeight: 22 },
+  autorAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: CORES_SYMBIUS.verdeEscuro, justifyContent: 'center', alignItems: 'center' },
+  autorNome: { color: CORES_SYMBIUS.texto, fontSize: 12.5, fontFamily: F.bold },
+  autorRole: { color: CORES_SYMBIUS.textoMuted, fontSize: 10, fontFamily: F.regular },
+  viewsPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 },
+  viewsText: { color: CORES_SYMBIUS.texto, fontSize: 11, fontFamily: F.semibold },
+  modalDivider: { height: 1, backgroundColor: CORES_SYMBIUS.borda, marginVertical: 18 },
+  modalConteudo: { color: CORES_SYMBIUS.texto, fontSize: 14.5, fontFamily: F.regular, lineHeight: 22 },
 
   // ── Modal de notificações ──
   notifOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   notifSheet: {
-    backgroundColor: CORES_SABE.fundoCard, borderTopLeftRadius: 26, borderTopRightRadius: 26,
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderTopLeftRadius: 26, borderTopRightRadius: 26,
     padding: 22, paddingBottom: 36, maxHeight: '80%',
   },
-  notifHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16, backgroundColor: CORES_SABE.borda2 },
-  notifTitulo: { fontSize: 17, fontFamily: F.black, color: CORES_SABE.texto },
-  notifLimparTxt: { fontSize: 13, fontFamily: F.bold, color: CORES_SABE.laranjaTexto },
-  notifVaziaTxt: { color: CORES_SABE.textoMuted, fontSize: 13, fontFamily: F.medium, marginTop: 10 },
-  notifGrupoLabel: { fontSize: 10, fontFamily: F.bold, letterSpacing: 0.6, color: CORES_SABE.textoSec, marginBottom: 8 },
+  btnVerAntigos: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: CORES_SYMBIUS.fundoLaranjaClaro, borderRadius: 12,
+    paddingVertical: 10, marginTop: 2, marginBottom: 4,
+  },
+  btnVerAntigosTxt: { color: CORES_SYMBIUS.laranjaTexto, fontSize: 12.5, fontFamily: F.bold },
+  notifHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16, backgroundColor: CORES_SYMBIUS.borda2 },
+  notifTitulo: { fontSize: 17, fontFamily: F.black, color: CORES_SYMBIUS.texto },
+  notifLimparTxt: { fontSize: 13, fontFamily: F.bold, color: CORES_SYMBIUS.laranjaTexto },
+  notifVaziaTxt: { color: CORES_SYMBIUS.textoMuted, fontSize: 13, fontFamily: F.medium, marginTop: 10 },
+  notifGrupoLabel: { fontSize: 10, fontFamily: F.bold, letterSpacing: 0.6, color: CORES_SYMBIUS.textoSec, marginBottom: 8 },
   notifCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: CORES_SABE.fundoSuave,
+    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: CORES_SYMBIUS.fundoSuave,
     borderRadius: 14, padding: 10, marginBottom: 8,
   },
   notifIconWrap: { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center' },
-  notifCardTitulo: { fontSize: 13, fontFamily: F.bold, color: CORES_SABE.texto },
-  notifCardMeta: { fontSize: 11, fontFamily: F.regular, color: CORES_SABE.textoSec, marginTop: 2 },
-  notifBtnFechar: { backgroundColor: CORES_SABE.verdeEscuro, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
-  notifBtnFecharTxt: { color: CORES_SABE.creme, fontSize: 14, fontFamily: F.bold },
+  notifCardTitulo: { fontSize: 13, fontFamily: F.bold, color: CORES_SYMBIUS.texto },
+  notifCardMeta: { fontSize: 11, fontFamily: F.regular, color: CORES_SYMBIUS.textoSec, marginTop: 2 },
+  notifBtnFechar: { backgroundColor: CORES_SYMBIUS.verdeEscuro, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
+  notifBtnFecharTxt: { color: CORES_SYMBIUS.creme, fontSize: 14, fontFamily: F.bold },
 
   // ── Menu "Mais" (dúvidas / contato / admin) ──
   menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-start', alignItems: 'flex-end', paddingTop: 60, paddingRight: 20 },
   menuPopup: {
-    backgroundColor: CORES_SABE.fundoCard, borderRadius: 16, paddingVertical: 6, minWidth: 200,
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 16, paddingVertical: 6, minWidth: 200,
     shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 6,
   },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13 },
-  menuItemText: { fontSize: 14, fontFamily: F.semibold, color: CORES_SABE.texto },
-  menuDivider: { height: 1, backgroundColor: CORES_SABE.borda, marginVertical: 2 },
+  menuItemText: { fontSize: 14, fontFamily: F.semibold, color: CORES_SYMBIUS.texto },
+  menuDivider: { height: 1, backgroundColor: CORES_SYMBIUS.borda, marginVertical: 2 },
 });

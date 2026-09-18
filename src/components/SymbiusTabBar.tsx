@@ -1,22 +1,22 @@
 import React from 'react';
 import { StyleSheet, View, TouchableOpacity, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { CORES_SABE } from '../screens/Boasvindas';
+import { CORES_SYMBIUS } from '../screens/Boasvindas';
 import { F } from '../constants/theme';
 
 // ── Barra de navegação inferior compartilhada pelas 4 telas "top-level"
 // (Início, Match, Feed, Perfil). Não usamos @react-navigation/bottom-tabs
 // de propósito — o app inteiro roda num único Stack Navigator, então essa
 // barra só chama navigation.navigate(...) entre as telas já registradas.
-export type SabeAba = 'inicio' | 'agenda' | 'match' | 'feed' | 'perfil';
+export type SymbiusAba = 'inicio' | 'agenda' | 'match' | 'feed' | 'perfil';
 
 interface Props {
-  ativa: SabeAba;
+  ativa: SymbiusAba;
   navigation: any;
   uid: string | null;
 }
 
-const ITENS: { chave: SabeAba; label: string; icone: keyof typeof Ionicons.glyphMap; iconeAtivo: keyof typeof Ionicons.glyphMap; destino: string }[] = [
+const ITENS: { chave: SymbiusAba; label: string; icone: keyof typeof Ionicons.glyphMap; iconeAtivo: keyof typeof Ionicons.glyphMap; destino: string }[] = [
   { chave: 'inicio', label: 'Início', icone: 'home-outline', iconeAtivo: 'home', destino: 'Index' },
   { chave: 'agenda', label: 'Agenda', icone: 'calendar-outline', iconeAtivo: 'calendar', destino: 'Calendario' },
   { chave: 'match',  label: 'Match',  icone: 'heart-outline', iconeAtivo: 'heart', destino: 'Match' },
@@ -24,7 +24,7 @@ const ITENS: { chave: SabeAba; label: string; icone: keyof typeof Ionicons.glyph
   { chave: 'perfil', label: 'Perfil', icone: 'person-outline', iconeAtivo: 'person', destino: 'Perfil' },
 ];
 
-export default function SabeTabBar({ ativa, navigation, uid }: Props) {
+export default function SymbiusTabBar({ ativa, navigation, uid }: Props) {
   const irPara = (destino: string) => {
     if (destino === ativa && ITENS.find(i => i.chave === ativa)?.destino === destino) return;
     navigation.navigate(destino, uid ? { uid } : undefined);
@@ -44,7 +44,7 @@ export default function SabeTabBar({ ativa, navigation, uid }: Props) {
             <Ionicons
               name={ativo ? item.iconeAtivo : item.icone}
               size={20}
-              color={ativo ? CORES_SABE.verdeEscuro : CORES_SABE.textoTerciario}
+              color={ativo ? CORES_SYMBIUS.verdeEscuro : CORES_SYMBIUS.textoTerciario}
             />
             <Text style={[styles.label, ativo && styles.labelAtivo]}>{item.label}</Text>
           </TouchableOpacity>
@@ -58,10 +58,10 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
     paddingVertical: 12, paddingHorizontal: 8,
-    backgroundColor: CORES_SABE.fundoCard,
-    borderTopWidth: 1, borderTopColor: CORES_SABE.borda,
+    backgroundColor: CORES_SYMBIUS.fundoCard,
+    borderTopWidth: 1, borderTopColor: CORES_SYMBIUS.borda,
   },
   item: { alignItems: 'center', gap: 4 },
-  label: { fontSize: 10, fontFamily: F.semibold, color: CORES_SABE.textoTerciario },
-  labelAtivo: { fontFamily: F.bold, color: CORES_SABE.verdeEscuro },
+  label: { fontSize: 10, fontFamily: F.semibold, color: CORES_SYMBIUS.textoTerciario },
+  labelAtivo: { fontFamily: F.bold, color: CORES_SYMBIUS.verdeEscuro },
 });

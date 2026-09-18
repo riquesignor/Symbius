@@ -18,9 +18,9 @@ import { useAppSettings } from '../contexts/AppSettingsContext';
 import { useNotificacao } from '../contexts/NotificacaoProvider';
 
 import { F, CORES } from '../constants/theme';
-import { CORES_SABE } from '../constants/temaSabe';
+import { CORES_SYMBIUS } from '../constants/temaSymbius';
 import { awardXpFinalizarMatch, AwardResult, LevelUpInfo } from '../services/gamificationService';
-import NivelUpSabeModal from '../components/NivelUpSabeModal';
+import NivelUpSymbiusModal from '../components/NivelUpSymbiusModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const IMG_MAX = SCREEN_WIDTH * 0.65;
@@ -47,7 +47,7 @@ const injectStyles = (dark: boolean) => {
   style.textContent = `
     .chat-scroll::-webkit-scrollbar{width:0px;background:transparent}
     .chat-scroll{scrollbar-width:none;-ms-overflow-style:none}
-    html,body,#root{height:100%;overflow:hidden;background:${dark? CORES_SABE.splashBg : CORES_SABE.fundo}}
+    html,body,#root{height:100%;overflow:hidden;background:${dark? CORES_SYMBIUS.splashBg : CORES_SYMBIUS.fundo}}
     @keyframes typingBounce{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-5px);opacity:1}}
     .typing-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.7);display:inline-block;margin:0 2px;animation:typingBounce 1.2s infinite ease-in-out}
     .typing-dot:nth-child(2){animation-delay:.2s}
@@ -221,7 +221,7 @@ const PerfilModal = ({ visible, onClose, outroUid, outroNome, outraFoto, CC, meu
                 que zerava essa seção). */}
             <View style={[psty.infoRow, { borderColor: CC.menuBorder }]}>
               <View style={psty.infoItem}>
-                <Ionicons name="school-outline" size={20} color={CORES_SABE.verdeEscuro} />
+                <Ionicons name="school-outline" size={20} color={CORES_SYMBIUS.verdeEscuro} />
                 <Text style={[psty.infoLabel, { color: CC.textoSec }]}>É bom em</Text>
                 <Text style={[psty.infoVal, { color: CC.menuTitle }]}>
                   {dadosPerfil?.posso_ensinar?.length || 0} matérias
@@ -229,7 +229,7 @@ const PerfilModal = ({ visible, onClose, outroUid, outroNome, outraFoto, CC, meu
               </View>
               <View style={[psty.infoDiv, { backgroundColor: CC.menuBorder }]} />
               <View style={psty.infoItem}>
-                <Ionicons name="book-outline" size={20} color={CORES_SABE.laranjaTexto} />
+                <Ionicons name="book-outline" size={20} color={CORES_SYMBIUS.laranjaTexto} />
                 <Text style={[psty.infoLabel, { color: CC.textoSec }]}>Precisa aprender</Text>
                 <Text style={[psty.infoVal, { color: CC.menuTitle }]}>
                   {dadosPerfil?.quer_aprender?.length || 0} matérias
@@ -240,11 +240,11 @@ const PerfilModal = ({ visible, onClose, outroUid, outroNome, outraFoto, CC, meu
             {/* Matérias que é bom */}
             {dadosPerfil?.posso_ensinar?.length > 0 && (
               <View style={psty.secao}>
-                <Text style={[psty.secaoTitulo, { color: CORES_SABE.verdeEscuro }]}>É BOM EM</Text>
+                <Text style={[psty.secaoTitulo, { color: CORES_SYMBIUS.verdeEscuro }]}>É BOM EM</Text>
                 <View style={psty.tagsRow}>
                   {dadosPerfil.posso_ensinar.map((m: string) => (
-                    <View key={m} style={[psty.tag, { backgroundColor: CORES_SABE.fundoSuave }]}>
-                      <Text style={[psty.tagTxt, { color: CORES_SABE.verdeEscuro }]}>{m}</Text>
+                    <View key={m} style={[psty.tag, { backgroundColor: CORES_SYMBIUS.fundoSuave }]}>
+                      <Text style={[psty.tagTxt, { color: CORES_SYMBIUS.verdeEscuro }]}>{m}</Text>
                     </View>
                   ))}
                 </View>
@@ -254,11 +254,11 @@ const PerfilModal = ({ visible, onClose, outroUid, outroNome, outraFoto, CC, meu
             {/* Matérias que precisa aprender */}
             {dadosPerfil?.quer_aprender?.length > 0 && (
               <View style={psty.secao}>
-                <Text style={[psty.secaoTitulo, { color: CORES_SABE.laranjaTexto }]}>PRECISA APRENDER</Text>
+                <Text style={[psty.secaoTitulo, { color: CORES_SYMBIUS.laranjaTexto }]}>PRECISA APRENDER</Text>
                 <View style={psty.tagsRow}>
                   {dadosPerfil.quer_aprender.map((m: string) => (
-                    <View key={m} style={[psty.tag, { backgroundColor: CORES_SABE.fundoLaranjaClaro }]}>
-                      <Text style={[psty.tagTxt, { color: CORES_SABE.laranjaTexto }]}>{m}</Text>
+                    <View key={m} style={[psty.tag, { backgroundColor: CORES_SYMBIUS.fundoLaranjaClaro }]}>
+                      <Text style={[psty.tagTxt, { color: CORES_SYMBIUS.laranjaTexto }]}>{m}</Text>
                     </View>
                   ))}
                 </View>
@@ -282,7 +282,7 @@ const PerfilModal = ({ visible, onClose, outroUid, outroNome, outraFoto, CC, meu
               </View>
             )}
 
-            <TouchableOpacity style={[psty.btnFechar, { backgroundColor: CORES_SABE.verdeEscuro }]} onPress={onClose}>
+            <TouchableOpacity style={[psty.btnFechar, { backgroundColor: CORES_SYMBIUS.verdeEscuro }]} onPress={onClose}>
               <Text style={psty.btnFecharTxt}>Fechar</Text>
             </TouchableOpacity>
           <View style={{ height: 24 }} />
@@ -297,7 +297,7 @@ const psty = StyleSheet.create({
   sheet:       { borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: SCREEN_HEIGHT * 0.88, alignItems: "center", overflow: "hidden" },
   handle:      { width: 40, height: 4, borderRadius: 2, marginTop: 12, marginBottom: 0 },
   capa:        { width: "100%", height: 80 },
-  fotoWrap:    { marginTop: -45, marginBottom: 10, borderRadius: 48, borderWidth: 4, borderColor: CORES_SABE.verdeEscuro },
+  fotoWrap:    { marginTop: -45, marginBottom: 10, borderRadius: 48, borderWidth: 4, borderColor: CORES_SYMBIUS.verdeEscuro },
   foto:        { width: 90, height: 90, borderRadius: 45 },
   nome:        { fontSize: 20, fontFamily: F.black, letterSpacing: -0.4, marginBottom: 2, textAlign: "center", paddingHorizontal: 24 },
   sub:         { fontSize: 13, fontFamily: F.semibold, marginBottom: 12, textAlign: "center" },
@@ -406,7 +406,7 @@ const EncaminharModal = ({ visible, onClose, meuUid, meuNome, minhaFoto, mensage
           </View>
 
           {carregando
-            ? <ActivityIndicator color={CORES_SABE.verdeEscuro} style={{ marginVertical: 24 }} />
+            ? <ActivityIndicator color={CORES_SYMBIUS.verdeEscuro} style={{ marginVertical: 24 }} />
             : <FlatList
                 data={matches}
                 keyExtractor={i => i.uid}
@@ -423,7 +423,7 @@ const EncaminharModal = ({ visible, onClose, meuUid, meuNome, minhaFoto, mensage
                       <Text style={[esty.matchNome, { color: CC.menuTitle }]} numberOfLines={1}>
                         {item.nome_completo || "Usuário"}
                       </Text>
-                      <View style={[esty.enviarBtn, { backgroundColor: enviou ? "#27ae60" : CORES_SABE.verdeEscuro }]}>
+                      <View style={[esty.enviarBtn, { backgroundColor: enviou ? "#27ae60" : CORES_SYMBIUS.verdeEscuro }]}>
                         <Ionicons name={enviou ? "checkmark" : "send"} size={14} color="#fff" />
                       </View>
                     </TouchableOpacity>
@@ -463,22 +463,22 @@ export default function Chat({ route, navigation }: any) {
   const { width: winW } = useWindowDimensions();
   const imgMax = Math.max(IMG_MIN, winW * 0.65);
   const bolhaMaxWidth = winW * 0.75;
-  // ── TELA DE TESTE (Sabé): paleta verde fixa (modo claro), ignora o tema real do usuário.
+  // ── TELA DE TESTE (Symbius): paleta verde fixa (modo claro), ignora o tema real do usuário.
   const modoEscuro = false;
   const { setConversaAtiva } = useNotificacao();
   const { outroUid, outroNome } = route.params || {};
 
-  // ── TELA DE TESTE (Sabé): antes era claro/escuro via ternário; agora é
-  // sempre a paleta verde do sabé (mesmas chaves, nenhum uso de CC.* abaixo mudou). ──
+  // ── TELA DE TESTE (Symbius): antes era claro/escuro via ternário; agora é
+  // sempre a paleta verde do Symbius (mesmas chaves, nenhum uso de CC.* abaixo mudou). ──
   const CC = {
-    fundo: CORES_SABE.fundo, headerBg: CORES_SABE.fundoCard, headerBorder: CORES_SABE.borda, headerTitle: CORES_SABE.texto,
-    inputBg: CORES_SABE.fundoSuave, inputBorder: CORES_SABE.borda, inputText: CORES_SABE.texto, inputPlaceholder: CORES_SABE.textoMuted,
-    scrollBg: CORES_SABE.fundo, bolhaMe: CORES_SABE.verdeEscuro, bolhaOther: CORES_SABE.fundoSuave, textoSec: CORES_SABE.textoSec,
-    backBtn: CORES_SABE.fundoCard, backIcon: CORES_SABE.texto, sepLinha: CORES_SABE.borda, sepText: CORES_SABE.textoSec, sepBg: CORES_SABE.fundo,
-    menuBg: CORES_SABE.fundoCard, menuTitle: CORES_SABE.texto, menuText: CORES_SABE.texto, menuBorder: CORES_SABE.borda,
-    previewBg: CORES_SABE.fundoCard, previewTitle: CORES_SABE.texto, cancelBg: CORES_SABE.borda, cancelText: CORES_SABE.texto,
-    citandoBg: CORES_SABE.fundoSuave, citandoBorder: CORES_SABE.verdeEscuro, citandoNome: CORES_SABE.verdeEscuro, citandoTexto: CORES_SABE.textoSec,
-    citandoFechar: CORES_SABE.textoSec, sendBg: CORES_SABE.verdeEscuro, imgBtnBg: CORES_SABE.fundoSuave, imgBtnBorder: CORES_SABE.borda, imgBtnIcon: CORES_SABE.texto,
+    fundo: CORES_SYMBIUS.fundo, headerBg: CORES_SYMBIUS.fundoCard, headerBorder: CORES_SYMBIUS.borda, headerTitle: CORES_SYMBIUS.texto,
+    inputBg: CORES_SYMBIUS.fundoSuave, inputBorder: CORES_SYMBIUS.borda, inputText: CORES_SYMBIUS.texto, inputPlaceholder: CORES_SYMBIUS.textoMuted,
+    scrollBg: CORES_SYMBIUS.fundo, bolhaMe: CORES_SYMBIUS.verdeEscuro, bolhaOther: CORES_SYMBIUS.fundoSuave, textoSec: CORES_SYMBIUS.textoSec,
+    backBtn: CORES_SYMBIUS.fundoCard, backIcon: CORES_SYMBIUS.texto, sepLinha: CORES_SYMBIUS.borda, sepText: CORES_SYMBIUS.textoSec, sepBg: CORES_SYMBIUS.fundo,
+    menuBg: CORES_SYMBIUS.fundoCard, menuTitle: CORES_SYMBIUS.texto, menuText: CORES_SYMBIUS.texto, menuBorder: CORES_SYMBIUS.borda,
+    previewBg: CORES_SYMBIUS.fundoCard, previewTitle: CORES_SYMBIUS.texto, cancelBg: CORES_SYMBIUS.borda, cancelText: CORES_SYMBIUS.texto,
+    citandoBg: CORES_SYMBIUS.fundoSuave, citandoBorder: CORES_SYMBIUS.verdeEscuro, citandoNome: CORES_SYMBIUS.verdeEscuro, citandoTexto: CORES_SYMBIUS.textoSec,
+    citandoFechar: CORES_SYMBIUS.textoSec, sendBg: CORES_SYMBIUS.verdeEscuro, imgBtnBg: CORES_SYMBIUS.fundoSuave, imgBtnBorder: CORES_SYMBIUS.borda, imgBtnIcon: CORES_SYMBIUS.texto,
   };
 
   const scrollRef        = useRef<ScrollView>(null);
@@ -899,17 +899,17 @@ export default function Chat({ route, navigation }: any) {
     if (msg.tipo === 'imagem') {
       const b64 = msg.mensagem;
       dataUrl = b64.startsWith("data:") ? b64 : `data:image/jpeg;base64,${b64}`;
-      filename = `jumo_imagem_${Date.now()}.jpg`;
+      filename = `symbius_imagem_${Date.now()}.jpg`;
     } else if (msg.tipo === 'video') {
       const b64 = msg.mensagem;
       dataUrl = b64.startsWith("data:") ? b64 : `data:video/mp4;base64,${b64}`;
-      filename = `jumo_video_${Date.now()}.mp4`;
+      filename = `symbius_video_${Date.now()}.mp4`;
     } else {
       const ext = msg.tipoArquivo || 'pdf';
       const b64 = msg.mensagem;
       const mime = ext === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
       dataUrl = b64.startsWith("data:") ? b64 : `data:${mime};base64,${b64}`;
-      filename = msg.nomeArquivo || `jumo_doc_${Date.now()}.${ext}`;
+      filename = msg.nomeArquivo || `symbius_doc_${Date.now()}.${ext}`;
     }
     const link = document.createElement("a");
     link.href = dataUrl; link.download = filename;
@@ -930,7 +930,7 @@ export default function Chat({ route, navigation }: any) {
   };
 
   if (loading) {
-    return <View style={{ flex:1, justifyContent:"center", alignItems:"center", backgroundColor: CC.fundo }}><ActivityIndicator size="large" color={CORES_SABE.verdeEscuro} /></View>;
+    return <View style={{ flex:1, justifyContent:"center", alignItems:"center", backgroundColor: CC.fundo }}><ActivityIndicator size="large" color={CORES_SYMBIUS.verdeEscuro} /></View>;
   }
 
   const outraFotoUri = outraFoto
@@ -953,7 +953,7 @@ export default function Chat({ route, navigation }: any) {
           <View>
             <Text style={[styles.headerTitle, { color: CC.headerTitle }]}>{outroNome || "Chat"}</Text>
             {outroDigitando
-              ? <Text style={[styles.headerSub, { color: CORES_SABE.verdeEscuro }]}>digitando...</Text>
+              ? <Text style={[styles.headerSub, { color: CORES_SYMBIUS.verdeEscuro }]}>digitando...</Text>
               : <Text style={[styles.headerSub, { color: onlineStatus?"#22C55E":CC.textoSec }]}>{onlineStatus?"online":"offline"}</Text>
             }
           </View>
@@ -961,7 +961,7 @@ export default function Chat({ route, navigation }: any) {
         </TouchableOpacity>
         {souAluno === true ? (
           <TouchableOpacity
-            style={[styles.finalizarBtn, { backgroundColor: matchFinalizado ? CC.backBtn : CORES_SABE.verdeEscuro + '25' }]}
+            style={[styles.finalizarBtn, { backgroundColor: matchFinalizado ? CC.backBtn : CORES_SYMBIUS.verdeEscuro + '25' }]}
             onPress={abrirAvaliacao}
             disabled={matchFinalizado}
             activeOpacity={0.7}
@@ -969,7 +969,7 @@ export default function Chat({ route, navigation }: any) {
             <Ionicons
               name={matchFinalizado ? "checkmark-circle" : "flag-outline"}
               size={20}
-              color={matchFinalizado ? '#94A3B8' : CORES_SABE.verdeEscuro}
+              color={matchFinalizado ? '#94A3B8' : CORES_SYMBIUS.verdeEscuro}
             />
           </TouchableOpacity>
         ) : (
@@ -1008,7 +1008,7 @@ export default function Chat({ route, navigation }: any) {
               <TouchableOpacity activeOpacity={0.8} onLongPress={() => setMenuMsg(item)} style={[styles.messageRow, isMe?styles.messageRowMe:styles.messageRowOther, { marginVertical: primeiraDaSeq?4:1 }]}>
                 <View style={[styles.bolha, { maxWidth: bolhaMaxWidth, backgroundColor: isMe?CC.bolhaMe:CC.bolhaOther }, isMe?borderMe:borderOther]}>
                   {/* Indicador de encaminhada */}
-                  {item.encaminhada && <Text style={[styles.encaminhadaLabel, !isMe && { color: CORES_SABE.textoSec }]}>↪️ Encaminhada</Text>}
+                  {item.encaminhada && <Text style={[styles.encaminhadaLabel, !isMe && { color: CORES_SYMBIUS.textoSec }]}>↪️ Encaminhada</Text>}
                   {!isMe && primeiraDaSeq && <Text style={styles.nomeRemetente}>{item.nome_remetente}</Text>}
                   {item.citacao && (
                     <View style={[styles.citacaoBox, isMe?styles.citacaoMe:styles.citacaoOther]}>
@@ -1021,7 +1021,7 @@ export default function Chat({ route, navigation }: any) {
                       <ImagemMensagem base64={item.mensagem} onPress={() => abrirImagemFull(item.mensagem, item)} />
                       <View style={styles.rodape}>
                         {isFav && <Ionicons name="star" size={10} color="rgba(255,200,44,0.8)" style={{ marginRight: 4 }} />}
-                        <Text style={[styles.hora, !isMe && { color: CORES_SABE.textoSec }]}>{formatarHora(item.data_postagem)}</Text>
+                        <Text style={[styles.hora, !isMe && { color: CORES_SYMBIUS.textoSec }]}>{formatarHora(item.data_postagem)}</Text>
                       </View>
                     </>
                   ) : item.tipo === "video" ? (
@@ -1034,7 +1034,7 @@ export default function Chat({ route, navigation }: any) {
                       </TouchableOpacity>
                       <View style={styles.rodape}>
                         {isFav && <Ionicons name="star" size={10} color="rgba(255,200,44,0.8)" style={{ marginRight: 4 }} />}
-                        <Text style={[styles.hora, !isMe && { color: CORES_SABE.textoSec }]}>{formatarHora(item.data_postagem)}</Text>
+                        <Text style={[styles.hora, !isMe && { color: CORES_SYMBIUS.textoSec }]}>{formatarHora(item.data_postagem)}</Text>
                       </View>
                     </>
                   ) : item.tipo === "documento" ? (
@@ -1049,16 +1049,16 @@ export default function Chat({ route, navigation }: any) {
                       </TouchableOpacity>
                       <View style={styles.rodape}>
                         {isFav && <Ionicons name="star" size={10} color="rgba(255,200,44,0.8)" style={{ marginRight: 4 }} />}
-                        <Text style={[styles.hora, !isMe && { color: CORES_SABE.textoSec }]}>{formatarHora(item.data_postagem)}</Text>
+                        <Text style={[styles.hora, !isMe && { color: CORES_SYMBIUS.textoSec }]}>{formatarHora(item.data_postagem)}</Text>
                       </View>
                     </>
                   ) : (
                     <>
-                      <Text style={[styles.messageText, !isMe && { color: CORES_SABE.texto }]}>{item.mensagem}</Text>
+                      <Text style={[styles.messageText, !isMe && { color: CORES_SYMBIUS.texto }]}>{item.mensagem}</Text>
                       <View style={styles.rodape}>
-                        {item.editada && <Text style={[styles.editadaLabel, !isMe && { color: CORES_SABE.textoSec }]}>editada · </Text>}
+                        {item.editada && <Text style={[styles.editadaLabel, !isMe && { color: CORES_SYMBIUS.textoSec }]}>editada · </Text>}
                         {isFav && <Ionicons name="star" size={10} color="rgba(255,200,44,0.8)" style={{ marginRight: 4 }} />}
-                        <Text style={[styles.hora, !isMe && { color: CORES_SABE.textoSec }]}>{formatarHora(item.data_postagem)}</Text>
+                        <Text style={[styles.hora, !isMe && { color: CORES_SYMBIUS.textoSec }]}>{formatarHora(item.data_postagem)}</Text>
                       </View>
                     </>
                   )}
@@ -1103,7 +1103,7 @@ export default function Chat({ route, navigation }: any) {
         <View style={[styles.subpainel, { backgroundColor: CC.inputBg, borderTopColor: CC.inputBorder }]}>
           {/* Foto */}
           <TouchableOpacity style={styles.subItem} onPress={() => { setSubpainelVisible(false); fileInputRef.current?.click(); }}>
-            <View style={[styles.subIconWrap, { backgroundColor: CORES_SABE.verdeEscuro }]}>
+            <View style={[styles.subIconWrap, { backgroundColor: CORES_SYMBIUS.verdeEscuro }]}>
               <Ionicons name="image" size={26} color="#fff" />
             </View>
             <Text style={[styles.subLabel, { color: CC.menuTitle }]}>Foto</Text>
@@ -1117,7 +1117,7 @@ export default function Chat({ route, navigation }: any) {
           </TouchableOpacity>
           {/* Documento */}
           <TouchableOpacity style={styles.subItem} onPress={() => { setSubpainelVisible(false); docInputRef.current?.click(); }}>
-            <View style={[styles.subIconWrap, { backgroundColor: CORES_SABE.texto }]}>
+            <View style={[styles.subIconWrap, { backgroundColor: CORES_SYMBIUS.texto }]}>
               <Ionicons name="document-text" size={26} color="#fff" />
             </View>
             <Text style={[styles.subLabel, { color: CC.menuTitle }]}>Documento</Text>
@@ -1131,11 +1131,11 @@ export default function Chat({ route, navigation }: any) {
         {/* Grampo lado direito antes do send */}
         <TouchableOpacity
           onPress={() => setSubpainelVisible(v => !v)}
-          style={[styles.imgButton, { backgroundColor: subpainelVisible ? CORES_SABE.verdeEscuro : CC.imgBtnBg, borderColor: CC.imgBtnBorder }]}
+          style={[styles.imgButton, { backgroundColor: subpainelVisible ? CORES_SYMBIUS.verdeEscuro : CC.imgBtnBg, borderColor: CC.imgBtnBorder }]}
           disabled={uploading}
         >
           {uploading
-            ? <ActivityIndicator size="small" color={CORES_SABE.verdeEscuro} />
+            ? <ActivityIndicator size="small" color={CORES_SYMBIUS.verdeEscuro} />
             : <Ionicons name={subpainelVisible ? "close" : "attach"} size={22} color={subpainelVisible ? "#fff" : CC.imgBtnIcon} style={{ transform: [{ rotate: subpainelVisible ? "0deg" : "45deg" }] }} />
           }
         </TouchableOpacity>
@@ -1211,7 +1211,7 @@ export default function Chat({ route, navigation }: any) {
             {/* Documento */}
             {previewTipo === 'documento' && previewDoc && (
               <View style={[styles.docPreviewBox, { backgroundColor: CC.scrollBg, borderColor: CC.inputBorder }]}>
-                <Ionicons name={previewDoc.tipo === 'pdf' ? 'document-text' : 'document'} size={48} color={previewDoc.tipo === 'pdf' ? CORES_SABE.verdeEscuro : CORES_SABE.texto} />
+                <Ionicons name={previewDoc.tipo === 'pdf' ? 'document-text' : 'document'} size={48} color={previewDoc.tipo === 'pdf' ? CORES_SYMBIUS.verdeEscuro : CORES_SYMBIUS.texto} />
                 <Text style={[styles.docNome, { color: CC.previewTitle }]} numberOfLines={2}>{previewDoc.nome}</Text>
                 <Text style={[styles.docTamanho, { color: CC.textoSec }]}>
                   {previewDoc.tipo?.toUpperCase()} · {(previewDoc.tamanho / 1024).toFixed(0)} KB
@@ -1354,7 +1354,7 @@ export default function Chat({ route, navigation }: any) {
                       <Text style={avaliacaoStyles.btnConfirmarTxt}>Sim, entendi a matéria!</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[avaliacaoStyles.btnConfirmar, { backgroundColor: CORES_SABE.verdeEscuro }]}
+                      style={[avaliacaoStyles.btnConfirmar, { backgroundColor: CORES_SYMBIUS.verdeEscuro }]}
                       onPress={() => responderPergunta(false)}
                       activeOpacity={0.85}
                     >
@@ -1383,7 +1383,7 @@ export default function Chat({ route, navigation }: any) {
                           <Ionicons
                             name={n === 0 ? "close-circle" : (estrelasHover !== null && n <= estrelasHover ? "star" : "star-outline")}
                             size={34}
-                            color={n === 0 ? (estrelasHover === 0 ? CORES_SABE.verdeEscuro : CC.textoSec) : "#FFC82C"}
+                            color={n === 0 ? (estrelasHover === 0 ? CORES_SYMBIUS.verdeEscuro : CC.textoSec) : "#FFC82C"}
                             style={{ marginHorizontal: 3 }}
                           />
                         </TouchableOpacity>
@@ -1411,7 +1411,7 @@ export default function Chat({ route, navigation }: any) {
                     )}
 
                     <TouchableOpacity
-                      style={[avaliacaoStyles.btnConfirmar, { backgroundColor: estrelasHover !== null ? CORES_SABE.verdeEscuro : "#CBD5E1", marginTop: 8 }]}
+                      style={[avaliacaoStyles.btnConfirmar, { backgroundColor: estrelasHover !== null ? CORES_SYMBIUS.verdeEscuro : "#CBD5E1", marginTop: 8 }]}
                       disabled={estrelasHover === null || enviandoAvaliacao}
                       onPress={confirmarAvaliacao}
                       activeOpacity={0.85}
@@ -1437,13 +1437,13 @@ export default function Chat({ route, navigation }: any) {
         <View style={avaliacaoStyles.toastOverlay} pointerEvents="none">
           <Animated.View style={[
             avaliacaoStyles.toastCard,
-            { backgroundColor: modoEscuro ? CORES_SABE.fundoCard : "#FFFFFF",
+            { backgroundColor: modoEscuro ? CORES_SYMBIUS.fundoCard : "#FFFFFF",
               opacity: xpToastOpacity,
               transform: [{ translateY: xpToastSlide }] },
           ]}>
             <Text style={{ fontSize: 28 }}>{xpToast.neutro ? "📨" : "🌱"}</Text>
             <View>
-              <Text style={[avaliacaoStyles.toastTitulo, { color: modoEscuro ? CORES_SABE.texto : CORES_SABE.texto, fontFamily: F.bold }]}>
+              <Text style={[avaliacaoStyles.toastTitulo, { color: modoEscuro ? CORES_SYMBIUS.texto : CORES_SYMBIUS.texto, fontFamily: F.bold }]}>
                 {xpToast.neutro ? "Feedback enviado!" : "Match finalizado!"}
               </Text>
               <Text style={[avaliacaoStyles.toastSubtitulo, { color: "#8D99AE", fontFamily: F.medium }]}>
@@ -1457,7 +1457,7 @@ export default function Chat({ route, navigation }: any) {
       {/* ── MODAL DE LEVEL-UP — mesmo componente/gradiente radial por animal
           usado na Home (Index.tsx); só design por enquanto, back-end (levelUpInfo)
           já é o real, calculado pelo gamificationService. ── */}
-      <NivelUpSabeModal info={levelUpInfo} onFechar={() => setLevelUpInfo(null)} />
+      <NivelUpSymbiusModal info={levelUpInfo} onFechar={() => setLevelUpInfo(null)} />
     </KeyboardAvoidingView>
   );
 }
@@ -1469,7 +1469,7 @@ const styles = StyleSheet.create({
   backBtn:          { width:38,height:38,borderRadius:19,justifyContent:"center",alignItems:"center" },
   headerCenter:     { flexDirection:"row",alignItems:"center",gap:10,flex:1,paddingLeft:10 },
   headerAvatarWrap: { position:"relative" },
-  headerAvatar:     { width:42,height:42,borderRadius:21,backgroundColor:CORES_SABE.borda },
+  headerAvatar:     { width:42,height:42,borderRadius:21,backgroundColor:CORES_SYMBIUS.borda },
   headerOnlineDot:  { position:"absolute",bottom:1,right:1,width:12,height:12,borderRadius:6,borderWidth:2,borderColor:"#FFFFFF" },
   headerTitle:      { fontSize:16,fontFamily: F.black },
   headerSub:        { fontSize:12,fontFamily: F.semibold,marginTop:1 },
@@ -1482,7 +1482,7 @@ const styles = StyleSheet.create({
   messageRowOther: { justifyContent:"flex-start" },
   bolha:           { maxWidth:SCREEN_WIDTH*0.75,paddingHorizontal:14,paddingVertical:10,marginHorizontal:2,flexShrink:1,elevation:1,shadowColor:"#000",shadowOpacity:.06,shadowRadius:3 },
   encaminhadaLabel:{ color:"rgba(255,255,255,0.5)",fontSize:10,marginBottom:3,fontStyle:"italic" },
-  nomeRemetente:   { color:CORES_SABE.verdeEscuro,fontSize:11,fontFamily: F.black,marginBottom:3 },
+  nomeRemetente:   { color:CORES_SYMBIUS.verdeEscuro,fontSize:11,fontFamily: F.black,marginBottom:3 },
   messageText:     { color:"white",fontSize:15,flexShrink:1,flexWrap:"wrap",lineHeight:21 },
   rodape:          { flexDirection:"row",justifyContent:"flex-end",alignItems:"center",marginTop:4 },
   hora:            { color:"rgba(255,255,255,0.6)",fontSize:10,textAlign:"right" },
@@ -1490,7 +1490,7 @@ const styles = StyleSheet.create({
 
   citacaoBox:   { borderLeftWidth:3,paddingLeft:8,marginBottom:8,borderRadius:4,paddingVertical:4 },
   citacaoMe:    { borderLeftColor:"rgba(255,255,255,0.7)",backgroundColor:"rgba(0,0,0,0.12)" },
-  citacaoOther: { borderLeftColor:CORES_SABE.verdeEscuro,backgroundColor:"rgba(31,61,43,0.10)" },
+  citacaoOther: { borderLeftColor:CORES_SYMBIUS.verdeEscuro,backgroundColor:"rgba(31,61,43,0.10)" },
   citacaoNome:  { color:"rgba(255,255,255,0.85)",fontSize:11,fontFamily: F.black,marginBottom:1 },
   citacaoTexto: { color:"rgba(255,255,255,0.65)",fontSize:12 },
 
@@ -1503,7 +1503,7 @@ const styles = StyleSheet.create({
   inputArea:  { flexDirection:"row",alignItems:"center",paddingHorizontal:12,paddingTop:10,paddingBottom:Platform.OS==="ios"?32:14,borderTopWidth:1,gap:8 },
   imgButton:  { width:42,height:42,justifyContent:"center",alignItems:"center",borderRadius:21,borderWidth:1 },
   input:      { flex:1,borderRadius:22,paddingHorizontal:16,paddingTop:10,paddingBottom:10,maxHeight:100,fontSize:15,borderWidth:1 },
-  sendButton: { width:42,height:42,borderRadius:21,justifyContent:"center",alignItems:"center",elevation:3,shadowColor:CORES_SABE.verdeEscuro,shadowOpacity:.35,shadowRadius:6 },
+  sendButton: { width:42,height:42,borderRadius:21,justifyContent:"center",alignItems:"center",elevation:3,shadowColor:CORES_SYMBIUS.verdeEscuro,shadowOpacity:.35,shadowRadius:6 },
 
   overlayFull:     { position:"absolute",top:0,left:0,right:0,bottom:0,backgroundColor:"rgba(0,0,0,0.6)",justifyContent:"center",alignItems:"center",zIndex:999 },
   overlayFullDark: { position:"absolute",top:0,left:0,right:0,bottom:0,backgroundColor:"#000",justifyContent:"center",alignItems:"center",zIndex:999 },
@@ -1528,7 +1528,7 @@ const styles = StyleSheet.create({
   previewImage:   { width:280,height:280,borderRadius:16,marginBottom:20 },
   previewButtons: { flexDirection:"row",gap:15 },
   previewBtn:     { paddingHorizontal:28,paddingVertical:13,borderRadius:25 },
-  sendBtn:        { backgroundColor:CORES_SABE.verdeEscuro },
+  sendBtn:        { backgroundColor:CORES_SYMBIUS.verdeEscuro },
   cancelBtnText:  { fontFamily: F.bold },
   sendBtnText:    { color:"white",fontFamily: F.bold },
 
@@ -1589,6 +1589,6 @@ const avaliacaoStyles = StyleSheet.create({
   levelUpBody: { padding: 24, alignItems: "center", gap: 10 },
   levelUpNivel: { fontSize: 22, textAlign: "center" },
   levelUpConceito: { fontSize: 13, textAlign: "center", lineHeight: 19, opacity: 0.85 },
-  levelUpBtn: { marginTop: 8, paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14, width: "100%", alignItems: "center", backgroundColor: CORES_SABE.verdeEscuro },
-  levelUpBtnTxt: { fontFamily: F.bold, fontSize: 15, color: CORES_SABE.fundo },
+  levelUpBtn: { marginTop: 8, paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14, width: "100%", alignItems: "center", backgroundColor: CORES_SYMBIUS.verdeEscuro },
+  levelUpBtnTxt: { fontFamily: F.bold, fontSize: 15, color: CORES_SYMBIUS.fundo },
 });

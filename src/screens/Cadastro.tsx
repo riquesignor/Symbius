@@ -10,7 +10,7 @@ import { auth, db } from '../config/firebaseConfig';
 import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 
-// Paleta JUMO
+// Paleta Symbius
 const CORES = {
   azulEscuro:      '#0B2046',
   rosa:            '#E91E63',
@@ -131,12 +131,21 @@ export default function Cadastro({ navigation, route }: any) {
       // 2. Enviar email de verificação
       await sendEmailVerification(user);
 
+      // O documento em si continua com o UID do Auth como ID (é o que todo
+      // o app usa pra buscar/atualizar o perfil — trocar isso quebraria
+      // login em ~15 telas). `identificador` é só um campo extra dentro do
+      // documento pra reconhecer o usuário de cara sem abrir o doc: RA pra
+      // aluno, e-mail institucional pra administrador/staff.
+      const emailNormalizado = email.trim().toLowerCase();
+      const identificador = perfilTipo === 'Aluno' ? (ra || emailNormalizado) : emailNormalizado;
+
       // 3. Gravar dados adicionais no Firestore
       await setDoc(doc(db, 'usuarios', user.uid), {
         uid: user.uid,
         nome_completo: nome,
-        email_escolar: email.trim().toLowerCase(),
+        email_escolar: emailNormalizado,
         ra: ra || 'N/A',
+        identificador,
         turma: turmaFormatada,
         tipo: perfilTipo,
         status: 0, // 0 = aguardando verificação de email

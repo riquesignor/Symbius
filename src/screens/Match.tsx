@@ -17,8 +17,8 @@ import { useAppSettings } from '../contexts/AppSettingsContext';
 
 // ── Fonte Poppins ──
 import { F } from '../constants/theme';
-import { TEMA_SABE as CORES, CORES_SABE } from '../constants/temaSabe';
-import SabeTabBar from '../components/SabeTabBar';
+import { TEMA_SYMBIUS as CORES, CORES_SYMBIUS } from '../constants/temaSymbius';
+import SymbiusTabBar from '../components/SymbiusTabBar';
 
 const { width, height } = Dimensions.get('window');
 
@@ -117,11 +117,11 @@ function useOnlineStatus(uids: string[]) {
 export default function Match({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const { fonteScale } = useAppSettings();
-  // ── TELA DE TESTE (Sabé): paleta verde fixa, ignora o tema real do usuário.
+  // ── TELA DE TESTE (Symbius): paleta verde fixa, ignora o tema real do usuário.
   // C/CORES/modoEscuro seguem sendo usados normalmente no resto do arquivo —
   // só o valor que eles resolvem mudou. Nenhuma lógica abaixo foi tocada.
-  const modoEscuro = false; // paleta sabé agora é modo claro
-  const C = CORES; // CORES já é TEMA_SABE (import aliasado acima)
+  const modoEscuro = false; // paleta Symbius agora é modo claro
+  const C = CORES; // CORES já é TEMA_SYMBIUS (import aliasado acima)
   const fs = (size: number) => size * fonteScale;
 
   const [abaAtiva,       setAbaAtiva]       = useState<Aba>('descobrir');
@@ -648,7 +648,7 @@ export default function Match({ navigation, route }: any) {
       />
 
       {/* NAVBAR */}
-      <View style={[styles.navbar, { paddingTop: insets.top, backgroundColor: CORES_SABE.fundo, borderBottomColor: CORES_SABE.borda }]}>
+      <View style={[styles.navbar, { paddingTop: insets.top, backgroundColor: CORES_SYMBIUS.fundo, borderBottomColor: CORES_SYMBIUS.borda }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color={C.azulEscuro} />
         </TouchableOpacity>
@@ -661,7 +661,7 @@ export default function Match({ navigation, route }: any) {
       </View>
 
       {/* TABS */}
-      <View style={[styles.tabs, { backgroundColor: CORES_SABE.fundo, borderBottomColor: CORES_SABE.borda }]}>
+      <View style={[styles.tabs, { backgroundColor: CORES_SYMBIUS.fundo, borderBottomColor: CORES_SYMBIUS.borda }]}>
         {(['descobrir', 'solicitacoes', 'matches'] as Aba[]).map(aba => (
           <TouchableOpacity
             key={aba}
@@ -693,7 +693,7 @@ export default function Match({ navigation, route }: any) {
       {/* ABA DESCOBRIR */}
       {abaAtiva === 'descobrir' && (
         <View style={{ flex: 1 }}>
-          <View style={[styles.filtros, { backgroundColor: CORES_SABE.fundo, borderBottomColor: CORES_SABE.borda }]}>
+          <View style={[styles.filtros, { backgroundColor: CORES_SYMBIUS.fundo, borderBottomColor: CORES_SYMBIUS.borda }]}>
             {/* Selector de matérias — abre popup */}
             <TouchableOpacity
               style={styles.materiaSelector}
@@ -843,7 +843,7 @@ export default function Match({ navigation, route }: any) {
         </View>
       )}
 
-      <SabeTabBar ativa="match" navigation={navigation} uid={meuUid} />
+      <SymbiusTabBar ativa="match" navigation={navigation} uid={meuUid} />
     </SafeAreaView>
   );
 }

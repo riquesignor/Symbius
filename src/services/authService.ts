@@ -6,7 +6,7 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 
-export const cadastrarNoJumo = async (
+export const cadastrarNoSymbius = async (
   email: string, 
   senha: string, 
   nome: string, 

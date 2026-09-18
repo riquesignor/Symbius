@@ -22,36 +22,36 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ── Fonte Poppins (igual Index) ──
 import { F } from '../constants/theme';
-import { CORES_SABE, CORES_SABE_DARK } from './Boasvindas';
+import { CORES_SYMBIUS, CORES_SYMBIUS_DARK } from './Boasvindas';
 
-// ── Shadow de paleta sabé (mesma técnica de Match/Perfil/Configuracoes):
+// ── Shadow de paleta Symbius (mesma técnica de Match/Perfil/Configuracoes):
 // a lógica desta tela usa CORES.xxx (import direto, fixo claro) e C.xxx
 // (via useAppSettings, muda com modoEscuro) — sombreamos os dois. ──
 const CORES = {
-  azulEscuro: CORES_SABE.verdeEscuro,
-  branco:     CORES_SABE.fundoCard,
+  azulEscuro: CORES_SYMBIUS.verdeEscuro,
+  branco:     CORES_SYMBIUS.fundoCard,
   rosa:       '#C9667E',
-  textoSec:   CORES_SABE.textoSec,
+  textoSec:   CORES_SYMBIUS.textoSec,
 };
 const CORES_LOCAL_CLARO = {
-  azulEscuro: CORES_SABE.verdeEscuro,
-  branco:     CORES_SABE.fundoCard,
-  cinzaClaro: CORES_SABE.borda,
-  fundo:      CORES_SABE.fundo,
-  preto:      CORES_SABE.texto,
-  textoSec:   CORES_SABE.textoSec,
-  amarelo:    CORES_SABE.laranja,
-  rosa:       CORES_SABE.laranjaTexto,
+  azulEscuro: CORES_SYMBIUS.verdeEscuro,
+  branco:     CORES_SYMBIUS.fundoCard,
+  cinzaClaro: CORES_SYMBIUS.borda,
+  fundo:      CORES_SYMBIUS.fundo,
+  preto:      CORES_SYMBIUS.texto,
+  textoSec:   CORES_SYMBIUS.textoSec,
+  amarelo:    CORES_SYMBIUS.laranja,
+  rosa:       CORES_SYMBIUS.laranjaTexto,
 };
 const CORES_LOCAL_ESCURO = {
-  azulEscuro: CORES_SABE.verdeMedio,
-  branco:     CORES_SABE_DARK.fundoCard,
-  cinzaClaro: CORES_SABE_DARK.fundoSuave,
-  fundo:      CORES_SABE_DARK.fundo,
-  preto:      CORES_SABE_DARK.texto,
-  textoSec:   CORES_SABE_DARK.textoSec,
-  amarelo:    CORES_SABE.laranja,
-  rosa:       CORES_SABE.laranja,
+  azulEscuro: CORES_SYMBIUS.verdeMedio,
+  branco:     CORES_SYMBIUS_DARK.fundoCard,
+  cinzaClaro: CORES_SYMBIUS_DARK.fundoSuave,
+  fundo:      CORES_SYMBIUS_DARK.fundo,
+  preto:      CORES_SYMBIUS_DARK.texto,
+  textoSec:   CORES_SYMBIUS_DARK.textoSec,
+  amarelo:    CORES_SYMBIUS.laranja,
+  rosa:       CORES_SYMBIUS.laranja,
 };
 
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -144,8 +144,11 @@ export default function Calendario({ navigation, route }: any) {
   const { width: winW, height: winH } = useWindowDimensions();
   const CEL_SIZE = Math.floor((winW - 32) / 7);
 
-  const { cores: _coresContexto, fonteScale, modoEscuro } = useAppSettings();
-  const C = modoEscuro ? CORES_LOCAL_ESCURO : CORES_LOCAL_CLARO;
+  const { cores: _coresContexto, fonteScale, modoEscuro: _modoEscuroReal } = useAppSettings();
+  // Paleta Symbius ainda não tem modo escuro definitivo (pendente) — fixado
+  // em claro por ora, independente do toggle real de Modo Escuro.
+  const modoEscuro = false;
+  const C = CORES_LOCAL_CLARO;
 
   const fs = (size: number) => size * fonteScale;
 

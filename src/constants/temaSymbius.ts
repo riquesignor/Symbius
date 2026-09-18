@@ -1,37 +1,37 @@
 import { Tema } from './theme';
-import { CORES_SABE } from '../screens/Boasvindas';
+import { CORES_SYMBIUS } from '../screens/Boasvindas';
 import { Animal } from '../utils/gamification';
 
-export { CORES_SABE };
+export { CORES_SYMBIUS };
 
-// ── Tema "Sabé" no formato Tema (mesmas chaves de CORES/CORES_DARK) ──
+// ── Tema "Symbius" no formato Tema (mesmas chaves de CORES/CORES_DARK) ──
 // Permite "sombrear" localmente `cores`/`CORES`/`modoEscuro` em telas já
 // existentes (Match, Perfil) sem tocar em nenhuma linha de lógica:
 // a tela continua lendo C.fundo, C.azulEscuro, CORES.rosa etc. normalmente,
-// só que agora esses tokens resolvem pra paleta clara do sabé.
+// só que agora esses tokens resolvem pra paleta clara do Symbius.
 //
-// ⚠️ Modo claro apenas. O modo escuro do sabé ainda não tem paleta definida
+// ⚠️ Modo claro apenas. O modo escuro do Symbius ainda não tem paleta definida
 // (o usuário vai enviar depois) — não inventar valores aqui.
-export const TEMA_SABE: Tema = {
-  azulEscuro:  CORES_SABE.texto,        // texto principal
-  azulMedio:   CORES_SABE.verdeEscuro,  // variação / secundário do primário
-  rosa:        CORES_SABE.verdeEscuro,  // acento / destaque principal (era rosa, agora verde)
-  amarelo:     CORES_SABE.laranja,      // acento secundário
+export const TEMA_SYMBIUS: Tema = {
+  azulEscuro:  CORES_SYMBIUS.texto,        // texto principal
+  azulMedio:   CORES_SYMBIUS.verdeEscuro,  // variação / secundário do primário
+  rosa:        CORES_SYMBIUS.verdeEscuro,  // acento / destaque principal (era rosa, agora verde)
+  amarelo:     CORES_SYMBIUS.laranja,      // acento secundário
 
-  fundo:       CORES_SABE.fundo,
-  branco:      CORES_SABE.fundoCard,
-  cinzaClaro:  CORES_SABE.borda,
-  cinzaInput:  CORES_SABE.fundoSuave,
+  fundo:       CORES_SYMBIUS.fundo,
+  branco:      CORES_SYMBIUS.fundoCard,
+  cinzaClaro:  CORES_SYMBIUS.borda,
+  cinzaInput:  CORES_SYMBIUS.fundoSuave,
 
-  textoSec:    CORES_SABE.textoSec,
-  preto:       CORES_SABE.texto,
+  textoSec:    CORES_SYMBIUS.textoSec,
+  preto:       CORES_SYMBIUS.texto,
 
   // Semânticas
   verde:       '#4CAF50',
   vermelho:    '#e74c3c',
   roxo:        '#a569d8',
-  laranja:     CORES_SABE.laranja,
-  azulCeu:     CORES_SABE.azul,
+  laranja:     CORES_SYMBIUS.laranja,
+  azulCeu:     CORES_SYMBIUS.azul,
 };
 
 // ── Gradientes radiais de "subiu de nível", um por animal ──────────────

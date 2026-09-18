@@ -5,7 +5,8 @@ import {
   Modal
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
-import { doc, collection, addDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { gerarIdLegivel } from '../utils/firestoreIds';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -68,7 +69,7 @@ export default function EditorPost({ route, navigation }: any) {
         conteudo:         conteudo.trim(),
         capa,
         categoria,        // ✅ usa o estado selecionado
-        autor:            autor.trim() || 'Gestão JUMO',
+        autor:            autor.trim() || 'Gestão Symbius',
         tags:             tagsArray,
         ultimaAtualizacao: serverTimestamp(),
       };
@@ -77,7 +78,10 @@ export default function EditorPost({ route, navigation }: any) {
         await updateDoc(doc(db, 'posts', postId), postData);
         Alert.alert('Sucesso!', 'Post atualizado.', [{ text: 'OK', onPress: () => navigation.goBack() }]);
       } else {
-        await addDoc(collection(db, 'posts'), {
+        // ID legível (slug do título + sufixo curto) em vez do ID aleatório
+        // do addDoc — facilita identificar o post direto na lista do Firestore.
+        const idPost = gerarIdLegivel(postData.titulo);
+        await setDoc(doc(db, 'posts', idPost), {
           ...postData,
           visualizacoes:   0,
           leitores:        [],

@@ -7,7 +7,8 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 
-import { F, CORES as CORES_LIGHT, CORES_DARK } from '../constants/theme';
+import { F } from '../constants/theme';
+import { TEMA_SYMBIUS } from '../constants/temaSymbius';
 
 // ── Dados do FAQ ──
 const SECOES = [
@@ -39,7 +40,7 @@ const SECOES = [
     cor: '#E51C6A',
     itens: [
       {
-        pergunta: 'O que são as publicações do JUMO?',
+        pergunta: 'O que são as publicações do Symbius?',
         resposta:
           'As publicações são avisos, destaques, oportunidades, eventos de olimpíadas e passeios publicados pela gestão da escola. Fique por dentro de tudo que acontece no colégio.',
       },
@@ -198,7 +199,10 @@ function ItemFAQ({ item, C, fs }: { item: { pergunta: string; resposta: string }
 // ── Tela principal ──
 export default function Ajuda({ navigation }: any) {
   const insets  = useSafeAreaInsets();
-  const { cores: C, fonteScale, modoEscuro } = useAppSettings();
+  const { fonteScale } = useAppSettings();
+  // Paleta Symbius fixa (claro) — mesma técnica de shadow usada em
+  // Match/Perfil/Configuracoes/Calendario/Admin/FeedResumos/Contato.
+  const C = TEMA_SYMBIUS;
   const fs = (n: number) => Math.round(n * fonteScale);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -241,7 +245,7 @@ export default function Ajuda({ navigation }: any) {
               Central de Ajuda
             </Text>
             <Text style={[styles.heroSub, { color: C.textoSec, fontSize: fs(13) }]}>
-              Encontre respostas para as perguntas mais frequentes sobre o JUMO.
+              Encontre respostas para as perguntas mais frequentes sobre o Symbius.
             </Text>
           </View>
 

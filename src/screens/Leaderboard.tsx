@@ -11,12 +11,12 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { calcularNivel, calcularProgressoXp, ANIMAIS_ORDER } from '../utils/gamification';
-import { CORES_SABE } from './Boasvindas';
-import { NIVEL_AVATAR_BG, NIVEL_NUMERO } from '../constants/temaSabe';
+import { CORES_SYMBIUS } from './Boasvindas';
+import { NIVEL_AVATAR_BG, NIVEL_NUMERO } from '../constants/temaSymbius';
 import { F } from '../constants/theme';
 
 // ══════════════════════════════════════════════════════════════════════
-// ⚠️  Ranking no visual novo ("Sabé"), ligada ao back-end atual (mesma
+// ⚠️  Ranking no visual novo ("Symbius"), ligada ao back-end atual (mesma
 // coleção `usuarios`, mesmo cálculo de nível). O filtro por série foi
 // trocado por Geral/Aprendiz/Mentor, usando o campo real `papel_comunidade`
 // (adicionado no Cadastro) — não é dado mockado. A seção "sua jornada" usa
@@ -110,7 +110,7 @@ export default function Leaderboard({ navigation, route }: any) {
         onPress={() => navigation.navigate('PerfilPublico', { uid: item.uid })}
         activeOpacity={0.85}
       >
-        <Text style={[styles.pos, { fontSize: fs(14) }, item.posicao <= 3 && { color: CORES_SABE.laranja }]}>
+        <Text style={[styles.pos, { fontSize: fs(14) }, item.posicao <= 3 && { color: CORES_SYMBIUS.laranja }]}>
           {medalha || item.posicao}
         </Text>
 
@@ -182,12 +182,12 @@ export default function Leaderboard({ navigation, route }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={CORES_SABE.fundo} />
+      <StatusBar barStyle="dark-content" backgroundColor={CORES_SYMBIUS.fundo} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top || 12 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Ionicons name="chevron-back" size={24} color={CORES_SABE.texto} />
+          <Ionicons name="chevron-back" size={24} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
         <Text style={[styles.headerTitulo, { fontSize: fs(17) }]}>Ranking</Text>
         <View style={{ width: 24 }} />
@@ -214,10 +214,10 @@ export default function Leaderboard({ navigation, route }: any) {
       </View>
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 60 }} color={CORES_SABE.verdeEscuro} size="large" />
+        <ActivityIndicator style={{ marginTop: 60 }} color={CORES_SYMBIUS.verdeEscuro} size="large" />
       ) : ranking.length === 0 ? (
         <View style={styles.vazio}>
-          <FontAwesome5 name="trophy" size={40} color={CORES_SABE.borda} />
+          <FontAwesome5 name="trophy" size={40} color={CORES_SYMBIUS.borda} />
           <Text style={[styles.vazioText, { fontSize: fs(13) }]}>
             Ninguém encontrado nessa aba ainda.
           </Text>
@@ -230,7 +230,7 @@ export default function Leaderboard({ navigation, route }: any) {
           contentContainerStyle={styles.lista}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[CORES_SABE.verdeEscuro]} tintColor={CORES_SABE.verdeEscuro} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[CORES_SYMBIUS.verdeEscuro]} tintColor={CORES_SYMBIUS.verdeEscuro} />
           }
         />
       )}
@@ -239,55 +239,55 @@ export default function Leaderboard({ navigation, route }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: CORES_SABE.fundo },
+  container: { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
 
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 18, paddingBottom: 4,
   },
-  headerTitulo: { color: CORES_SABE.texto, fontFamily: F.black },
+  headerTitulo: { color: CORES_SYMBIUS.texto, fontFamily: F.black },
 
   jornadaCard: {
-    marginHorizontal: 18, marginTop: 12, backgroundColor: CORES_SABE.fundoCard,
-    borderRadius: 16, padding: 14, borderWidth: 1, borderColor: CORES_SABE.borda,
+    marginHorizontal: 18, marginTop: 12, backgroundColor: CORES_SYMBIUS.fundoCard,
+    borderRadius: 16, padding: 14, borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
   },
   jornadaTopo: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 },
-  jornadaTitulo: { color: CORES_SABE.texto, fontFamily: F.bold },
-  jornadaSub: { color: CORES_SABE.textoSec, marginTop: 2 },
-  jornadaBarraBg: { height: 6, borderRadius: 3, backgroundColor: CORES_SABE.borda, overflow: 'hidden' },
-  jornadaBarraFill: { height: 6, borderRadius: 3, backgroundColor: CORES_SABE.verdeEscuro },
+  jornadaTitulo: { color: CORES_SYMBIUS.texto, fontFamily: F.bold },
+  jornadaSub: { color: CORES_SYMBIUS.textoSec, marginTop: 2 },
+  jornadaBarraBg: { height: 6, borderRadius: 3, backgroundColor: CORES_SYMBIUS.borda, overflow: 'hidden' },
+  jornadaBarraFill: { height: 6, borderRadius: 3, backgroundColor: CORES_SYMBIUS.verdeEscuro },
   jornadaStats: { flexDirection: 'row', alignItems: 'center', marginTop: 12 },
   jornadaStatItem: { flex: 1, alignItems: 'center' },
-  jornadaStatDiv: { width: 1, height: 28, backgroundColor: CORES_SABE.borda },
-  jornadaStatNum: { color: CORES_SABE.texto, fontFamily: F.black },
-  jornadaStatLabel: { color: CORES_SABE.textoSec, marginTop: 2 },
+  jornadaStatDiv: { width: 1, height: 28, backgroundColor: CORES_SYMBIUS.borda },
+  jornadaStatNum: { color: CORES_SYMBIUS.texto, fontFamily: F.black },
+  jornadaStatLabel: { color: CORES_SYMBIUS.textoSec, marginTop: 2 },
 
   abasRow: {
     flexDirection: 'row', gap: 8, paddingHorizontal: 18, paddingTop: 14, paddingBottom: 10,
   },
   abaPill: {
     paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
-    backgroundColor: CORES_SABE.fundoSuave,
+    backgroundColor: CORES_SYMBIUS.fundoSuave,
   },
-  abaPillAtiva: { backgroundColor: CORES_SABE.verdeEscuro },
-  abaTxt: { color: CORES_SABE.textoSec, fontFamily: F.semibold },
-  abaTxtAtiva: { color: CORES_SABE.creme, fontFamily: F.bold },
+  abaPillAtiva: { backgroundColor: CORES_SYMBIUS.verdeEscuro },
+  abaTxt: { color: CORES_SYMBIUS.textoSec, fontFamily: F.semibold },
+  abaTxtAtiva: { color: CORES_SYMBIUS.creme, fontFamily: F.bold },
 
   lista: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 40 },
   item: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: CORES_SABE.fundoCard, borderRadius: 16, padding: 12, marginBottom: 8,
-    borderWidth: 1, borderColor: CORES_SABE.borda,
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 16, padding: 12, marginBottom: 8,
+    borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
   },
-  itemEuSou: { borderColor: CORES_SABE.verdeEscuro, borderWidth: 1.5 },
-  pos: { color: CORES_SABE.textoSec, fontFamily: F.black, width: 24, textAlign: 'center' },
+  itemEuSou: { borderColor: CORES_SYMBIUS.verdeEscuro, borderWidth: 1.5 },
+  pos: { color: CORES_SYMBIUS.textoSec, fontFamily: F.black, width: 24, textAlign: 'center' },
   avatarWrap: {},
   avatar: { width: 44, height: 44, borderRadius: 22 },
   avatarFallback: { justifyContent: 'center', alignItems: 'center' },
-  nome: { color: CORES_SABE.texto, fontFamily: F.bold, marginBottom: 2 },
-  animal: { color: CORES_SABE.textoSec, fontFamily: F.medium },
-  xp: { color: CORES_SABE.texto, fontFamily: F.bold },
+  nome: { color: CORES_SYMBIUS.texto, fontFamily: F.bold, marginBottom: 2 },
+  animal: { color: CORES_SYMBIUS.textoSec, fontFamily: F.medium },
+  xp: { color: CORES_SYMBIUS.texto, fontFamily: F.bold },
 
   vazio: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 40 },
-  vazioText: { color: CORES_SABE.textoSec, textAlign: 'center', lineHeight: 20, fontFamily: F.medium },
+  vazioText: { color: CORES_SYMBIUS.textoSec, textAlign: 'center', lineHeight: 20, fontFamily: F.medium },
 });
