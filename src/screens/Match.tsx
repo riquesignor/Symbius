@@ -125,6 +125,8 @@ export default function Match({ navigation, route }: any) {
   const fs = (size: number) => size * fonteScale;
 
   const [abaAtiva,       setAbaAtiva]       = useState<Aba>('descobrir');
+  const abaAtivaRef = useRef<Aba>('descobrir');
+  useEffect(() => { abaAtivaRef.current = abaAtiva; }, [abaAtiva]);
   const [materiasFiltro, setMateriasFiltro] = useState<string[]>([]);
   const [interagidosCarregado, setInteragidosCarregado] = useState(false);
   const uidsInteragidosRef = useRef<Map<string, number>>(new Map());
@@ -188,6 +190,39 @@ export default function Match({ navigation, route }: any) {
             Animated.spring(swipeX, { toValue: 0, useNativeDriver: true }),
             Animated.spring(swipeY, { toValue: 0, useNativeDriver: true }),
           ]).start();
+        }
+      },
+    })
+  ).current;
+
+  // ── Arrastar o dedo pra esquerda/direita muda a aba ativa (com animação de movimento) ──
+  const ABAS_MATCH: Aba[] = ['descobrir', 'solicitacoes', 'matches'];
+  const tabSwipeX = useRef(new Animated.Value(0)).current;
+  const tabSwipeResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 20 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderMove: (_, g) => {
+        const idx = ABAS_MATCH.indexOf(abaAtivaRef.current);
+        const podeAnterior = idx > 0;
+        const podeProxima  = idx < ABAS_MATCH.length - 1;
+        let dx = g.dx;
+        if (dx < 0 && !podeProxima)  dx *= 0.25; // resistência na última aba
+        if (dx > 0 && !podeAnterior) dx *= 0.25; // resistência na primeira aba
+        tabSwipeX.setValue(dx);
+      },
+      onPanResponderRelease: (_, g) => {
+        const idx = ABAS_MATCH.indexOf(abaAtivaRef.current);
+        const vaiProxima  = g.dx < -40 && idx < ABAS_MATCH.length - 1;
+        const vaiAnterior = g.dx > 40  && idx > 0;
+        if (vaiProxima || vaiAnterior) {
+          const dir = vaiProxima ? -1 : 1;
+          Animated.timing(tabSwipeX, { toValue: dir * width, duration: 180, useNativeDriver: true }).start(() => {
+            setAbaAtiva(ABAS_MATCH[idx + (vaiProxima ? 1 : -1)]);
+            tabSwipeX.setValue(-dir * width);
+            Animated.timing(tabSwipeX, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+          });
+        } else {
+          Animated.spring(tabSwipeX, { toValue: 0, useNativeDriver: true, friction: 8 }).start();
         }
       },
     })
@@ -662,6 +697,7 @@ export default function Match({ navigation, route }: any) {
 
       {/* TABS */}
       <View style={[styles.tabs, { backgroundColor: CORES_SYMBIUS.fundo, borderBottomColor: CORES_SYMBIUS.borda }]}>
+        <View style={[styles.tabsTrack, { backgroundColor: CORES_SYMBIUS.fundoSuave }]}>
         {(['descobrir', 'solicitacoes', 'matches'] as Aba[]).map(aba => (
           <TouchableOpacity
             key={aba}
@@ -688,8 +724,10 @@ export default function Match({ navigation, route }: any) {
             )}
           </TouchableOpacity>
         ))}
+        </View>
       </View>
 
+      <Animated.View style={{ flex: 1, transform: [{ translateX: tabSwipeX }] }} {...tabSwipeResponder.panHandlers}>
       {/* ABA DESCOBRIR */}
       {abaAtiva === 'descobrir' && (
         <View style={{ flex: 1 }}>
@@ -750,6 +788,7 @@ export default function Match({ navigation, route }: any) {
               contentContainerStyle={{ padding: 16 }}
             />
       )}
+      </Animated.View>
 
       {/* POPUP INFO */}
       {popupInfo && (
@@ -854,8 +893,9 @@ const styles = StyleSheet.create({
   logoWrap:           { position: 'relative', flexDirection: 'row', alignItems: 'center' },
   dotAmarelo:         { position: 'absolute', top: 2, left: -4, width: 7, height: 7, borderRadius: 4, backgroundColor: CORES.amarelo, zIndex: 1 },
   logo:               { fontSize: 17, fontFamily: F.black, color: CORES.azulEscuro, letterSpacing: -0.3 },
-  tabs:               { flexDirection: 'row', backgroundColor: CORES.branco, paddingHorizontal: 16, paddingBottom: 12, paddingTop: 8, gap: 8, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
-  tab:                { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, backgroundColor: CORES.fundo },
+  tabs:               { flexDirection: 'row', backgroundColor: CORES.branco, paddingHorizontal: 16, paddingBottom: 12, paddingTop: 8, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
+  tabsTrack:          { flex: 1, flexDirection: 'row', gap: 4, backgroundColor: CORES.fundo, padding: 4, borderRadius: 14 },
+  tab:                { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 6, paddingVertical: 9, borderRadius: 10 },
   tabAtiva:           { backgroundColor: CORES.azulEscuro },
   tabTxt:             { fontSize: 12, fontFamily: F.bold, color: CORES.textoSec },
   tabTxtAtiva:        { color: CORES.branco },

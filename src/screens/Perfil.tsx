@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
   SafeAreaView, StatusBar, Modal, TextInput, ActivityIndicator,
-  Image, Animated, Platform
+  Image, Animated, Platform, PanResponder
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
 import {
@@ -207,7 +207,7 @@ const heroStyles = StyleSheet.create({
 
   papelTabs: {
     flexDirection: 'row', gap: 6, backgroundColor: CORES_SYMBIUS.fundoSuave,
-    padding: 4, borderRadius: 14, marginTop: 18, width: '100%', maxWidth: 260,
+    padding: 4, borderRadius: 14, marginTop: 18, width: '100%', alignSelf: 'stretch',
   },
   papelTab: { flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center' },
   papelTabAtivo: { backgroundColor: CORES_SYMBIUS.verdeEscuro },
@@ -255,6 +255,26 @@ export default function Perfil({ navigation, route }: any) {
   // só grava a tag em `papel_comunidade` (mesmo campo já usado no cadastro e
   // no filtro do Leaderboard); nenhuma lógica de contagem/gamificação nova.
   const [papelAtivo, setPapelAtivo] = useState<'aprender' | 'ensinar'>('aprender');
+  const papelAtivoRef = useRef<'aprender' | 'ensinar'>('aprender');
+  useEffect(() => { papelAtivoRef.current = papelAtivo; }, [papelAtivo]);
+  const escolherPapelRef = useRef<(papel: 'aprender' | 'ensinar') => void>(() => {});
+  // Arrastar o dedo pra esquerda/direita no toggle também alterna Aprendiz/Mentor
+  // (com animação de movimento: o toggle acompanha o dedo e volta com uma mola)
+  const papelSwipeX = useRef(new Animated.Value(0)).current;
+  const papelSwipeResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 20 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderMove: (_, g) => {
+        const max = 32;
+        papelSwipeX.setValue(Math.max(-max, Math.min(max, g.dx * 0.4)));
+      },
+      onPanResponderRelease: (_, g) => {
+        if (g.dx < -40 && papelAtivoRef.current === 'aprender') escolherPapelRef.current('ensinar');
+        else if (g.dx > 40 && papelAtivoRef.current === 'ensinar') escolherPapelRef.current('aprender');
+        Animated.spring(papelSwipeX, { toValue: 0, useNativeDriver: true, friction: 6 }).start();
+      },
+    })
+  ).current;
   const [salvandoPapel, setSalvandoPapel] = useState(false);
   const [modalConfirmSair, setModalConfirmSair] = useState(false);
 
@@ -353,6 +373,7 @@ export default function Perfil({ navigation, route }: any) {
       setSalvandoPapel(false);
     }
   };
+  useEffect(() => { escolherPapelRef.current = escolherPapel; });
 
   const sair = async () => {
     await AsyncStorage.removeItem('uid');
@@ -488,7 +509,7 @@ export default function Perfil({ navigation, route }: any) {
             {/* Aprendiz / Mentor — front-end apenas: grava a tag em
                 `papel_comunidade` (mesmo campo do cadastro / filtro do
                 Leaderboard). Nenhuma lógica de contagem nova aqui ainda. */}
-            <View style={heroStyles.papelTabs}>
+            <Animated.View style={[heroStyles.papelTabs, { transform: [{ translateX: papelSwipeX }] }]} {...papelSwipeResponder.panHandlers}>
               <TouchableOpacity
                 style={[heroStyles.papelTab, papelAtivo === 'aprender' && heroStyles.papelTabAtivo]}
                 onPress={() => escolherPapel('aprender')}
@@ -507,7 +528,7 @@ export default function Perfil({ navigation, route }: any) {
                   Mentor
                 </Text>
               </TouchableOpacity>
-            </View>
+            </Animated.View>
 
             {/* Conquistas — reaproveita só campos reais já carregados
                 (nenhum contador novo/fake). */}

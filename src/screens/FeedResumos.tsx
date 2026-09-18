@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, FlatList,
   SafeAreaView, StatusBar, ActivityIndicator, Modal, TextInput,
-  KeyboardAvoidingView, Platform, Image, Alert,
+  KeyboardAvoidingView, Platform, Image, Alert, PanResponder, Animated, Dimensions,
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
 import { doc, getDoc } from 'firebase/firestore';
@@ -46,6 +46,38 @@ export default function FeedResumos({ navigation, route }: any) {
   const [minhaFoto, setMinhaFoto] = useState<string | null>(null);
 
   const [aba, setAba] = useState<Aba>('recentes');
+  const abaRef = useRef<Aba>('recentes');
+  useEffect(() => { abaRef.current = aba; }, [aba]);
+  const ABAS_RESUMOS: Aba[] = ['recentes', 'populares'];
+  const abaSwipeX = useRef(new Animated.Value(0)).current;
+  const abaSwipeResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 20 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderMove: (_, g) => {
+        const idx = ABAS_RESUMOS.indexOf(abaRef.current);
+        let dx = g.dx;
+        if (dx < 0 && idx >= ABAS_RESUMOS.length - 1) dx *= 0.25;
+        if (dx > 0 && idx <= 0) dx *= 0.25;
+        abaSwipeX.setValue(dx);
+      },
+      onPanResponderRelease: (_, g) => {
+        const idx = ABAS_RESUMOS.indexOf(abaRef.current);
+        const vaiProxima  = g.dx < -40 && idx < ABAS_RESUMOS.length - 1;
+        const vaiAnterior = g.dx > 40  && idx > 0;
+        if (vaiProxima || vaiAnterior) {
+          const dir = vaiProxima ? -1 : 1;
+          const { width } = Dimensions.get('window');
+          Animated.timing(abaSwipeX, { toValue: dir * width, duration: 180, useNativeDriver: true }).start(() => {
+            setAba(ABAS_RESUMOS[idx + (vaiProxima ? 1 : -1)]);
+            abaSwipeX.setValue(-dir * width);
+            Animated.timing(abaSwipeX, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+          });
+        } else {
+          Animated.spring(abaSwipeX, { toValue: 0, useNativeDriver: true, friction: 8 }).start();
+        }
+      },
+    })
+  ).current;
   const [resumos, setResumos] = useState<Resumo[]>([]);
   const [loading, setLoading] = useState(true);
   const [processandoCurtida, setProcessandoCurtida] = useState<string | null>(null);
@@ -261,6 +293,7 @@ export default function FeedResumos({ navigation, route }: any) {
         })}
       </View>
 
+      <Animated.View style={{ flex: 1, transform: [{ translateX: abaSwipeX }] }} {...abaSwipeResponder.panHandlers}>
       {loading ? (
         <ActivityIndicator style={{ marginTop: 60 }} color={CORES_SYMBIUS.verdeEscuro} size="large" />
       ) : resumos.length === 0 ? (
@@ -279,6 +312,7 @@ export default function FeedResumos({ navigation, route }: any) {
           showsVerticalScrollIndicator={false}
         />
       )}
+      </Animated.View>
 
       {/* Modal de criação */}
       <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={fecharModalPublicar}>
@@ -373,12 +407,9 @@ const styles = StyleSheet.create({
   },
   headerTitulo: { color: CORES_SYMBIUS.texto, fontFamily: F.black },
 
-  abasRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 18, paddingBottom: 14 },
-  abaPill: {
-    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
-    borderWidth: 1, borderColor: CORES_SYMBIUS.borda, backgroundColor: CORES_SYMBIUS.fundoCard,
-  },
-  abaPillAtiva: { backgroundColor: CORES_SYMBIUS.verdeEscuro, borderColor: CORES_SYMBIUS.verdeEscuro },
+  abasRow: { flexDirection: 'row', gap: 4, marginHorizontal: 18, marginBottom: 14, backgroundColor: CORES_SYMBIUS.fundoSuave, padding: 4, borderRadius: 14 },
+  abaPill: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10 },
+  abaPillAtiva: { backgroundColor: CORES_SYMBIUS.verdeEscuro },
   abaTxt: { color: CORES_SYMBIUS.textoSec, fontFamily: F.bold },
   abaTxtAtiva: { color: CORES_SYMBIUS.fundo },
 

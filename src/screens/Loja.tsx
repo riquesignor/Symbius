@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
-  SafeAreaView, StatusBar, ActivityIndicator, Alert,
+  SafeAreaView, StatusBar, ActivityIndicator, Alert, PanResponder, Animated, Dimensions,
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
 import { doc, getDoc } from 'firebase/firestore';
@@ -31,6 +31,38 @@ export default function Loja({ navigation, route }: any) {
   const uid: string = route?.params?.uid || '';
 
   const [abaAtiva, setAbaAtiva] = useState<Aba>('basicos');
+  const abaAtivaRef = useRef<Aba>('basicos');
+  useEffect(() => { abaAtivaRef.current = abaAtiva; }, [abaAtiva]);
+  const ABAS_LOJA: Aba[] = ['basicos', 'rewards'];
+  const abaSwipeX = useRef(new Animated.Value(0)).current;
+  const abaSwipeResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 20 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderMove: (_, g) => {
+        const idx = ABAS_LOJA.indexOf(abaAtivaRef.current);
+        let dx = g.dx;
+        if (dx < 0 && idx >= ABAS_LOJA.length - 1) dx *= 0.25;
+        if (dx > 0 && idx <= 0) dx *= 0.25;
+        abaSwipeX.setValue(dx);
+      },
+      onPanResponderRelease: (_, g) => {
+        const idx = ABAS_LOJA.indexOf(abaAtivaRef.current);
+        const vaiProxima  = g.dx < -40 && idx < ABAS_LOJA.length - 1;
+        const vaiAnterior = g.dx > 40  && idx > 0;
+        if (vaiProxima || vaiAnterior) {
+          const dir = vaiProxima ? -1 : 1;
+          const { width } = Dimensions.get('window');
+          Animated.timing(abaSwipeX, { toValue: dir * width, duration: 180, useNativeDriver: true }).start(() => {
+            setAbaAtiva(ABAS_LOJA[idx + (vaiProxima ? 1 : -1)]);
+            abaSwipeX.setValue(-dir * width);
+            Animated.timing(abaSwipeX, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+          });
+        } else {
+          Animated.spring(abaSwipeX, { toValue: 0, useNativeDriver: true, friction: 8 }).start();
+        }
+      },
+    })
+  ).current;
   const [usuario,   setUsuario]   = useState<any>(null);
   const [loading,   setLoading]   = useState(true);
   const [processando, setProcessando] = useState<string | null>(null);
@@ -109,6 +141,7 @@ export default function Loja({ navigation, route }: any) {
         })}
       </View>
 
+      <Animated.View style={{ flex: 1, transform: [{ translateX: abaSwipeX }] }} {...abaSwipeResponder.panHandlers}>
       {loading ? (
         <ActivityIndicator style={{ marginTop: 60 }} color={CORES_SYMBIUS.verdeEscuro} size="large" />
       ) : (
@@ -170,6 +203,7 @@ export default function Loja({ navigation, route }: any) {
           })}
         </ScrollView>
       )}
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -189,12 +223,9 @@ const styles = StyleSheet.create({
   },
   saldoTxt: { color: CORES_SYMBIUS.verdeEscuro, fontFamily: F.black },
 
-  abasRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 18, paddingBottom: 14 },
-  abaPill: {
-    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-    borderWidth: 1, borderColor: CORES_SYMBIUS.borda, backgroundColor: CORES_SYMBIUS.fundoCard,
-  },
-  abaPillAtiva: { backgroundColor: CORES_SYMBIUS.verdeEscuro, borderColor: CORES_SYMBIUS.verdeEscuro },
+  abasRow: { flexDirection: 'row', gap: 4, marginHorizontal: 18, marginBottom: 14, backgroundColor: CORES_SYMBIUS.fundoSuave, padding: 4, borderRadius: 14 },
+  abaPill: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10 },
+  abaPillAtiva: { backgroundColor: CORES_SYMBIUS.verdeEscuro },
   abaTxt: { color: CORES_SYMBIUS.textoSec, fontFamily: F.bold },
   abaTxtAtiva: { color: CORES_SYMBIUS.fundo },
 
