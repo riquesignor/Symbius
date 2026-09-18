@@ -9,10 +9,45 @@
   import { useSafeAreaInsets } from 'react-native-safe-area-context';
   import { db, auth } from '../config/firebaseConfig';
   import { useAppSettings } from '../contexts/AppSettingsContext';
-  import { doc, getDoc, updateDoc } from 'firebase/firestore';
+  import { doc, getDoc, updateDoc, collection, getDocs } from 'firebase/firestore';
+  import { useNotificacao } from '../contexts/NotificacaoProvider';
   import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 
-  import { F, CORES, CORES_DARK } from '../constants/theme';
+  import { F } from '../constants/theme';
+  import { CORES_SABE, CORES_SABE_DARK } from './Boasvindas';
+
+  // ── Shadow de paleta: a lógica desta tela (Section/SettingRow com C.xxx /
+  // cores.xxx) foi escrita em cima de CORES/CORES_DARK do theme.ts antigo.
+  // Em vez de reescrever tudo, sombreamos esses dois nomes localmente com a
+  // paleta sabé — mesma técnica usada em Match.tsx/Perfil.tsx. ──
+  const CORES = {
+    azulEscuro: CORES_SABE.verdeEscuro,
+    branco:     CORES_SABE.fundoCard,
+    fundo:      CORES_SABE.fundo,
+    cinzaClaro: CORES_SABE.borda,
+    textoSec:   CORES_SABE.textoSec,
+    preto:      CORES_SABE.texto,
+    amarelo:    CORES_SABE.laranja,
+    laranja:    CORES_SABE.laranjaTexto,
+    verde:      CORES_SABE.sucesso,
+    rosa:       '#C9667E',
+    roxo:       '#9B7EBD',
+    vermelho:   '#D64545',
+  };
+  const CORES_DARK = {
+    azulEscuro: CORES_SABE.verdeMedio,
+    branco:     CORES_SABE_DARK.fundoCard,
+    fundo:      CORES_SABE_DARK.fundo,
+    cinzaClaro: CORES_SABE_DARK.fundoSuave,
+    textoSec:   CORES_SABE_DARK.textoSec,
+    preto:      CORES_SABE_DARK.texto,
+    amarelo:    CORES_SABE.laranja,
+    laranja:    CORES_SABE.laranjaTexto,
+    verde:      CORES_SABE.sucesso,
+    rosa:       '#D98099',
+    roxo:       '#B29BCB',
+    vermelho:   '#E06666',
+  };
 
   const TAMANHOS_FONTE = ['Pequeno', 'Normal', 'Grande'];
   const SONS_NOTIF     = ['Nenhum', 'Leve', 'Normal', 'Forte'];
@@ -77,6 +112,12 @@
     const [senhaConfirma,     setSenhaConfirma]     = useState('');
     const [erroSenha,         setErroSenha]         = useState('');
 
+    // ── Histórico de notificações (portado do Index original) ──
+    const { notificacoesChat, limparNotificacoesChat } = useNotificacao();
+    const [notificacoesAgenda, setNotificacoesAgenda] = useState<any[]>([]);
+    const [notifDescartadas, setNotifDescartadas] = useState<Set<string>>(new Set());
+    const [modalHistorico, setModalHistorico] = useState(!!route?.params?.abrirNotificacoes);
+
     // Cores dinâmicas baseadas no modo
     const C = modoEscuro ? CORES_DARK : CORES;
 
@@ -93,6 +134,65 @@
       const t = setTimeout(() => setToast(''), 2400);
       return () => clearTimeout(t);
     }, [toast]);
+
+    // Carrega IDs de notificações de agenda já descartadas
+    useEffect(() => {
+      AsyncStorage.getItem('notif_descartadas').then(raw => {
+        if (raw) setNotifDescartadas(new Set(JSON.parse(raw)));
+      }).catch(() => {});
+    }, []);
+
+    // Carrega lembretes vencidos + provas próximas (mesma lógica do Index original)
+    useEffect(() => {
+      if (!uid) return;
+      (async () => {
+        try {
+          const hoje = new Date();
+          hoje.setHours(0, 0, 0, 0);
+          const itens: any[] = [];
+
+          const raLimpo = userData?.ra?.replace(/[\/\\]/g, '');
+          const raValido = raLimpo && raLimpo !== 'N/A' && raLimpo.length > 0;
+          const userIdentifier = raValido ? raLimpo : uid;
+          try {
+            const snapL = await getDocs(collection(db, 'lembretes', userIdentifier, 'lembretes'));
+            snapL.forEach(d => itens.push({ id: d.id, fonte: 'lembrete', tipo: 'lembrete', ...d.data() }));
+          } catch (e) {}
+
+          try {
+            const snapE = await getDocs(collection(db, 'eventos_admin', 'tipos', 'provas'));
+            snapE.forEach((d: any) => itens.push({ id: d.id, fonte: 'admin', tipo: 'Prova', ...d.data() }));
+          } catch (e) {}
+
+          const notifs: any[] = [];
+          itens.forEach(item => {
+            if (item.tipo === 'lembrete' && item.data) {
+              const [a, m, dd] = item.data.split('-').map(Number);
+              const dt = new Date(a, m - 1, dd);
+              dt.setHours(0, 0, 0, 0);
+              if (dt < hoje) {
+                notifs.push({ id: item.id, tipo: 'lembrete_vencido', titulo: item.titulo, data: item.data, icon: 'alert-circle' });
+              }
+            }
+            if (item.tipo === 'Prova' && item.data) {
+              notifs.push({ id: item.id, tipo: 'prova_proxima', titulo: item.titulo, data: item.data, icon: 'document-text' });
+            }
+          });
+          setNotificacoesAgenda(notifs);
+        } catch (e) { console.error('Erro ao carregar notificações de agenda:', e); }
+      })();
+    }, [uid, userData?.ra]);
+
+    const totalNotificacoesAtivas =
+      notificacoesChat.length + notificacoesAgenda.filter(n => !notifDescartadas.has(n.id)).length;
+
+    const limparHistoricoNotificacoes = () => {
+      limparNotificacoesChat();
+      const idsAtivos = notificacoesAgenda.map(n => n.id);
+      const novoSet = new Set([...notifDescartadas, ...idsAtivos]);
+      setNotifDescartadas(novoSet);
+      AsyncStorage.setItem('notif_descartadas', JSON.stringify([...novoSet])).catch(() => {});
+    };
 
     const carregar = async () => {
     try {
@@ -381,9 +481,9 @@
             </View>
             <Text style={styles.headerTitulo}>Configurações</Text>
           </View>
-          <View style={styles.headerIconWrap}>
-            <Ionicons name="settings" size={18} color={CORES.amarelo} />
-          </View>
+          <TouchableOpacity style={styles.headerIconWrap} onPress={() => toggleModoEscuro(!modoEscuro)}>
+            <Ionicons name={modoEscuro ? 'moon' : 'sunny'} size={18} color={CORES.amarelo} />
+          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -415,6 +515,13 @@
           {/* ══ NOTIFICAÇÕES ══ */}
           <FadeInView delay={100}>
             <Section eyebrow="ALERTAS" titulo="Notificações">
+              <SettingRow
+                icon="notifications-outline"
+                iconCor={CORES.preto}
+                label="Histórico de notificações"
+                descricao={totalNotificacoesAtivas > 0 ? `${totalNotificacoesAtivas} não lida(s)` : 'Mensagens e avisos da agenda'}
+                onPress={() => setModalHistorico(true)}
+              />
               <SettingRow
                 icon="notifications"
                 iconCor={CORES.rosa}
@@ -768,6 +875,91 @@
             </View>
           </View>
         </Modal>
+
+        {/* ── MODAL HISTÓRICO DE NOTIFICAÇÕES (portado do Index original) ── */}
+        <Modal visible={modalHistorico} transparent animationType="slide" onRequestClose={() => setModalHistorico(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 24, backgroundColor: C.branco, maxHeight: '80%' }]}>
+              <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+                <Text style={[styles.modalTitulo, { color: C.azulEscuro, flex: 1, marginBottom: 0 }]}>
+                  Notificações
+                </Text>
+                {totalNotificacoesAtivas > 0 && (
+                  <TouchableOpacity onPress={limparHistoricoNotificacoes} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                    <Text style={[styles.notifLimparTxt, { color: CORES.rosa }]}>Limpar tudo</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {totalNotificacoesAtivas === 0 ? (
+                <View style={{ alignItems: 'center', paddingVertical: 36 }}>
+                  <Ionicons name="notifications-off" size={36} color={C.cinzaClaro} />
+                  <Text style={{ color: C.textoSec, fontSize: 13, marginTop: 10, fontFamily: F.medium }}>
+                    Nenhuma notificação
+                  </Text>
+                </View>
+              ) : (
+                <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+                  {notificacoesChat.length > 0 && (
+                    <>
+                      <Text style={[styles.notifGrupoLabel, { color: C.textoSec }]}>MENSAGENS</Text>
+                      {notificacoesChat.map(item => (
+                        <TouchableOpacity
+                          key={item.id}
+                          style={[styles.notifCard, { backgroundColor: C.fundo, borderColor: C.cinzaClaro }]}
+                          onPress={() => {
+                            setModalHistorico(false);
+                            navigation.navigate('Chat', { outroUid: item.outroUid, outroNome: item.outroNome });
+                          }}
+                        >
+                          <View style={[styles.notifIconWrap, { backgroundColor: CORES.rosa + '18' }]}>
+                            <Ionicons name="chatbubble-ellipses" size={16} color={CORES.rosa} />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.notifTitulo, { color: C.azulEscuro }]} numberOfLines={1}>{item.nome}</Text>
+                            <Text style={[styles.notifMeta, { color: C.textoSec }]} numberOfLines={1}>{item.corpo}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </>
+                  )}
+
+                  {notificacoesAgenda.filter(n => !notifDescartadas.has(n.id)).length > 0 && (
+                    <>
+                      <Text style={[styles.notifGrupoLabel, { color: C.textoSec, marginTop: notificacoesChat.length > 0 ? 12 : 0 }]}>
+                        AGENDA
+                      </Text>
+                      {notificacoesAgenda.filter(n => !notifDescartadas.has(n.id)).map(item => (
+                        <View
+                          key={item.id}
+                          style={[styles.notifCard, { backgroundColor: C.fundo, borderColor: C.cinzaClaro }]}
+                        >
+                          <View style={[styles.notifIconWrap, { backgroundColor: (item.tipo === 'lembrete_vencido' ? CORES.vermelho : (CORES.laranja || '#e67e22')) + '18' }]}>
+                            <Ionicons name={item.icon} size={16} color={item.tipo === 'lembrete_vencido' ? CORES.vermelho : (CORES.laranja || '#e67e22')} />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.notifTitulo, { color: C.azulEscuro }]} numberOfLines={1}>{item.titulo}</Text>
+                            <Text style={[styles.notifMeta, { color: C.textoSec }]}>
+                              {item.tipo === 'lembrete_vencido' ? '⚠️ Vencido' : '📅 Próximo'}
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                    </>
+                  )}
+                </ScrollView>
+              )}
+
+              <TouchableOpacity
+                style={[styles.btnSalvar, { backgroundColor: CORES.azulEscuro, marginTop: 16 }]}
+                onPress={() => setModalHistorico(false)}
+              >
+                <Text style={styles.btnSalvarText}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     );
   }
@@ -782,7 +974,7 @@
 
     // HEADER
     header:              { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingBottom: 16, gap: 12 },
-    btnVoltar:           { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
+    btnVoltar:           { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
     headerEyebrowRow:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
     headerDot:           { width: 6, height: 6, borderRadius: 3, backgroundColor: CORES.amarelo },
     headerEyebrow:       { color: 'rgba(255,255,255,0.7)', fontSize: 9, fontFamily: F.black, letterSpacing: 1.6 },
@@ -815,6 +1007,13 @@
     modalTitulo:         { fontSize: 16, fontFamily: F.black, marginBottom: 14 },
     seletorItem:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: 0.5 },
     seletorItemText:     { fontSize: 14, fontFamily: F.bold },
+
+    notifLimparTxt:      { fontSize: 13, fontFamily: F.bold },
+    notifGrupoLabel:     { fontSize: 10, fontFamily: F.bold, letterSpacing: 0.6, marginBottom: 8 },
+    notifCard:           { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 14, padding: 10, marginBottom: 8 },
+    notifIconWrap:       { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center' },
+    notifTitulo:         { fontSize: 13, fontFamily: F.bold },
+    notifMeta:           { fontSize: 11, fontFamily: F.regular, marginTop: 2 },
 
     // INPUT
     inputLabel:          { fontSize: 9, fontFamily: F.black, letterSpacing: 1.2, marginBottom: 6 },

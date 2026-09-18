@@ -8,6 +8,8 @@ import { db, auth } from '../config/firebaseConfig';
 import { signOut, sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth';
 import { collection, query, where, getDocs, updateDoc, doc, getDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CORES_SABE } from './Boasvindas';
+import { F } from '../constants/theme';
 
 export default function Login({ navigation }: any) {
   const [email,         setEmail]         = useState('');
@@ -110,11 +112,8 @@ export default function Login({ navigation }: any) {
 
           {/* LOGO */}
           <View style={styles.logoWrap}>
-            <View style={styles.logoDot} />
-            <Text style={styles.logoText}>
-              <Text style={styles.logoJum}>JUM</Text>
-              <Text style={styles.logoO}>O</Text>
-            </Text>
+            <Text style={styles.logoText}>sabé</Text>
+            <Text style={styles.logoSlogan}>aprenda junto</Text>
           </View>
 
           {/* CARD */}
@@ -125,7 +124,7 @@ export default function Login({ navigation }: any) {
             <TextInput
               style={styles.input}
               placeholder="Digite aqui..."
-              placeholderTextColor="#BBBFC4"
+              placeholderTextColor={CORES_SABE.textoTerciario}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
@@ -137,7 +136,7 @@ export default function Login({ navigation }: any) {
             <TextInput
               style={styles.input}
               placeholder="Digite aqui..."
-              placeholderTextColor="#BBBFC4"
+              placeholderTextColor={CORES_SABE.textoTerciario}
               value={senha}
               onChangeText={setSenha}
               secureTextEntry={secureText}
@@ -155,7 +154,7 @@ export default function Login({ navigation }: any) {
               disabled={loading || !email || !senha}
             >
               {loading
-                ? <ActivityIndicator color="#FFF" />
+                ? <ActivityIndicator color={CORES_SABE.creme} />
                 : <Text style={styles.btnEntrarText}>Entrar</Text>
               }
             </TouchableOpacity>
@@ -167,7 +166,7 @@ export default function Login({ navigation }: any) {
             <Text style={styles.footerText}>Ainda não possui acesso?</Text>
             <TouchableOpacity
               style={styles.btnCriarConta}
-              onPress={() => navigation.navigate('Cadastro')}
+              onPress={() => navigation.navigate('EscolhaPapel')}
             >
               <Text style={styles.btnCriarContaText}>Criar Conta</Text>
             </TouchableOpacity>
@@ -188,7 +187,7 @@ export default function Login({ navigation }: any) {
             <TextInput
               style={styles.input}
               placeholder="seu.email@escola.com"
-              placeholderTextColor="#BBBFC4"
+              placeholderTextColor={CORES_SABE.textoTerciario}
               value={emailReset}
               onChangeText={setEmailReset}
               keyboardType="email-address"
@@ -197,7 +196,7 @@ export default function Login({ navigation }: any) {
 
             <View style={styles.modalBtns}>
               <TouchableOpacity 
-                style={[styles.modalBtn, { backgroundColor: '#E0E0E0' }]}
+                style={[styles.modalBtn, { backgroundColor: CORES_SABE.fundoSuave }]}
                 onPress={() => {
                   setModalReset(false);
                   setEmailReset('');
@@ -207,14 +206,14 @@ export default function Login({ navigation }: any) {
               </TouchableOpacity>
               
               <TouchableOpacity 
-                style={[styles.modalBtn, { backgroundColor: '#2C2C3E' }]}
+                style={[styles.modalBtn, { backgroundColor: CORES_SABE.verdeEscuro }]}
                 onPress={handleResetEmail}
                 disabled={loadingReset}
               >
                 {loadingReset ? (
-                  <ActivityIndicator color="#FFF" size="small" />
+                  <ActivityIndicator color={CORES_SABE.creme} size="small" />
                 ) : (
-                  <Text style={[styles.modalBtnText, { color: '#FFF' }]}>Enviar</Text>
+                  <Text style={[styles.modalBtnText, { color: CORES_SABE.creme }]}>Enviar</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -226,120 +225,105 @@ export default function Login({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#EFEFEF' },
+  container: { flex: 1, backgroundColor: CORES_SABE.fundo },
   scroll:    { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40, paddingHorizontal: 28 },
 
   // TOAST
   toast: {
     position: 'absolute', top: 20, alignSelf: 'center',
-    backgroundColor: '#E91E63', paddingVertical: 12, paddingHorizontal: 24,
+    backgroundColor: CORES_SABE.verdeEscuro, paddingVertical: 12, paddingHorizontal: 24,
     borderRadius: 24, zIndex: 999, elevation: 5,
   },
-  toastText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
+  toastText: { color: CORES_SABE.creme, fontFamily: F.bold, fontSize: 14 },
 
   // LOGO
-  logoWrap: { position: 'relative', marginBottom: 32, alignItems: 'center' },
-  logoDot: {
-    position: 'absolute', top: 2, left: 1,
-    width: 9, height: 9, borderRadius: 5,
-    backgroundColor: '#FFC107', zIndex: 10,
-  },
-  logoText:  { fontSize: 44, fontWeight: '900', letterSpacing: -1 },
-  logoJum:   { color: '#1A1A2E' },
-  logoO:     { color: '#E91E63' },
+  logoWrap: { marginBottom: 32, alignItems: 'center' },
+  logoText:  { fontSize: 40, fontFamily: F.bold, letterSpacing: -0.5, color: CORES_SABE.verdeEscuro },
+  logoSlogan: { fontSize: 13, color: CORES_SABE.textoSec, fontFamily: F.semibold, marginTop: 2 },
 
   // CARD
   card: {
     width: '100%',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: CORES_SABE.fundoSuave,
     borderRadius: 32,
     padding: 32,
     shadowColor: '#000',
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.06,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 6 },
     elevation: 6,
   },
 
   // FIELDS
-  fieldLabel: { fontSize: 15, fontWeight: '700', color: '#0B2046', marginBottom: 8 },
+  fieldLabel: { fontSize: 15, fontFamily: F.bold, color: CORES_SABE.texto, marginBottom: 8 },
   input: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: CORES_SABE.fundoCard,
     borderRadius: 16,
-    borderWidth: 0,
+    borderWidth: 1,
+    borderColor: CORES_SABE.borda,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 15,
-    color: '#1A1A2E',
+    color: CORES_SABE.texto,
     marginBottom: 18,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
   },
 
   // ESQUECEU
-  forgotText: { fontSize: 13, color: '#8D99AE', marginBottom: 20, textAlign: 'right' },
+  forgotText: { fontSize: 13, color: CORES_SABE.textoSec, marginBottom: 20, textAlign: 'right' },
 
   // BOTÃO ENTRAR
   btnEntrar: {
-    backgroundColor: '#0B2046',
+    backgroundColor: CORES_SABE.verdeEscuro,
     borderRadius: 18,
     paddingVertical: 16,
     alignItems: 'center',
     marginBottom: 14,
     elevation: 3,
-    shadowColor: '#0B2046',
+    shadowColor: CORES_SABE.verdeEscuro,
     shadowOpacity: 0.15,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
   },
-  btnEntrarText: { color: '#FFF', fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
+  btnEntrarText: { color: CORES_SABE.creme, fontSize: 16, fontFamily: F.bold, letterSpacing: 0.5 },
 
   // RODAPÉ
   footer: { alignItems: 'center', marginTop: 16, gap: 12 },
-  footerText: { fontSize: 13, color: '#8D99AE' },
+  footerText: { fontSize: 13, color: CORES_SABE.textoSec },
   btnCriarConta: {
     width: '100%',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: CORES_SABE.fundoCard,
     borderRadius: 18,
     borderWidth: 2,
-    borderColor: '#0B2046',
+    borderColor: CORES_SABE.verdeEscuro,
     paddingVertical: 14,
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
   },
-  btnCriarContaText: { fontSize: 16, fontWeight: '700', color: '#0B2046', letterSpacing: 0.5 },
+  btnCriarContaText: { fontSize: 16, fontFamily: F.bold, color: CORES_SABE.verdeEscuro, letterSpacing: 0.5 },
 
   // MODAL
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(26, 26, 26, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalBox: {
     width: '85%',
     maxWidth: 360,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: CORES_SABE.fundoCard,
     borderRadius: 16,
     padding: 24,
     elevation: 5,
   },
   modalTitulo: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#1A1A2E',
+    fontFamily: F.bold,
+    color: CORES_SABE.texto,
     marginBottom: 6,
   },
   modalSub: {
     fontSize: 13,
-    color: '#8D99AE',
+    color: CORES_SABE.textoSec,
     marginBottom: 16,
   },
   modalBtns: {
@@ -355,7 +339,7 @@ const styles = StyleSheet.create({
   },
   modalBtnText: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#1A1A2E',
+    fontFamily: F.bold,
+    color: CORES_SABE.texto,
   },
 });

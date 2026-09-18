@@ -5,26 +5,34 @@ import {
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
 import {
-  collection, query, orderBy, limit, getDocs, where,
+  collection, query, orderBy, limit, getDocs, where, doc, getDoc,
 } from 'firebase/firestore';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSettings } from '../contexts/AppSettingsContext';
-import { calcularNivel } from '../utils/gamification';
-import { F, CORES } from '../constants/theme';
+import { calcularNivel, calcularProgressoXp, ANIMAIS_ORDER } from '../utils/gamification';
+import { CORES_SABE } from './Boasvindas';
+import { NIVEL_AVATAR_BG, NIVEL_NUMERO } from '../constants/temaSabe';
+import { F } from '../constants/theme';
 
-// ── Séries disponíveis ──────────────────────────────────────────────────
-const SERIES = ['Todas', '1º', '2º', '3º'];
+// ══════════════════════════════════════════════════════════════════════
+// ⚠️  Ranking no visual novo ("Sabé"), ligada ao back-end atual (mesma
+// coleção `usuarios`, mesmo cálculo de nível). O filtro por série foi
+// trocado por Geral/Aprendiz/Mentor, usando o campo real `papel_comunidade`
+// (adicionado no Cadastro) — não é dado mockado. A seção "sua jornada" usa
+// o mesmo `calcularNivel`/`calcularProgressoXp` do resto do app.
+// ══════════════════════════════════════════════════════════════════════
 
-// ── Cores do pódio ──────────────────────────────────────────────────────
-const PODIO_COR   = ['#FFD700', '#C0C0C0', '#CD7F32']; 
-const PODIO_H     = [88, 72, 60];                       
-const PODIO_LABEL = ['🥇', '🥈', '🥉'];
-
+type Aba = 'geral' | 'aprender' | 'ensinar';
+const ABAS: { chave: Aba; label: string }[] = [
+  { chave: 'geral',    label: 'Geral' },
+  { chave: 'aprender', label: 'Aprendiz' },
+  { chave: 'ensinar',  label: 'Mentor' },
+];
 
 export default function Leaderboard({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
-  const { cores: C, fonteScale, modoEscuro } = useAppSettings();
+  const { fonteScale } = useAppSettings();
   const fs = (s: number) => s * fonteScale;
 
   const uidAtual: string = route?.params?.uid || '';
@@ -32,23 +40,27 @@ export default function Leaderboard({ navigation, route }: any) {
   const [ranking, setRanking]       = useState<any[]>([]);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [serieAtiva, setSerieAtiva] = useState('Todas');
+  const [abaAtiva, setAbaAtiva]     = useState<Aba>('geral');
+  const [meuXp, setMeuXp]           = useState<number | null>(null);
 
-  // ── Busca ────────────────────────────────────────────────────────────
+  // ── Minha jornada (independente da posição no ranking) ───────────────
+  useEffect(() => {
+    if (!uidAtual) return;
+    getDoc(doc(db, 'usuarios', uidAtual)).then((snap) => {
+      if (snap.exists()) setMeuXp(snap.data()?.xp_total || 0);
+    }).catch(() => {});
+  }, [uidAtual]);
+
+  // ── Busca do ranking ───────────────────────────────────────────────────
   const buscarRanking = useCallback(async () => {
     try {
       let q;
-      if (serieAtiva === 'Todas') {
-        q = query(
-          collection(db, 'usuarios'),
-          orderBy('xp_total', 'desc'),
-          limit(20),
-        );
+      if (abaAtiva === 'geral') {
+        q = query(collection(db, 'usuarios'), orderBy('xp_total', 'desc'), limit(20));
       } else {
-        // Filtra por primeiro dígito da turma (ex: "2A" → "2º")
         q = query(
           collection(db, 'usuarios'),
-          where('turma_serie', '==', serieAtiva),
+          where('papel_comunidade', '==', abaAtiva),
           orderBy('xp_total', 'desc'),
           limit(20),
         );
@@ -56,17 +68,14 @@ export default function Leaderboard({ navigation, route }: any) {
       const snap = await getDocs(q);
       setRanking(snap.docs.map((d, i) => ({ ...(d.data() as any), uid: d.id, posicao: i + 1 })));
     } catch (e) {
-      // Fallback sem filtro de série se o índice ainda não existe
+      // Fallback sem filtro (ex: índice composto do Firestore ainda não existe)
       try {
         const snap = await getDocs(
           query(collection(db, 'usuarios'), orderBy('xp_total', 'desc'), limit(20)),
         );
         const todos = snap.docs.map((d, i) => ({ ...(d.data() as any), uid: d.id, posicao: i + 1 }));
-        if (serieAtiva !== 'Todas') {
-          const filtrado = todos.filter(u => {
-            const t = String(u.turma || '');
-            return t.startsWith(serieAtiva.replace('º', ''));
-          });
+        if (abaAtiva !== 'geral') {
+          const filtrado = todos.filter(u => (u.papel_comunidade || 'aprender') === abaAtiva);
           setRanking(filtrado.map((u, i) => ({ ...u, posicao: i + 1 })));
         } else {
           setRanking(todos);
@@ -76,183 +85,128 @@ export default function Leaderboard({ navigation, route }: any) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [serieAtiva]);
+  }, [abaAtiva]);
 
   useEffect(() => {
     setLoading(true);
     buscarRanking();
-  }, [serieAtiva]);
+  }, [abaAtiva]);
 
   const onRefresh = () => {
     setRefreshing(true);
     buscarRanking();
   };
 
-  // ── Pódio (top 3) ────────────────────────────────────────────────────
-  const top3   = ranking.slice(0, 3);
-  const restante = ranking.slice(3);
-
-  const renderPodio = () => {
-    if (top3.length < 1) return null;
-    // Ordem visual: 2º, 1º, 3º
-    const ordem = [top3[1], top3[0], top3[2]].filter(Boolean);
-    const alts  = [PODIO_H[1], PODIO_H[0], PODIO_H[2]];
-    const cores = [PODIO_COR[1], PODIO_COR[0], PODIO_COR[2]];
-    const labels = [PODIO_LABEL[1], PODIO_LABEL[0], PODIO_LABEL[2]];
-
-    return (
-      <View style={[styles.podioWrap, { backgroundColor: modoEscuro ? C.branco + '08' : C.cinzaClaro + '80' }]}>
-        {ordem.map((u, vi) => {
-          const nivel = calcularNivel(u.xp_total || 0);
-          const euSou = u.uid === uidAtual;
-          return (
-            <TouchableOpacity
-              key={u.uid}
-              style={styles.podioPessoa}
-              onPress={() => navigation.navigate('PerfilPublico', { uid: u.uid })}
-              activeOpacity={0.8}
-            >
-              {/* Avatar */}
-              <View style={[
-                styles.podioAvatarWrap,
-                { borderColor: cores[vi] + 'AA', borderWidth: 2.5 },
-                euSou && { borderColor: CORES.rosa, borderWidth: 3 },
-              ]}>
-                {u.foto_url ? (
-                  <Image source={{ uri: u.foto_url }} style={styles.podioAvatar} />
-                ) : (
-                  <View style={[styles.podioAvatar, { backgroundColor: cores[vi] + '30', justifyContent: 'center', alignItems: 'center' }]}>
-                    <Text style={{ fontSize: 22 }}>{nivel.iconeAnimal}</Text>
-                  </View>
-                )}
-                <Text style={styles.podioMedal}>{labels[vi]}</Text>
-              </View>
-
-              {/* Nome */}
-              <Text style={[styles.podioNome, { color: C.azulEscuro, fontSize: fs(11) }]} numberOfLines={1}>
-                {euSou ? 'Você' : (u.nome?.split(' ')[0] || 'Anon')}
-              </Text>
-
-              {/* XP */}
-              <Text style={[styles.podioXp, { color: cores[vi], fontSize: fs(10) }]}>
-                {(u.xp_total || 0).toLocaleString('pt-BR')} XP
-              </Text>
-              {u.avaliacao_contagem > 0 && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                  <Ionicons name="star" size={9} color="#FFC82C" />
-                  <Text style={{ fontSize: fs(9), fontWeight: '700', color: C.textoSec }}>
-                    {u.avaliacao_media.toFixed(1)}
-                  </Text>
-                </View>
-              )}
-
-              {/* Coluna do pódio */}
-              <View style={[
-                styles.podioColunaBase,
-                { height: alts[vi], backgroundColor: cores[vi] + (modoEscuro ? '30' : '20'), borderColor: cores[vi] + '50', borderTopWidth: 2 },
-              ]}>
-                <Text style={[styles.podioPos, { color: cores[vi] }]}>
-                  {vi === 1 ? '1' : vi === 0 ? '2' : '3'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    );
-  };
-
-  // ── Item da lista (posições 4–20) ─────────────────────────────────────
+  // ── Item da lista ───────────────────────────────────────────────────
   const renderItem = ({ item }: any) => {
     const nivel = calcularNivel(item.xp_total || 0);
     const euSou = item.uid === uidAtual;
+    const medalha = item.posicao === 1 ? '🥇' : item.posicao === 2 ? '🥈' : item.posicao === 3 ? '🥉' : null;
+    const avatarBg = NIVEL_AVATAR_BG[nivel.animal];
+
     return (
       <TouchableOpacity
-        style={[
-          styles.rankItem,
-          { backgroundColor: euSou ? CORES.azulEscuro : C.branco,
-            borderColor: euSou ? CORES.azulEscuro : C.cinzaClaro },
-        ]}
+        style={[styles.item, euSou && styles.itemEuSou]}
         onPress={() => navigation.navigate('PerfilPublico', { uid: item.uid })}
-        activeOpacity={0.8}
+        activeOpacity={0.85}
       >
-        {/* Posição */}
-        <Text style={[styles.rankPos, { color: euSou ? '#fff' : C.textoSec, fontSize: fs(13) }]}>
-          {item.posicao}
+        <Text style={[styles.pos, { fontSize: fs(14) }, item.posicao <= 3 && { color: CORES_SABE.laranja }]}>
+          {medalha || item.posicao}
         </Text>
 
-        {/* Avatar */}
-        <View style={styles.rankAvatarWrap}>
+        <View style={styles.avatarWrap}>
           {item.foto_url ? (
-            <Image source={{ uri: item.foto_url }} style={styles.rankAvatar} />
+            <Image source={{ uri: item.foto_url }} style={styles.avatar} />
           ) : (
-            <View style={[styles.rankAvatar, { backgroundColor: C.cinzaClaro, justifyContent: 'center', alignItems: 'center' }]}>
-              <Text style={{ fontSize: 18 }}>{nivel.iconeAnimal}</Text>
+            <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: avatarBg }]}>
+              <Text style={{ fontSize: 20 }}>{nivel.iconeAnimal}</Text>
             </View>
           )}
         </View>
 
-        {/* Info */}
         <View style={{ flex: 1 }}>
-          <Text style={[styles.rankNome, { color: euSou ? '#fff' : C.azulEscuro, fontSize: fs(13) }]} numberOfLines={1}>
-            {euSou ? 'Você' : (item.nome || 'Anônimo')}
+          <Text style={[styles.nome, { fontSize: fs(13.5) }]} numberOfLines={1}>
+            {euSou ? 'Você' : (item.nome_completo || item.nome || 'Anônimo')}
           </Text>
-          <Text style={[styles.rankAnimal, { color: euSou ? '#ffffff99' : C.textoSec, fontSize: fs(10) }]}>
-            {nivel.iconeAnimal} {nivel.nomeSubfase} {nivel.nomeAnimal}
+          <Text style={[styles.animal, { fontSize: fs(11) }]}>
+            {nivel.iconeAnimal} {nivel.nomeAnimal} · {nivel.nomeSubfase}
           </Text>
-          {item.avaliacao_contagem > 0 && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 }}>
-              <Ionicons name="star" size={11} color={euSou ? CORES.amarelo : '#FFC82C'} />
-              <Text style={[styles.rankAnimal, { color: euSou ? '#ffffff99' : C.textoSec, fontSize: fs(10) }]}>
-                {item.avaliacao_media.toFixed(1)} ({item.avaliacao_contagem})
-              </Text>
-            </View>
-          )}
         </View>
 
-        {/* XP */}
-        <Text style={[styles.rankXp, { color: euSou ? CORES.amarelo : CORES.rosa, fontSize: fs(12) }]}>
+        <Text style={[styles.xp, { fontSize: fs(13) }]}>
           {(item.xp_total || 0).toLocaleString('pt-BR')} XP
         </Text>
       </TouchableOpacity>
     );
   };
 
-  // ── Render ────────────────────────────────────────────────────────────
+  // ── "Sua jornada" — níveis já passados, quanto falta, XP até o próximo ──
+  const renderJornada = () => {
+    if (meuXp === null) return null;
+    const nivel = calcularNivel(meuXp);
+    const progresso = calcularProgressoXp(meuXp);
+    const meuIndice = ANIMAIS_ORDER.indexOf(nivel.animal);
+    const passados = meuIndice; // quantos animais já foram superados
+    const restantes = ANIMAIS_ORDER.length - 1 - meuIndice;
+
+    return (
+      <View style={styles.jornadaCard}>
+        <View style={styles.jornadaTopo}>
+          <Text style={{ fontSize: 26 }}>{nivel.iconeAnimal}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.jornadaTitulo, { fontSize: fs(13.5) }]}>
+              {nivel.nomeAnimal} · {nivel.nomeSubfase} · Nível {NIVEL_NUMERO[nivel.animal]}
+            </Text>
+            <Text style={[styles.jornadaSub, { fontSize: fs(11) }]}>
+              Faltam {progresso.faltam} XP para o próximo estágio
+            </Text>
+          </View>
+        </View>
+        <View style={styles.jornadaBarraBg}>
+          <View style={[styles.jornadaBarraFill, { width: `${progresso.percentual}%` }]} />
+        </View>
+        <View style={styles.jornadaStats}>
+          <View style={styles.jornadaStatItem}>
+            <Text style={[styles.jornadaStatNum, { fontSize: fs(15) }]}>{passados}</Text>
+            <Text style={[styles.jornadaStatLabel, { fontSize: fs(10) }]}>Níveis conquistados</Text>
+          </View>
+          <View style={styles.jornadaStatDiv} />
+          <View style={styles.jornadaStatItem}>
+            <Text style={[styles.jornadaStatNum, { fontSize: fs(15) }]}>{restantes}</Text>
+            <Text style={[styles.jornadaStatLabel, { fontSize: fs(10) }]}>Níveis restantes</Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: C.fundo }]}>
-      <StatusBar
-        barStyle={modoEscuro ? 'light-content' : 'dark-content'}
-        backgroundColor={C.fundo}
-      />
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor={CORES_SABE.fundo} />
 
       {/* Header */}
-      <View style={[styles.header, { borderBottomColor: C.cinzaClaro, paddingTop: insets.top }]}>
+      <View style={[styles.header, { paddingTop: insets.top || 12 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Ionicons name="arrow-back" size={22} color={C.azulEscuro} />
+          <Ionicons name="chevron-back" size={24} color={CORES_SABE.texto} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitulo, { color: C.azulEscuro, fontSize: fs(16) }]}>
-          🏆 Ranking
-        </Text>
-        <View style={{ width: 22 }} />
+        <Text style={[styles.headerTitulo, { fontSize: fs(17) }]}>Ranking</Text>
+        <View style={{ width: 24 }} />
       </View>
 
-      {/* Filtro de série */}
-      <View style={[styles.filtroRow, { borderBottomColor: C.cinzaClaro }]}>
-        {SERIES.map(s => {
-          const ativa = s === serieAtiva;
+      {renderJornada()}
+
+      {/* Abas */}
+      <View style={styles.abasRow}>
+        {ABAS.map(a => {
+          const ativa = a.chave === abaAtiva;
           return (
             <TouchableOpacity
-              key={s}
-              style={[
-                styles.filtroPill,
-                { backgroundColor: ativa ? CORES.azulEscuro : C.branco,
-                  borderColor: ativa ? CORES.azulEscuro : C.cinzaClaro },
-              ]}
-              onPress={() => setSerieAtiva(s)}
+              key={a.chave}
+              style={[styles.abaPill, ativa && styles.abaPillAtiva]}
+              onPress={() => setAbaAtiva(a.chave)}
             >
-              <Text style={[styles.filtroText, { color: ativa ? '#fff' : C.textoSec, fontSize: fs(11) }]}>
-                {s}
+              <Text style={[styles.abaTxt, ativa && styles.abaTxtAtiva, { fontSize: fs(12.5) }]}>
+                {a.label}
               </Text>
             </TouchableOpacity>
           );
@@ -260,24 +214,23 @@ export default function Leaderboard({ navigation, route }: any) {
       </View>
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 60 }} color={CORES.rosa} size="large" />
+        <ActivityIndicator style={{ marginTop: 60 }} color={CORES_SABE.verdeEscuro} size="large" />
       ) : ranking.length === 0 ? (
         <View style={styles.vazio}>
-          <FontAwesome5 name="trophy" size={40} color={C.cinzaClaro} />
-          <Text style={[styles.vazioText, { color: C.textoSec, fontSize: fs(13) }]}>
-            Nenhum usuário encontrado para esta série.
+          <FontAwesome5 name="trophy" size={40} color={CORES_SABE.borda} />
+          <Text style={[styles.vazioText, { fontSize: fs(13) }]}>
+            Ninguém encontrado nessa aba ainda.
           </Text>
         </View>
       ) : (
         <FlatList
-          data={restante}
+          data={ranking}
           keyExtractor={item => item.uid}
-          ListHeaderComponent={renderPodio}
           renderItem={renderItem}
           contentContainerStyle={styles.lista}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[CORES.rosa]} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[CORES_SABE.verdeEscuro]} tintColor={CORES_SABE.verdeEscuro} />
           }
         />
       )}
@@ -285,64 +238,56 @@ export default function Leaderboard({ navigation, route }: any) {
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════
-//  STYLES
-// ════════════════════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: CORES_SABE.fundo },
 
-  // HEADER
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 18, paddingBottom: 14, borderBottomWidth: 1,
+    paddingHorizontal: 18, paddingBottom: 4,
   },
-  headerTitulo: { fontFamily: F.black, letterSpacing: -0.5 },
+  headerTitulo: { color: CORES_SABE.texto, fontFamily: F.black },
 
-  // FILTRO
-  filtroRow: {
-    flexDirection: 'row', gap: 8, paddingHorizontal: 18, paddingVertical: 12,
-    borderBottomWidth: 1,
+  jornadaCard: {
+    marginHorizontal: 18, marginTop: 12, backgroundColor: CORES_SABE.fundoCard,
+    borderRadius: 16, padding: 14, borderWidth: 1, borderColor: CORES_SABE.borda,
   },
-  filtroPill: {
-    paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5,
-  },
-  filtroText: { fontFamily: F.bold },
+  jornadaTopo: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 },
+  jornadaTitulo: { color: CORES_SABE.texto, fontFamily: F.bold },
+  jornadaSub: { color: CORES_SABE.textoSec, marginTop: 2 },
+  jornadaBarraBg: { height: 6, borderRadius: 3, backgroundColor: CORES_SABE.borda, overflow: 'hidden' },
+  jornadaBarraFill: { height: 6, borderRadius: 3, backgroundColor: CORES_SABE.verdeEscuro },
+  jornadaStats: { flexDirection: 'row', alignItems: 'center', marginTop: 12 },
+  jornadaStatItem: { flex: 1, alignItems: 'center' },
+  jornadaStatDiv: { width: 1, height: 28, backgroundColor: CORES_SABE.borda },
+  jornadaStatNum: { color: CORES_SABE.texto, fontFamily: F.black },
+  jornadaStatLabel: { color: CORES_SABE.textoSec, marginTop: 2 },
 
-  // PÓDIO
-  podioWrap: {
-    flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center',
-    gap: 8, paddingTop: 28, paddingHorizontal: 16, borderRadius: 20,
-    marginHorizontal: 16, marginTop: 16, overflow: 'hidden',
+  abasRow: {
+    flexDirection: 'row', gap: 8, paddingHorizontal: 18, paddingTop: 14, paddingBottom: 10,
   },
-  podioPessoa:    { alignItems: 'center', flex: 1 },
-  podioAvatarWrap:{ borderRadius: 36, marginBottom: 6, position: 'relative' },
-  podioAvatar:    { width: 60, height: 60, borderRadius: 30 },
-  podioMedal:     { position: 'absolute', bottom: -4, right: -4, fontSize: 18 },
-  podioNome:      { fontFamily: F.bold, textAlign: 'center', marginTop: 6, marginBottom: 2 },
-  podioXp:        { fontFamily: F.black, textAlign: 'center', marginBottom: 6 },
-  podioColunaBase:{
-    width: '100%', borderTopLeftRadius: 6, borderTopRightRadius: 6,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1,
-    borderBottomWidth: 0,
+  abaPill: {
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
+    backgroundColor: CORES_SABE.fundoSuave,
   },
-  podioPos: { fontFamily: F.black, fontSize: 20 },
+  abaPillAtiva: { backgroundColor: CORES_SABE.verdeEscuro },
+  abaTxt: { color: CORES_SABE.textoSec, fontFamily: F.semibold },
+  abaTxtAtiva: { color: CORES_SABE.creme, fontFamily: F.bold },
 
-  // LISTA
-  lista:    { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 40 },
-  rankItem: {
+  lista: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 40 },
+  item: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    borderRadius: 14, padding: 12, marginBottom: 8,
-    borderWidth: 1, elevation: 1,
-    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, shadowOffset: { width: 0, height: 2 },
+    backgroundColor: CORES_SABE.fundoCard, borderRadius: 16, padding: 12, marginBottom: 8,
+    borderWidth: 1, borderColor: CORES_SABE.borda,
   },
-  rankPos:       { fontFamily: F.black, width: 26, textAlign: 'center' },
-  rankAvatarWrap:{ },
-  rankAvatar:    { width: 42, height: 42, borderRadius: 21 },
-  rankNome:      { fontFamily: F.bold, marginBottom: 2 },
-  rankAnimal:    { fontFamily: F.medium },
-  rankXp:        { fontFamily: F.black },
+  itemEuSou: { borderColor: CORES_SABE.verdeEscuro, borderWidth: 1.5 },
+  pos: { color: CORES_SABE.textoSec, fontFamily: F.black, width: 24, textAlign: 'center' },
+  avatarWrap: {},
+  avatar: { width: 44, height: 44, borderRadius: 22 },
+  avatarFallback: { justifyContent: 'center', alignItems: 'center' },
+  nome: { color: CORES_SABE.texto, fontFamily: F.bold, marginBottom: 2 },
+  animal: { color: CORES_SABE.textoSec, fontFamily: F.medium },
+  xp: { color: CORES_SABE.texto, fontFamily: F.bold },
 
-  // VAZIO
-  vazio:    { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 40 },
-  vazioText:{ fontFamily: F.medium, textAlign: 'center', lineHeight: 20 },
+  vazio: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 40 },
+  vazioText: { color: CORES_SABE.textoSec, textAlign: 'center', lineHeight: 20, fontFamily: F.medium },
 });

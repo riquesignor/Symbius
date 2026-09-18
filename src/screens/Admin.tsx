@@ -19,7 +19,40 @@ import {
 } from 'react-native-chart-kit';
 
 // ── Fonte Poppins ──
-import { F, CORES } from '../constants/theme';
+import { F } from '../constants/theme';
+import { CORES_SABE, CORES_SABE_DARK } from './Boasvindas';
+
+// ── Shadow de paleta sabé (mesma técnica de Match/Perfil/Configuracoes/
+// Calendario): a lógica desta tela usa CORES.xxx (import direto, fixo
+// claro) e C.xxx (via useAppSettings, muda com modoEscuro). ──
+const CORES = {
+  azulEscuro: CORES_SABE.verdeEscuro,
+  azulCeu:    CORES_SABE.azul,
+  branco:     CORES_SABE.fundoCard,
+  cinzaClaro: CORES_SABE.borda,
+  textoSec:   CORES_SABE.textoSec,
+  amarelo:    CORES_SABE.laranja,
+  laranja:    CORES_SABE.laranjaTexto,
+  verde:      CORES_SABE.sucesso,
+  rosa:       CORES_SABE.laranjaTexto,
+  vermelho:   '#D64545',
+};
+const CORES_LOCAL_CLARO = {
+  azulEscuro: CORES_SABE.verdeEscuro,
+  branco:     CORES_SABE.fundoCard,
+  cinzaClaro: CORES_SABE.borda,
+  fundo:      CORES_SABE.fundo,
+  textoSec:   CORES_SABE.textoSec,
+  amarelo:    CORES_SABE.laranja,
+};
+const CORES_LOCAL_ESCURO = {
+  azulEscuro: CORES_SABE.verdeMedio,
+  branco:     CORES_SABE_DARK.fundoCard,
+  cinzaClaro: CORES_SABE_DARK.fundoSuave,
+  fundo:      CORES_SABE_DARK.fundo,
+  textoSec:   CORES_SABE_DARK.textoSec,
+  amarelo:    CORES_SABE.laranja,
+};
 
 const CAT_LABELS: Record<string, string> = {
   destaque:      'Destaques',
@@ -88,7 +121,8 @@ export default function Admin({ navigation, route }: any) {
   const { width: winW } = useWindowDimensions();
   const uid = route?.params?.uid;
 
-  const { cores: C, fonteScale, modoEscuro } = useAppSettings();
+  const { cores: _coresContexto, fonteScale, modoEscuro } = useAppSettings();
+  const C = modoEscuro ? CORES_LOCAL_ESCURO : CORES_LOCAL_CLARO;
   const fs = (size: number) => size * fonteScale;
 
   const [posts,    setPosts]    = useState<any[]>([]);
@@ -264,7 +298,7 @@ export default function Admin({ navigation, route }: any) {
   const chartConfigBase = useMemo(() => ({
     backgroundColor: C.branco, backgroundGradientFrom: C.branco, backgroundGradientTo: C.branco,
     decimalPlaces: 0,
-    color: (opacity = 1) => modoEscuro ? `rgba(255,92,151,${opacity})` : `rgba(11,32,70,${opacity})`,
+    color: (opacity = 1) => `rgba(232,163,61,${opacity})`, // laranja sabé — linha do gráfico
     labelColor: (opacity = 1) => modoEscuro ? `rgba(180,190,200,${opacity})` : `rgba(141,153,174,${opacity})`,
     style: { borderRadius: 16 },
     propsForDots: { r: '5', strokeWidth: '2', stroke: CORES.rosa },
@@ -895,7 +929,7 @@ const styles = StyleSheet.create({
   toastText: { color: CORES.branco, fontFamily: F.bold },
 
   header:          { backgroundColor: CORES.azulEscuro, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingBottom: 16, gap: 12 },
-  btnVoltar:       { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
+  btnVoltar:       { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
   headerEyebrowRow:{ flexDirection: 'row', alignItems: 'center', gap: 6 },
   headerDot:       { width: 6, height: 6, borderRadius: 3, backgroundColor: CORES.amarelo },
   headerEyebrow:   { color: 'rgba(255,255,255,0.7)', fontFamily: F.black, letterSpacing: 1.6 },

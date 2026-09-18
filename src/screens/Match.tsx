@@ -16,7 +16,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 
 // ── Fonte Poppins ──
-import { F, CORES } from '../constants/theme';
+import { F } from '../constants/theme';
+import { TEMA_SABE as CORES, CORES_SABE } from '../constants/temaSabe';
+import SabeTabBar from '../components/SabeTabBar';
 
 const { width, height } = Dimensions.get('window');
 
@@ -114,7 +116,12 @@ function useOnlineStatus(uids: string[]) {
 
 export default function Match({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
-  const { cores: C, fonteScale, modoEscuro } = useAppSettings();
+  const { fonteScale } = useAppSettings();
+  // ── TELA DE TESTE (Sabé): paleta verde fixa, ignora o tema real do usuário.
+  // C/CORES/modoEscuro seguem sendo usados normalmente no resto do arquivo —
+  // só o valor que eles resolvem mudou. Nenhuma lógica abaixo foi tocada.
+  const modoEscuro = false; // paleta sabé agora é modo claro
+  const C = CORES; // CORES já é TEMA_SABE (import aliasado acima)
   const fs = (size: number) => size * fonteScale;
 
   const [abaAtiva,       setAbaAtiva]       = useState<Aba>('descobrir');
@@ -505,7 +512,7 @@ export default function Match({ navigation, route }: any) {
             {card.avaliacao_contagem > 0 && (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2, marginBottom: 4 }}>
                 <Ionicons name="star" size={13} color="#FFC82C" />
-                <Text style={{ fontSize: 12, fontWeight: '700', color: CORES.branco }}>
+                <Text style={{ fontSize: 12, fontFamily: F.bold, color: CORES.branco }}>
                   {card.avaliacao_media.toFixed(1)} ({card.avaliacao_contagem} avaliações)
                 </Text>
               </View>
@@ -641,13 +648,12 @@ export default function Match({ navigation, route }: any) {
       />
 
       {/* NAVBAR */}
-      <View style={[styles.navbar, { paddingTop: insets.top, backgroundColor: modoEscuro ? '#111827' : CORES.branco, borderBottomColor: modoEscuro ? '#1F2937' : CORES.cinzaClaro }]}>
+      <View style={[styles.navbar, { paddingTop: insets.top, backgroundColor: CORES_SABE.fundo, borderBottomColor: CORES_SABE.borda }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color={C.azulEscuro} />
         </TouchableOpacity>
         <View style={styles.logoWrap}>
-          <View style={styles.dotAmarelo} />
-          <Text style={[styles.logo, { color: C.azulEscuro, fontFamily: F.black }]}>JUM<Text style={{ color: CORES.rosa }}>O</Text></Text>
+          <Text style={[styles.logo, { color: C.azulEscuro, fontFamily: F.black }]}>Match de Estudos</Text>
         </View>
         <TouchableOpacity onPress={() => setPopupInfo(true)}>
           <Ionicons name="help-circle-outline" size={26} color={C.azulEscuro} />
@@ -655,7 +661,7 @@ export default function Match({ navigation, route }: any) {
       </View>
 
       {/* TABS */}
-      <View style={[styles.tabs, { backgroundColor: modoEscuro ? '#111827' : CORES.branco, borderBottomColor: modoEscuro ? '#1F2937' : CORES.cinzaClaro }]}>
+      <View style={[styles.tabs, { backgroundColor: CORES_SABE.fundo, borderBottomColor: CORES_SABE.borda }]}>
         {(['descobrir', 'solicitacoes', 'matches'] as Aba[]).map(aba => (
           <TouchableOpacity
             key={aba}
@@ -687,7 +693,7 @@ export default function Match({ navigation, route }: any) {
       {/* ABA DESCOBRIR */}
       {abaAtiva === 'descobrir' && (
         <View style={{ flex: 1 }}>
-          <View style={[styles.filtros, { backgroundColor: modoEscuro ? '#111827' : CORES.branco, borderBottomColor: modoEscuro ? '#1F2937' : CORES.cinzaClaro }]}>
+          <View style={[styles.filtros, { backgroundColor: CORES_SABE.fundo, borderBottomColor: CORES_SABE.borda }]}>
             {/* Selector de matérias — abre popup */}
             <TouchableOpacity
               style={styles.materiaSelector}
@@ -749,7 +755,7 @@ export default function Match({ navigation, route }: any) {
       {popupInfo && (
         <View style={styles.overlayEscuro}>
           <View style={[styles.popupBox, { backgroundColor: C.branco }]}>
-            <View style={[styles.popupIcone, { backgroundColor: modoEscuro ? CORES.rosa + '25' : '#FFE4EC' }]}>
+            <View style={[styles.popupIcone, { backgroundColor: CORES.rosa + '25' }]}>
               <Ionicons name="people" size={32} color={CORES.rosa} />
             </View>
             <Text style={[styles.popupTitulo, { color: C.azulEscuro, fontFamily: F.black }]}>
@@ -836,6 +842,8 @@ export default function Match({ navigation, route }: any) {
           </View>
         </View>
       )}
+
+      <SabeTabBar ativa="match" navigation={navigation} uid={meuUid} />
     </SafeAreaView>
   );
 }
@@ -845,21 +853,21 @@ const styles = StyleSheet.create({
   navbar:             { minHeight: 64, backgroundColor: CORES.branco, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
   logoWrap:           { position: 'relative', flexDirection: 'row', alignItems: 'center' },
   dotAmarelo:         { position: 'absolute', top: 2, left: -4, width: 7, height: 7, borderRadius: 4, backgroundColor: CORES.amarelo, zIndex: 1 },
-  logo:               { fontSize: 24, fontWeight: '900', color: CORES.azulEscuro, letterSpacing: -1 },
+  logo:               { fontSize: 17, fontFamily: F.black, color: CORES.azulEscuro, letterSpacing: -0.3 },
   tabs:               { flexDirection: 'row', backgroundColor: CORES.branco, paddingHorizontal: 16, paddingBottom: 12, paddingTop: 8, gap: 8, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
   tab:                { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, backgroundColor: CORES.fundo },
   tabAtiva:           { backgroundColor: CORES.azulEscuro },
-  tabTxt:             { fontSize: 12, fontWeight: '700', color: CORES.textoSec },
+  tabTxt:             { fontSize: 12, fontFamily: F.bold, color: CORES.textoSec },
   tabTxtAtiva:        { color: CORES.branco },
   badge:              { backgroundColor: CORES.rosa, width: 18, height: 18, borderRadius: 9, justifyContent: 'center', alignItems: 'center', marginLeft: 2 },
-  badgeTxt:           { color: CORES.branco, fontSize: 10, fontWeight: '900' },
+  badgeTxt:           { color: CORES.branco, fontSize: 10, fontFamily: F.black },
   filtros:            { backgroundColor: CORES.branco, paddingHorizontal: 16, paddingVertical: 12, gap: 10, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
   materiaSelector:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: CORES.fundo, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: CORES.cinzaClaro, minHeight: 46 },
-  materiaSelectorTxt: { fontSize: 14, fontWeight: '600', color: CORES.textoSec },
+  materiaSelectorTxt: { fontSize: 14, fontFamily: F.semibold, color: CORES.textoSec },
 
   // Tags no selector (resumo das selecionadas)
   tagMateriaFiltro:    { backgroundColor: CORES.azulEscuro, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
-  tagMateriaFiltroTxt: { color: CORES.branco, fontSize: 11, fontWeight: '700' },
+  tagMateriaFiltroTxt: { color: CORES.branco, fontSize: 11, fontFamily: F.bold },
 
   // Card descobrir
   cardWrap:         { flex: 1, alignItems: 'center', paddingTop: 20, paddingHorizontal: 20 },
@@ -878,30 +886,30 @@ const styles = StyleSheet.create({
   left: 0,
 } as any, backgroundColor: 'rgba(11,32,70,0.45)' },
   cardInfo:         { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20 },
-  cardNome:         { fontSize: 24, fontWeight: '900', color: CORES.branco, letterSpacing: -0.5 },
+  cardNome:         { fontSize: 24, fontFamily: F.black, color: CORES.branco, letterSpacing: -0.5 },
   cardTurma:        { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginBottom: 10 },
   materiasRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   materiaTag:       { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
-  materiaTagTxt:    { color: CORES.branco, fontSize: 11, fontWeight: '700' },
-  arenaContador:    { marginTop: 12, fontSize: 12, color: CORES.textoSec, fontWeight: '600' },
+  materiaTagTxt:    { color: CORES.branco, fontSize: 11, fontFamily: F.bold },
+  arenaContador:    { marginTop: 12, fontSize: 12, color: CORES.textoSec, fontFamily: F.semibold },
   acoesRow:         { flexDirection: 'row', gap: 24, marginTop: 20 },
   btnRecusar:       { width: 64, height: 64, borderRadius: 32, backgroundColor: CORES.branco, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: '#FF5252', shadowOpacity: 0.2, shadowRadius: 8 },
   btnAceitar:       { width: 64, height: 64, borderRadius: 32, backgroundColor: CORES.rosa, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: CORES.rosa, shadowOpacity: 0.4, shadowRadius: 8 },
   btnRecarregar:    { marginTop: 16, backgroundColor: CORES.azulEscuro, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 16 },
-  btnRecarregarTxt: { color: CORES.branco, fontWeight: '700' },
+  btnRecarregarTxt: { color: CORES.branco, fontFamily: F.bold },
   centro:           { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
-  txtVazio:         { color: CORES.textoSec, fontSize: 15, fontWeight: '600', textAlign: 'center' },
+  txtVazio:         { color: CORES.textoSec, fontSize: 15, fontFamily: F.semibold, textAlign: 'center' },
 
   // Cards de match / solicitação
   solCard:         { flexDirection: 'row', alignItems: 'center', backgroundColor: CORES.branco, padding: 14, borderRadius: 20, marginBottom: 10, elevation: 1, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4 },
-  solCardNaoLido:  { backgroundColor: '#FFF5F8', borderLeftWidth: 3, borderLeftColor: CORES.rosa },
+  solCardNaoLido:  { backgroundColor: CORES.rosa + '18', borderLeftWidth: 3, borderLeftColor: CORES.rosa },
   solAvatar:       { width: 52, height: 52, borderRadius: 26, backgroundColor: CORES.cinzaClaro },
   solInfo:         { flex: 1, marginLeft: 12 },
-  solNome:         { fontSize: 15, fontWeight: '700', color: CORES.azulEscuro },
-  solNomeNaoLido:  { fontWeight: '900' },
+  solNome:         { fontSize: 15, fontFamily: F.bold, color: CORES.azulEscuro },
+  solNomeNaoLido:  { fontFamily: F.black },
   solTurma:        { fontSize: 11, color: CORES.textoSec, marginTop: 1 },
   solAcoes:        { flexDirection: 'row', gap: 8 },
-  btnSolRecusar:   { width: 38, height: 38, borderRadius: 19, backgroundColor: '#FFF0F0', justifyContent: 'center', alignItems: 'center' },
+  btnSolRecusar:   { width: 38, height: 38, borderRadius: 19, backgroundColor: '#FF525225', justifyContent: 'center', alignItems: 'center' },
   btnSolAceitar:   { width: 38, height: 38, borderRadius: 19, backgroundColor: CORES.verde, justifyContent: 'center', alignItems: 'center' },
 
   // Avatar com bolinha online (canto inferior direito — igual Instagram)
@@ -912,15 +920,15 @@ const styles = StyleSheet.create({
   // Tags inline no match
   nomeLinha:    { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
   tagTipo:      { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 7 },
-  tagTipoTxt:   { fontSize: 9, fontWeight: '800' },
+  tagTipoTxt:   { fontSize: 9, fontFamily: F.black },
   tagMateria:   { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 7 },
-  tagMateriaTxt:{ fontSize: 10, fontWeight: '700' },
-  tagMais:      { fontSize: 10, color: CORES.textoSec, fontWeight: '700' },
+  tagMateriaTxt:{ fontSize: 10, fontFamily: F.bold },
+  tagMais:      { fontSize: 10, color: CORES.textoSec, fontFamily: F.bold },
 
   // Última mensagem
-  ultimaMsg:        { fontSize: 13, color: '#6B7280', marginTop: 3 },
-  ultimaMsgNaoLida: { color: CORES.azulEscuro, fontWeight: '700' },
-  msgTimestamp:     { fontSize: 11, color: CORES.textoSec, fontWeight: '500', marginLeft: 6 },
+  ultimaMsg:        { fontSize: 13, color: CORES.textoSec, marginTop: 3 },
+  ultimaMsgNaoLida: { color: CORES.azulEscuro, fontFamily: F.bold },
+  msgTimestamp:     { fontSize: 11, color: CORES.textoSec, fontFamily: F.medium, marginLeft: 6 },
 
   // Overlays / popups
   overlayEscuro: {
@@ -928,26 +936,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20, zIndex: 999,
   },
   popupBox:      { backgroundColor: CORES.branco, borderRadius: 28, padding: 28, width: '100%', maxWidth: 400 },
-  popupIcone:    { width: 64, height: 64, borderRadius: 32, backgroundColor: '#FFE4EC', justifyContent: 'center', alignItems: 'center', alignSelf: 'center', marginBottom: 16 },
-  popupTitulo:   { fontSize: 22, fontWeight: '900', color: CORES.azulEscuro, textAlign: 'center', marginBottom: 20, letterSpacing: -0.5 },
+  popupIcone:    { width: 64, height: 64, borderRadius: 32, backgroundColor: CORES.rosa + '25', justifyContent: 'center', alignItems: 'center', alignSelf: 'center', marginBottom: 16 },
+  popupTitulo:   { fontSize: 22, fontFamily: F.black, color: CORES.azulEscuro, textAlign: 'center', marginBottom: 20, letterSpacing: -0.5 },
   popupItem:     { flexDirection: 'row', gap: 14, marginBottom: 18 },
   popupNum:      { width: 32, height: 32, borderRadius: 16, backgroundColor: CORES.azulEscuro, justifyContent: 'center', alignItems: 'center' },
-  popupNumTxt:   { color: CORES.branco, fontSize: 11, fontWeight: '900' },
-  popupItemTitulo:{ fontSize: 14, fontWeight: '800', color: CORES.azulEscuro, marginBottom: 4 },
+  popupNumTxt:   { color: CORES.branco, fontSize: 11, fontFamily: F.black },
+  popupItemTitulo:{ fontSize: 14, fontFamily: F.black, color: CORES.azulEscuro, marginBottom: 4 },
   popupItemDesc: { fontSize: 13, color: CORES.textoSec, lineHeight: 18 },
   popupBtnPrimary:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: CORES.rosa, paddingVertical: 14, borderRadius: 18, marginTop: 8 },
-  popupBtnTxt:   { color: CORES.branco, fontWeight: '800', fontSize: 15 },
+  popupBtnTxt:   { color: CORES.branco, fontFamily: F.black, fontSize: 15 },
 
   // Popup matéria — novo visual multi-select
   materiaBox:         { backgroundColor: CORES.branco, borderRadius: 28, padding: 24, width: '100%', maxWidth: 400, maxHeight: height * 0.7 },
-  materiaTitulo:      { fontSize: 18, fontWeight: '900', color: CORES.azulEscuro, marginBottom: 16, textAlign: 'center' },
+  materiaTitulo:      { fontSize: 18, fontFamily: F.black, color: CORES.azulEscuro, marginBottom: 16, textAlign: 'center' },
   materiaTagsGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 8 },
   materiaTagOpcao:    { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20, backgroundColor: CORES.cinzaClaro },
   materiaTagOpcaoAtiva:{ backgroundColor: CORES.azulEscuro },
-  materiaTagOpcaoTxt: { fontSize: 13, fontWeight: '700', color: CORES.azulEscuro },
+  materiaTagOpcaoTxt: { fontSize: 13, fontFamily: F.bold, color: CORES.azulEscuro },
   materiaBotoes:      { flexDirection: 'row', gap: 10, marginTop: 16 },
   btnLimpar:          { flex: 1, alignItems: 'center', paddingVertical: 13, borderRadius: 16, borderWidth: 1.5, borderColor: CORES.cinzaClaro },
-  btnLimparTxt:       { fontWeight: '700', color: CORES.textoSec, fontSize: 14 },
+  btnLimparTxt:       { fontFamily: F.bold, color: CORES.textoSec, fontSize: 14 },
   btnAplicar:         { flex: 2, alignItems: 'center', paddingVertical: 13, borderRadius: 16, backgroundColor: CORES.rosa },
-  btnAplicarTxt:      { fontWeight: '800', color: CORES.branco, fontSize: 14 },
+  btnAplicarTxt:      { fontFamily: F.black, color: CORES.branco, fontSize: 14 },
 });

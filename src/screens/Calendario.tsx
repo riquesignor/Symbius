@@ -21,7 +21,38 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
 // ── Fonte Poppins (igual Index) ──
-import { F, CORES } from '../constants/theme';
+import { F } from '../constants/theme';
+import { CORES_SABE, CORES_SABE_DARK } from './Boasvindas';
+
+// ── Shadow de paleta sabé (mesma técnica de Match/Perfil/Configuracoes):
+// a lógica desta tela usa CORES.xxx (import direto, fixo claro) e C.xxx
+// (via useAppSettings, muda com modoEscuro) — sombreamos os dois. ──
+const CORES = {
+  azulEscuro: CORES_SABE.verdeEscuro,
+  branco:     CORES_SABE.fundoCard,
+  rosa:       '#C9667E',
+  textoSec:   CORES_SABE.textoSec,
+};
+const CORES_LOCAL_CLARO = {
+  azulEscuro: CORES_SABE.verdeEscuro,
+  branco:     CORES_SABE.fundoCard,
+  cinzaClaro: CORES_SABE.borda,
+  fundo:      CORES_SABE.fundo,
+  preto:      CORES_SABE.texto,
+  textoSec:   CORES_SABE.textoSec,
+  amarelo:    CORES_SABE.laranja,
+  rosa:       CORES_SABE.laranjaTexto,
+};
+const CORES_LOCAL_ESCURO = {
+  azulEscuro: CORES_SABE.verdeMedio,
+  branco:     CORES_SABE_DARK.fundoCard,
+  cinzaClaro: CORES_SABE_DARK.fundoSuave,
+  fundo:      CORES_SABE_DARK.fundo,
+  preto:      CORES_SABE_DARK.texto,
+  textoSec:   CORES_SABE_DARK.textoSec,
+  amarelo:    CORES_SABE.laranja,
+  rosa:       CORES_SABE.laranja,
+};
 
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const MESES_ABREV = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
@@ -113,7 +144,8 @@ export default function Calendario({ navigation, route }: any) {
   const { width: winW, height: winH } = useWindowDimensions();
   const CEL_SIZE = Math.floor((winW - 32) / 7);
 
-  const { cores: C, fonteScale, modoEscuro } = useAppSettings();
+  const { cores: _coresContexto, fonteScale, modoEscuro } = useAppSettings();
+  const C = modoEscuro ? CORES_LOCAL_ESCURO : CORES_LOCAL_CLARO;
 
   const fs = (size: number) => size * fonteScale;
 
@@ -797,7 +829,7 @@ useEffect(() => {
                   key={t}
                   style={[
                     styles.chip,
-                    { backgroundColor: C.fundo, borderColor: C.cinzaClaro },
+                    { backgroundColor: config.bg, borderColor: config.bg },
                     ativo && { backgroundColor: config.color, borderColor: config.color }
                   ]}
                   onPress={() => setFiltroTipo(t)}

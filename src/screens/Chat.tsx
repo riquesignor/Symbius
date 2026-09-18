@@ -14,12 +14,13 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { useNotificacao } from '../contexts/NotificacaoProvider';
 
 import { F, CORES } from '../constants/theme';
+import { CORES_SABE } from '../constants/temaSabe';
 import { awardXpFinalizarMatch, AwardResult, LevelUpInfo } from '../services/gamificationService';
+import NivelUpSabeModal from '../components/NivelUpSabeModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const IMG_MAX = SCREEN_WIDTH * 0.65;
@@ -46,7 +47,7 @@ const injectStyles = (dark: boolean) => {
   style.textContent = `
     .chat-scroll::-webkit-scrollbar{width:0px;background:transparent}
     .chat-scroll{scrollbar-width:none;-ms-overflow-style:none}
-    html,body,#root{height:100%;overflow:hidden;background:${dark?'#0F1419':'#F0F2F5'}}
+    html,body,#root{height:100%;overflow:hidden;background:${dark? CORES_SABE.splashBg : CORES_SABE.fundo}}
     @keyframes typingBounce{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-5px);opacity:1}}
     .typing-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.7);display:inline-block;margin:0 2px;animation:typingBounce 1.2s infinite ease-in-out}
     .typing-dot:nth-child(2){animation-delay:.2s}
@@ -215,47 +216,49 @@ const PerfilModal = ({ visible, onClose, outroUid, outroNome, outraFoto, CC, meu
               <Text style={[psty.sub, { color: CC.textoSec }]}>Turma {dadosPerfil.turma}</Text>
             ) : null}
 
-            {/* Info row */}
+            {/* Info row — nomes de campo corretos: posso_ensinar / quer_aprender
+                (o Firestore nunca teve `ensinar`/`melhorar`; era um bug antigo
+                que zerava essa seção). */}
             <View style={[psty.infoRow, { borderColor: CC.menuBorder }]}>
               <View style={psty.infoItem}>
-                <Ionicons name="school-outline" size={20} color="#1565C0" />
-                <Text style={[psty.infoLabel, { color: CC.textoSec }]}>Ensina</Text>
+                <Ionicons name="school-outline" size={20} color={CORES_SABE.verdeEscuro} />
+                <Text style={[psty.infoLabel, { color: CC.textoSec }]}>É bom em</Text>
                 <Text style={[psty.infoVal, { color: CC.menuTitle }]}>
-                  {dadosPerfil?.ensinar?.length || 0} matérias
+                  {dadosPerfil?.posso_ensinar?.length || 0} matérias
                 </Text>
               </View>
               <View style={[psty.infoDiv, { backgroundColor: CC.menuBorder }]} />
               <View style={psty.infoItem}>
-                <Ionicons name="book-outline" size={20} color="#880E4F" />
-                <Text style={[psty.infoLabel, { color: CC.textoSec }]}>Quer melhorar</Text>
+                <Ionicons name="book-outline" size={20} color={CORES_SABE.laranjaTexto} />
+                <Text style={[psty.infoLabel, { color: CC.textoSec }]}>Precisa aprender</Text>
                 <Text style={[psty.infoVal, { color: CC.menuTitle }]}>
-                  {dadosPerfil?.melhorar?.length || 0} matérias
+                  {dadosPerfil?.quer_aprender?.length || 0} matérias
                 </Text>
               </View>
             </View>
 
-            {/* Matérias que ensina */}
-            {dadosPerfil?.ensinar?.length > 0 && (
+            {/* Matérias que é bom */}
+            {dadosPerfil?.posso_ensinar?.length > 0 && (
               <View style={psty.secao}>
-                <Text style={[psty.secaoTitulo, { color: CC.textoSec }]}>ENSINA</Text>
+                <Text style={[psty.secaoTitulo, { color: CORES_SABE.verdeEscuro }]}>É BOM EM</Text>
                 <View style={psty.tagsRow}>
-                  {dadosPerfil.ensinar.map((m: string) => (
-                    <View key={m} style={[psty.tag, { backgroundColor: "#E3F2FD" }]}>
-                      <Text style={[psty.tagTxt, { color: "#1565C0" }]}>{m}</Text>
+                  {dadosPerfil.posso_ensinar.map((m: string) => (
+                    <View key={m} style={[psty.tag, { backgroundColor: CORES_SABE.fundoSuave }]}>
+                      <Text style={[psty.tagTxt, { color: CORES_SABE.verdeEscuro }]}>{m}</Text>
                     </View>
                   ))}
                 </View>
               </View>
             )}
 
-            {/* Matérias que quer melhorar */}
-            {dadosPerfil?.melhorar?.length > 0 && (
+            {/* Matérias que precisa aprender */}
+            {dadosPerfil?.quer_aprender?.length > 0 && (
               <View style={psty.secao}>
-                <Text style={[psty.secaoTitulo, { color: CC.textoSec }]}>QUER MELHORAR</Text>
+                <Text style={[psty.secaoTitulo, { color: CORES_SABE.laranjaTexto }]}>PRECISA APRENDER</Text>
                 <View style={psty.tagsRow}>
-                  {dadosPerfil.melhorar.map((m: string) => (
-                    <View key={m} style={[psty.tag, { backgroundColor: "#FCE4EC" }]}>
-                      <Text style={[psty.tagTxt, { color: "#880E4F" }]}>{m}</Text>
+                  {dadosPerfil.quer_aprender.map((m: string) => (
+                    <View key={m} style={[psty.tag, { backgroundColor: CORES_SABE.fundoLaranjaClaro }]}>
+                      <Text style={[psty.tagTxt, { color: CORES_SABE.laranjaTexto }]}>{m}</Text>
                     </View>
                   ))}
                 </View>
@@ -279,7 +282,7 @@ const PerfilModal = ({ visible, onClose, outroUid, outroNome, outraFoto, CC, meu
               </View>
             )}
 
-            <TouchableOpacity style={[psty.btnFechar, { backgroundColor: "#E91E63" }]} onPress={onClose}>
+            <TouchableOpacity style={[psty.btnFechar, { backgroundColor: CORES_SABE.verdeEscuro }]} onPress={onClose}>
               <Text style={psty.btnFecharTxt}>Fechar</Text>
             </TouchableOpacity>
           <View style={{ height: 24 }} />
@@ -294,25 +297,25 @@ const psty = StyleSheet.create({
   sheet:       { borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: SCREEN_HEIGHT * 0.88, alignItems: "center", overflow: "hidden" },
   handle:      { width: 40, height: 4, borderRadius: 2, marginTop: 12, marginBottom: 0 },
   capa:        { width: "100%", height: 80 },
-  fotoWrap:    { marginTop: -45, marginBottom: 10, borderRadius: 48, borderWidth: 4, borderColor: "#E91E63" },
+  fotoWrap:    { marginTop: -45, marginBottom: 10, borderRadius: 48, borderWidth: 4, borderColor: CORES_SABE.verdeEscuro },
   foto:        { width: 90, height: 90, borderRadius: 45 },
-  nome:        { fontSize: 20, fontWeight: "900", letterSpacing: -0.4, marginBottom: 2, textAlign: "center", paddingHorizontal: 24 },
-  sub:         { fontSize: 13, fontWeight: "600", marginBottom: 12, textAlign: "center" },
+  nome:        { fontSize: 20, fontFamily: F.black, letterSpacing: -0.4, marginBottom: 2, textAlign: "center", paddingHorizontal: 24 },
+  sub:         { fontSize: 13, fontFamily: F.semibold, marginBottom: 12, textAlign: "center" },
   infoRow:     { flexDirection: "row", marginHorizontal: 20, borderRadius: 16, borderWidth: 1, overflow: "hidden", marginBottom: 16 },
   infoItem:    { flex: 1, alignItems: "center", paddingVertical: 14, gap: 3 },
   infoDiv:     { width: 1 },
-  infoLabel:   { fontSize: 10, fontWeight: "700" },
-  infoVal:     { fontSize: 14, fontWeight: "900" },
+  infoLabel:   { fontSize: 10, fontFamily: F.bold },
+  infoVal:     { fontSize: 14, fontFamily: F.black },
   secao:       { width: "100%", paddingHorizontal: 20, marginBottom: 16 },
-  secaoTitulo: { fontSize: 10, fontWeight: "800", letterSpacing: 1.4, marginBottom: 8 },
+  secaoTitulo: { fontSize: 10, fontFamily: F.black, letterSpacing: 1.4, marginBottom: 8 },
   tagsRow:     { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   tag:         { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 12 },
-  tagTxt:      { fontSize: 12, fontWeight: "700" },
+  tagTxt:      { fontSize: 12, fontFamily: F.bold },
   favItem:     { borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1 },
   favTexto:    { fontSize: 13, lineHeight: 18, marginBottom: 4 },
-  favHora:     { fontSize: 10, fontWeight: "600" },
+  favHora:     { fontSize: 10, fontFamily: F.semibold },
   btnFechar:   { marginHorizontal: 20, paddingVertical: 13, borderRadius: 20, alignItems: "center" },
-  btnFecharTxt:{ color: "#FFFFFF", fontWeight: "800", fontSize: 15 },
+  btnFecharTxt:{ color: "#FFFFFF", fontFamily: F.black, fontSize: 15 },
 });
 
 // ── Modal Encaminhar ───────────────────────────────────
@@ -403,7 +406,7 @@ const EncaminharModal = ({ visible, onClose, meuUid, meuNome, minhaFoto, mensage
           </View>
 
           {carregando
-            ? <ActivityIndicator color="#E91E63" style={{ marginVertical: 24 }} />
+            ? <ActivityIndicator color={CORES_SABE.verdeEscuro} style={{ marginVertical: 24 }} />
             : <FlatList
                 data={matches}
                 keyExtractor={i => i.uid}
@@ -420,7 +423,7 @@ const EncaminharModal = ({ visible, onClose, meuUid, meuNome, minhaFoto, mensage
                       <Text style={[esty.matchNome, { color: CC.menuTitle }]} numberOfLines={1}>
                         {item.nome_completo || "Usuário"}
                       </Text>
-                      <View style={[esty.enviarBtn, { backgroundColor: enviou ? "#27ae60" : "#E91E63" }]}>
+                      <View style={[esty.enviarBtn, { backgroundColor: enviou ? "#27ae60" : CORES_SABE.verdeEscuro }]}>
                         <Ionicons name={enviou ? "checkmark" : "send"} size={14} color="#fff" />
                       </View>
                     </TouchableOpacity>
@@ -441,15 +444,15 @@ const esty = StyleSheet.create({
   overlay:    { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 999, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
   sheet:      { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: 32, alignItems: "center" },
   handle:     { width: 40, height: 4, borderRadius: 2, marginBottom: 16 },
-  titulo:     { fontSize: 17, fontWeight: "900", marginBottom: 12 },
+  titulo:     { fontSize: 17, fontFamily: F.black, marginBottom: 12 },
   preview:    { borderRadius: 12, padding: 12, marginBottom: 14, width: "100%", maxWidth: 400 },
   previewTxt: { color: "#E0E0E0", fontSize: 13 },
   matchItem:  { flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 4, borderBottomWidth: 0.5, gap: 12, width: "100%" },
   matchAvatar:{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#2A2F36" },
-  matchNome:  { flex: 1, fontSize: 15, fontWeight: "700" },
+  matchNome:  { flex: 1, fontSize: 15, fontFamily: F.bold },
   enviarBtn:  { width: 32, height: 32, borderRadius: 16, justifyContent: "center", alignItems: "center" },
   btnFechar:  { marginTop: 16, paddingVertical: 12, paddingHorizontal: 40, borderRadius: 20, borderWidth: 1 },
-  btnFecharTxt:{ fontWeight: "700", fontSize: 14 },
+  btnFecharTxt:{ fontFamily: F.bold, fontSize: 14 },
 });
 
 // ══════════════════════════════════════════════════════════
@@ -460,28 +463,22 @@ export default function Chat({ route, navigation }: any) {
   const { width: winW } = useWindowDimensions();
   const imgMax = Math.max(IMG_MIN, winW * 0.65);
   const bolhaMaxWidth = winW * 0.75;
-  const { modoEscuro } = useAppSettings();
+  // ── TELA DE TESTE (Sabé): paleta verde fixa (modo claro), ignora o tema real do usuário.
+  const modoEscuro = false;
   const { setConversaAtiva } = useNotificacao();
   const { outroUid, outroNome } = route.params || {};
 
-  const CC = modoEscuro ? {
-    fundo:'#0F1419',headerBg:'#1A1F26',headerBorder:'#2A2F36',headerTitle:'#E0E0E0',
-    inputBg:'#1A1F26',inputBorder:'#2A2F36',inputText:'#E0E0E0',inputPlaceholder:'#7A8595',
-    scrollBg:'#0F1419',bolhaMe:'#C0185A',bolhaOther:'#162033',textoSec:'#7A8595',
-    backBtn:'#2A2F36',backIcon:'#E0E0E0',sepLinha:'#2A2F36',sepText:'#7A8595',sepBg:'#1A1F26',
-    menuBg:'#1A1F26',menuTitle:'#E0E0E0',menuText:'#E0E0E0',menuBorder:'#2A2F36',
-    previewBg:'#1A1F26',previewTitle:'#E0E0E0',cancelBg:'#2A2F36',cancelText:'#E0E0E0',
-    citandoBg:'#1A1F26',citandoBorder:'#C0185A',citandoNome:'#FF5C97',citandoTexto:'#7A8595',
-    citandoFechar:'#7A8595',sendBg:'#E91E63',imgBtnBg:'#2A2F36',imgBtnBorder:'#2A2F36',imgBtnIcon:'#E0E0E0',
-  } : {
-    fundo:'#F0F2F5',headerBg:'#FFFFFF',headerBorder:'#EAEFF4',headerTitle:'#0B2046',
-    inputBg:'#FFFFFF',inputBorder:'#EAEFF4',inputText:'#0B2046',inputPlaceholder:'#94A3B8',
-    scrollBg:'#F0F2F5',bolhaMe:'#E91E63',bolhaOther:'#0B2046',textoSec:'#94A3B8',
-    backBtn:'#F0F2F5',backIcon:'#0B2046',sepLinha:'#DDEAEF',sepText:'#94A3B8',sepBg:'#F0F2F5',
-    menuBg:'#FFFFFF',menuTitle:'#0B2046',menuText:'#0B2046',menuBorder:'#F0F2F5',
-    previewBg:'#FFFFFF',previewTitle:'#0B2046',cancelBg:'#F0F2F5',cancelText:'#0B2046',
-    citandoBg:'#FFFFFF',citandoBorder:'#E91E63',citandoNome:'#E91E63',citandoTexto:'#64748B',
-    citandoFechar:'#64748B',sendBg:'#E91E63',imgBtnBg:'#F0F2F5',imgBtnBorder:'#EAEFF4',imgBtnIcon:'#0B2046',
+  // ── TELA DE TESTE (Sabé): antes era claro/escuro via ternário; agora é
+  // sempre a paleta verde do sabé (mesmas chaves, nenhum uso de CC.* abaixo mudou). ──
+  const CC = {
+    fundo: CORES_SABE.fundo, headerBg: CORES_SABE.fundoCard, headerBorder: CORES_SABE.borda, headerTitle: CORES_SABE.texto,
+    inputBg: CORES_SABE.fundoSuave, inputBorder: CORES_SABE.borda, inputText: CORES_SABE.texto, inputPlaceholder: CORES_SABE.textoMuted,
+    scrollBg: CORES_SABE.fundo, bolhaMe: CORES_SABE.verdeEscuro, bolhaOther: CORES_SABE.fundoSuave, textoSec: CORES_SABE.textoSec,
+    backBtn: CORES_SABE.fundoCard, backIcon: CORES_SABE.texto, sepLinha: CORES_SABE.borda, sepText: CORES_SABE.textoSec, sepBg: CORES_SABE.fundo,
+    menuBg: CORES_SABE.fundoCard, menuTitle: CORES_SABE.texto, menuText: CORES_SABE.texto, menuBorder: CORES_SABE.borda,
+    previewBg: CORES_SABE.fundoCard, previewTitle: CORES_SABE.texto, cancelBg: CORES_SABE.borda, cancelText: CORES_SABE.texto,
+    citandoBg: CORES_SABE.fundoSuave, citandoBorder: CORES_SABE.verdeEscuro, citandoNome: CORES_SABE.verdeEscuro, citandoTexto: CORES_SABE.textoSec,
+    citandoFechar: CORES_SABE.textoSec, sendBg: CORES_SABE.verdeEscuro, imgBtnBg: CORES_SABE.fundoSuave, imgBtnBorder: CORES_SABE.borda, imgBtnIcon: CORES_SABE.texto,
   };
 
   const scrollRef        = useRef<ScrollView>(null);
@@ -933,7 +930,7 @@ export default function Chat({ route, navigation }: any) {
   };
 
   if (loading) {
-    return <View style={{ flex:1, justifyContent:"center", alignItems:"center", backgroundColor: CC.fundo }}><ActivityIndicator size="large" color="#E91E63" /></View>;
+    return <View style={{ flex:1, justifyContent:"center", alignItems:"center", backgroundColor: CC.fundo }}><ActivityIndicator size="large" color={CORES_SABE.verdeEscuro} /></View>;
   }
 
   const outraFotoUri = outraFoto
@@ -956,7 +953,7 @@ export default function Chat({ route, navigation }: any) {
           <View>
             <Text style={[styles.headerTitle, { color: CC.headerTitle }]}>{outroNome || "Chat"}</Text>
             {outroDigitando
-              ? <Text style={[styles.headerSub, { color: "#E91E63" }]}>digitando...</Text>
+              ? <Text style={[styles.headerSub, { color: CORES_SABE.verdeEscuro }]}>digitando...</Text>
               : <Text style={[styles.headerSub, { color: onlineStatus?"#22C55E":CC.textoSec }]}>{onlineStatus?"online":"offline"}</Text>
             }
           </View>
@@ -964,7 +961,7 @@ export default function Chat({ route, navigation }: any) {
         </TouchableOpacity>
         {souAluno === true ? (
           <TouchableOpacity
-            style={[styles.finalizarBtn, { backgroundColor: matchFinalizado ? CC.backBtn : "#FFF3E0" }]}
+            style={[styles.finalizarBtn, { backgroundColor: matchFinalizado ? CC.backBtn : CORES_SABE.verdeEscuro + '25' }]}
             onPress={abrirAvaliacao}
             disabled={matchFinalizado}
             activeOpacity={0.7}
@@ -972,7 +969,7 @@ export default function Chat({ route, navigation }: any) {
             <Ionicons
               name={matchFinalizado ? "checkmark-circle" : "flag-outline"}
               size={20}
-              color={matchFinalizado ? "#94A3B8" : "#E91E63"}
+              color={matchFinalizado ? '#94A3B8' : CORES_SABE.verdeEscuro}
             />
           </TouchableOpacity>
         ) : (
@@ -1011,7 +1008,7 @@ export default function Chat({ route, navigation }: any) {
               <TouchableOpacity activeOpacity={0.8} onLongPress={() => setMenuMsg(item)} style={[styles.messageRow, isMe?styles.messageRowMe:styles.messageRowOther, { marginVertical: primeiraDaSeq?4:1 }]}>
                 <View style={[styles.bolha, { maxWidth: bolhaMaxWidth, backgroundColor: isMe?CC.bolhaMe:CC.bolhaOther }, isMe?borderMe:borderOther]}>
                   {/* Indicador de encaminhada */}
-                  {item.encaminhada && <Text style={styles.encaminhadaLabel}>↪️ Encaminhada</Text>}
+                  {item.encaminhada && <Text style={[styles.encaminhadaLabel, !isMe && { color: CORES_SABE.textoSec }]}>↪️ Encaminhada</Text>}
                   {!isMe && primeiraDaSeq && <Text style={styles.nomeRemetente}>{item.nome_remetente}</Text>}
                   {item.citacao && (
                     <View style={[styles.citacaoBox, isMe?styles.citacaoMe:styles.citacaoOther]}>
@@ -1024,7 +1021,7 @@ export default function Chat({ route, navigation }: any) {
                       <ImagemMensagem base64={item.mensagem} onPress={() => abrirImagemFull(item.mensagem, item)} />
                       <View style={styles.rodape}>
                         {isFav && <Ionicons name="star" size={10} color="rgba(255,200,44,0.8)" style={{ marginRight: 4 }} />}
-                        <Text style={styles.hora}>{formatarHora(item.data_postagem)}</Text>
+                        <Text style={[styles.hora, !isMe && { color: CORES_SABE.textoSec }]}>{formatarHora(item.data_postagem)}</Text>
                       </View>
                     </>
                   ) : item.tipo === "video" ? (
@@ -1037,7 +1034,7 @@ export default function Chat({ route, navigation }: any) {
                       </TouchableOpacity>
                       <View style={styles.rodape}>
                         {isFav && <Ionicons name="star" size={10} color="rgba(255,200,44,0.8)" style={{ marginRight: 4 }} />}
-                        <Text style={styles.hora}>{formatarHora(item.data_postagem)}</Text>
+                        <Text style={[styles.hora, !isMe && { color: CORES_SABE.textoSec }]}>{formatarHora(item.data_postagem)}</Text>
                       </View>
                     </>
                   ) : item.tipo === "documento" ? (
@@ -1052,16 +1049,16 @@ export default function Chat({ route, navigation }: any) {
                       </TouchableOpacity>
                       <View style={styles.rodape}>
                         {isFav && <Ionicons name="star" size={10} color="rgba(255,200,44,0.8)" style={{ marginRight: 4 }} />}
-                        <Text style={styles.hora}>{formatarHora(item.data_postagem)}</Text>
+                        <Text style={[styles.hora, !isMe && { color: CORES_SABE.textoSec }]}>{formatarHora(item.data_postagem)}</Text>
                       </View>
                     </>
                   ) : (
                     <>
-                      <Text style={styles.messageText}>{item.mensagem}</Text>
+                      <Text style={[styles.messageText, !isMe && { color: CORES_SABE.texto }]}>{item.mensagem}</Text>
                       <View style={styles.rodape}>
-                        {item.editada && <Text style={styles.editadaLabel}>editada · </Text>}
+                        {item.editada && <Text style={[styles.editadaLabel, !isMe && { color: CORES_SABE.textoSec }]}>editada · </Text>}
                         {isFav && <Ionicons name="star" size={10} color="rgba(255,200,44,0.8)" style={{ marginRight: 4 }} />}
-                        <Text style={styles.hora}>{formatarHora(item.data_postagem)}</Text>
+                        <Text style={[styles.hora, !isMe && { color: CORES_SABE.textoSec }]}>{formatarHora(item.data_postagem)}</Text>
                       </View>
                     </>
                   )}
@@ -1106,7 +1103,7 @@ export default function Chat({ route, navigation }: any) {
         <View style={[styles.subpainel, { backgroundColor: CC.inputBg, borderTopColor: CC.inputBorder }]}>
           {/* Foto */}
           <TouchableOpacity style={styles.subItem} onPress={() => { setSubpainelVisible(false); fileInputRef.current?.click(); }}>
-            <View style={[styles.subIconWrap, { backgroundColor: "#E91E63" }]}>
+            <View style={[styles.subIconWrap, { backgroundColor: CORES_SABE.verdeEscuro }]}>
               <Ionicons name="image" size={26} color="#fff" />
             </View>
             <Text style={[styles.subLabel, { color: CC.menuTitle }]}>Foto</Text>
@@ -1120,7 +1117,7 @@ export default function Chat({ route, navigation }: any) {
           </TouchableOpacity>
           {/* Documento */}
           <TouchableOpacity style={styles.subItem} onPress={() => { setSubpainelVisible(false); docInputRef.current?.click(); }}>
-            <View style={[styles.subIconWrap, { backgroundColor: "#0B2046" }]}>
+            <View style={[styles.subIconWrap, { backgroundColor: CORES_SABE.texto }]}>
               <Ionicons name="document-text" size={26} color="#fff" />
             </View>
             <Text style={[styles.subLabel, { color: CC.menuTitle }]}>Documento</Text>
@@ -1134,11 +1131,11 @@ export default function Chat({ route, navigation }: any) {
         {/* Grampo lado direito antes do send */}
         <TouchableOpacity
           onPress={() => setSubpainelVisible(v => !v)}
-          style={[styles.imgButton, { backgroundColor: subpainelVisible ? "#E91E63" : CC.imgBtnBg, borderColor: CC.imgBtnBorder }]}
+          style={[styles.imgButton, { backgroundColor: subpainelVisible ? CORES_SABE.verdeEscuro : CC.imgBtnBg, borderColor: CC.imgBtnBorder }]}
           disabled={uploading}
         >
           {uploading
-            ? <ActivityIndicator size="small" color="#E91E63" />
+            ? <ActivityIndicator size="small" color={CORES_SABE.verdeEscuro} />
             : <Ionicons name={subpainelVisible ? "close" : "attach"} size={22} color={subpainelVisible ? "#fff" : CC.imgBtnIcon} style={{ transform: [{ rotate: subpainelVisible ? "0deg" : "45deg" }] }} />
           }
         </TouchableOpacity>
@@ -1214,7 +1211,7 @@ export default function Chat({ route, navigation }: any) {
             {/* Documento */}
             {previewTipo === 'documento' && previewDoc && (
               <View style={[styles.docPreviewBox, { backgroundColor: CC.scrollBg, borderColor: CC.inputBorder }]}>
-                <Ionicons name={previewDoc.tipo === 'pdf' ? 'document-text' : 'document'} size={48} color={previewDoc.tipo === 'pdf' ? '#E91E63' : '#0B2046'} />
+                <Ionicons name={previewDoc.tipo === 'pdf' ? 'document-text' : 'document'} size={48} color={previewDoc.tipo === 'pdf' ? CORES_SABE.verdeEscuro : CORES_SABE.texto} />
                 <Text style={[styles.docNome, { color: CC.previewTitle }]} numberOfLines={2}>{previewDoc.nome}</Text>
                 <Text style={[styles.docTamanho, { color: CC.textoSec }]}>
                   {previewDoc.tipo?.toUpperCase()} · {(previewDoc.tamanho / 1024).toFixed(0)} KB
@@ -1357,7 +1354,7 @@ export default function Chat({ route, navigation }: any) {
                       <Text style={avaliacaoStyles.btnConfirmarTxt}>Sim, entendi a matéria!</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[avaliacaoStyles.btnConfirmar, { backgroundColor: "#E91E63" }]}
+                      style={[avaliacaoStyles.btnConfirmar, { backgroundColor: CORES_SABE.verdeEscuro }]}
                       onPress={() => responderPergunta(false)}
                       activeOpacity={0.85}
                     >
@@ -1386,7 +1383,7 @@ export default function Chat({ route, navigation }: any) {
                           <Ionicons
                             name={n === 0 ? "close-circle" : (estrelasHover !== null && n <= estrelasHover ? "star" : "star-outline")}
                             size={34}
-                            color={n === 0 ? (estrelasHover === 0 ? "#E91E63" : CC.textoSec) : "#FFC82C"}
+                            color={n === 0 ? (estrelasHover === 0 ? CORES_SABE.verdeEscuro : CC.textoSec) : "#FFC82C"}
                             style={{ marginHorizontal: 3 }}
                           />
                         </TouchableOpacity>
@@ -1414,7 +1411,7 @@ export default function Chat({ route, navigation }: any) {
                     )}
 
                     <TouchableOpacity
-                      style={[avaliacaoStyles.btnConfirmar, { backgroundColor: estrelasHover !== null ? "#E91E63" : "#CBD5E1", marginTop: 8 }]}
+                      style={[avaliacaoStyles.btnConfirmar, { backgroundColor: estrelasHover !== null ? CORES_SABE.verdeEscuro : "#CBD5E1", marginTop: 8 }]}
                       disabled={estrelasHover === null || enviandoAvaliacao}
                       onPress={confirmarAvaliacao}
                       activeOpacity={0.85}
@@ -1440,13 +1437,13 @@ export default function Chat({ route, navigation }: any) {
         <View style={avaliacaoStyles.toastOverlay} pointerEvents="none">
           <Animated.View style={[
             avaliacaoStyles.toastCard,
-            { backgroundColor: modoEscuro ? "#1B3868" : "#FFFFFF",
+            { backgroundColor: modoEscuro ? CORES_SABE.fundoCard : "#FFFFFF",
               opacity: xpToastOpacity,
               transform: [{ translateY: xpToastSlide }] },
           ]}>
             <Text style={{ fontSize: 28 }}>{xpToast.neutro ? "📨" : "🌱"}</Text>
             <View>
-              <Text style={[avaliacaoStyles.toastTitulo, { color: modoEscuro ? "#fff" : "#0B2046", fontFamily: F.bold }]}>
+              <Text style={[avaliacaoStyles.toastTitulo, { color: modoEscuro ? CORES_SABE.texto : CORES_SABE.texto, fontFamily: F.bold }]}>
                 {xpToast.neutro ? "Feedback enviado!" : "Match finalizado!"}
               </Text>
               <Text style={[avaliacaoStyles.toastSubtitulo, { color: "#8D99AE", fontFamily: F.medium }]}>
@@ -1457,42 +1454,10 @@ export default function Chat({ route, navigation }: any) {
         </View>
       )}
 
-      {/* ── MODAL DE LEVEL-UP ── */}
-      {levelUpInfo && (
-        <TouchableWithoutFeedback onPress={() => setLevelUpInfo(null)}>
-          <View style={avaliacaoStyles.levelUpBackdrop}>
-            <TouchableWithoutFeedback>
-              <Animated.View style={[
-                avaliacaoStyles.levelUpCard,
-                { backgroundColor: modoEscuro ? "#0B2046" : "#FFFFFF",
-                  opacity: levelUpOpacity,
-                  transform: [{ scale: levelUpScale }] },
-              ]}>
-                <LinearGradient colors={[CORES.azulEscuro, CORES.azulMedio]} style={avaliacaoStyles.levelUpHeader}>
-                  <Text style={avaliacaoStyles.levelUpLabel}>🎉 SUBIU DE NÍVEL!</Text>
-                  <Text style={{ fontSize: 52 }}>{levelUpInfo.iconeAnimal}</Text>
-                  <Text style={{ fontSize: 26, marginTop: 4 }}>{levelUpInfo.iconeSubfase}</Text>
-                </LinearGradient>
-                <View style={avaliacaoStyles.levelUpBody}>
-                  <Text style={[avaliacaoStyles.levelUpNivel, { color: modoEscuro ? "#FFC82C" : "#0B2046", fontFamily: F.black }]}>
-                    {levelUpInfo.nomeSubfase} {levelUpInfo.nomeAnimal}
-                  </Text>
-                  <Text style={[avaliacaoStyles.levelUpConceito, { color: CC.textoSec, fontFamily: F.medium }]}>
-                    {levelUpInfo.conceitoRank}
-                  </Text>
-                  <TouchableOpacity
-                    style={avaliacaoStyles.levelUpBtn}
-                    onPress={() => setLevelUpInfo(null)}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={avaliacaoStyles.levelUpBtnTxt}>Incrível! 🚀</Text>
-                  </TouchableOpacity>
-                </View>
-              </Animated.View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      )}
+      {/* ── MODAL DE LEVEL-UP — mesmo componente/gradiente radial por animal
+          usado na Home (Index.tsx); só design por enquanto, back-end (levelUpInfo)
+          já é o real, calculado pelo gamificationService. ── */}
+      <NivelUpSabeModal info={levelUpInfo} onFechar={() => setLevelUpInfo(null)} />
     </KeyboardAvoidingView>
   );
 }
@@ -1504,10 +1469,10 @@ const styles = StyleSheet.create({
   backBtn:          { width:38,height:38,borderRadius:19,justifyContent:"center",alignItems:"center" },
   headerCenter:     { flexDirection:"row",alignItems:"center",gap:10,flex:1,paddingLeft:10 },
   headerAvatarWrap: { position:"relative" },
-  headerAvatar:     { width:42,height:42,borderRadius:21,backgroundColor:"#EAEFF4" },
+  headerAvatar:     { width:42,height:42,borderRadius:21,backgroundColor:CORES_SABE.borda },
   headerOnlineDot:  { position:"absolute",bottom:1,right:1,width:12,height:12,borderRadius:6,borderWidth:2,borderColor:"#FFFFFF" },
-  headerTitle:      { fontSize:16,fontWeight:"800" },
-  headerSub:        { fontSize:12,fontWeight:"600",marginTop:1 },
+  headerTitle:      { fontSize:16,fontFamily: F.black },
+  headerSub:        { fontSize:12,fontFamily: F.semibold,marginTop:1 },
 
   scrollView:    { flex:1 },
   scrollContent: { paddingVertical:12,paddingHorizontal:12,flexGrow:1 },
@@ -1517,7 +1482,7 @@ const styles = StyleSheet.create({
   messageRowOther: { justifyContent:"flex-start" },
   bolha:           { maxWidth:SCREEN_WIDTH*0.75,paddingHorizontal:14,paddingVertical:10,marginHorizontal:2,flexShrink:1,elevation:1,shadowColor:"#000",shadowOpacity:.06,shadowRadius:3 },
   encaminhadaLabel:{ color:"rgba(255,255,255,0.5)",fontSize:10,marginBottom:3,fontStyle:"italic" },
-  nomeRemetente:   { color:"#E91E63",fontSize:11,fontWeight:"800",marginBottom:3 },
+  nomeRemetente:   { color:CORES_SABE.verdeEscuro,fontSize:11,fontFamily: F.black,marginBottom:3 },
   messageText:     { color:"white",fontSize:15,flexShrink:1,flexWrap:"wrap",lineHeight:21 },
   rodape:          { flexDirection:"row",justifyContent:"flex-end",alignItems:"center",marginTop:4 },
   hora:            { color:"rgba(255,255,255,0.6)",fontSize:10,textAlign:"right" },
@@ -1525,27 +1490,27 @@ const styles = StyleSheet.create({
 
   citacaoBox:   { borderLeftWidth:3,paddingLeft:8,marginBottom:8,borderRadius:4,paddingVertical:4 },
   citacaoMe:    { borderLeftColor:"rgba(255,255,255,0.7)",backgroundColor:"rgba(0,0,0,0.12)" },
-  citacaoOther: { borderLeftColor:"#E91E63",backgroundColor:"rgba(233,30,99,0.12)" },
-  citacaoNome:  { color:"rgba(255,255,255,0.85)",fontSize:11,fontWeight:"800",marginBottom:1 },
+  citacaoOther: { borderLeftColor:CORES_SABE.verdeEscuro,backgroundColor:"rgba(31,61,43,0.10)" },
+  citacaoNome:  { color:"rgba(255,255,255,0.85)",fontSize:11,fontFamily: F.black,marginBottom:1 },
   citacaoTexto: { color:"rgba(255,255,255,0.65)",fontSize:12 },
 
   citandoBar:   { flexDirection:"row",alignItems:"center",paddingHorizontal:14,paddingVertical:10,borderTopWidth:2 },
   citandoInfo:  { flex:1 },
-  citandoNome:  { fontSize:12,fontWeight:"800" },
+  citandoNome:  { fontSize:12,fontFamily: F.black },
   citandoTexto: { fontSize:12 },
   citandoFechar:{ fontSize:18,paddingLeft:10 },
 
   inputArea:  { flexDirection:"row",alignItems:"center",paddingHorizontal:12,paddingTop:10,paddingBottom:Platform.OS==="ios"?32:14,borderTopWidth:1,gap:8 },
   imgButton:  { width:42,height:42,justifyContent:"center",alignItems:"center",borderRadius:21,borderWidth:1 },
   input:      { flex:1,borderRadius:22,paddingHorizontal:16,paddingTop:10,paddingBottom:10,maxHeight:100,fontSize:15,borderWidth:1 },
-  sendButton: { width:42,height:42,borderRadius:21,justifyContent:"center",alignItems:"center",elevation:3,shadowColor:"#E91E63",shadowOpacity:.35,shadowRadius:6 },
+  sendButton: { width:42,height:42,borderRadius:21,justifyContent:"center",alignItems:"center",elevation:3,shadowColor:CORES_SABE.verdeEscuro,shadowOpacity:.35,shadowRadius:6 },
 
   overlayFull:     { position:"absolute",top:0,left:0,right:0,bottom:0,backgroundColor:"rgba(0,0,0,0.6)",justifyContent:"center",alignItems:"center",zIndex:999 },
   overlayFullDark: { position:"absolute",top:0,left:0,right:0,bottom:0,backgroundColor:"#000",justifyContent:"center",alignItems:"center",zIndex:999 },
 
   // Fullscreen toolbar
   fullToolbar:        { position:"absolute",top:0,left:0,right:0,backgroundColor:"rgba(0,0,0,0.7)",paddingTop:Platform.OS==="ios"?50:36,paddingBottom:12,paddingHorizontal:16,zIndex:10 },
-  fullToolbarNome:    { color:"#fff",fontSize:15,fontWeight:"800" },
+  fullToolbarNome:    { color:"#fff",fontSize:15,fontFamily: F.black },
   fullToolbarHora:    { color:"rgba(255,255,255,0.6)",fontSize:12,marginBottom:8 },
   fullToolbarActions: { flexDirection:"row",gap:4 },
   fullToolBtn:        { width:42,height:42,borderRadius:21,justifyContent:"center",alignItems:"center",backgroundColor:"rgba(255,255,255,0.1)" },
@@ -1553,43 +1518,43 @@ const styles = StyleSheet.create({
   fullImage: { width:SCREEN_WIDTH,height:SCREEN_HEIGHT*0.72 },
 
   menuCard:     { borderRadius:24,padding:20,width:290,elevation:10 },
-  menuTitle:    { fontSize:16,fontWeight:"900",marginBottom:12,textAlign:"center" },
+  menuTitle:    { fontSize:16,fontFamily: F.black,marginBottom:12,textAlign:"center" },
   menuItem:     { flexDirection:"row",alignItems:"center",paddingVertical:14,borderBottomWidth:1 },
   menuItemIcon: { fontSize:20,marginRight:12 },
-  menuItemText: { fontSize:15,fontWeight:"600" },
+  menuItemText: { fontSize:15,fontFamily: F.semibold },
 
   previewCard:    { borderRadius:24,padding:24,width:340,alignItems:"center",elevation:10 },
-  previewTitle:   { fontSize:18,fontWeight:"900",marginBottom:16 },
+  previewTitle:   { fontSize:18,fontFamily: F.black,marginBottom:16 },
   previewImage:   { width:280,height:280,borderRadius:16,marginBottom:20 },
   previewButtons: { flexDirection:"row",gap:15 },
   previewBtn:     { paddingHorizontal:28,paddingVertical:13,borderRadius:25 },
-  sendBtn:        { backgroundColor:"#E91E63" },
-  cancelBtnText:  { fontWeight:"700" },
-  sendBtnText:    { color:"white",fontWeight:"700" },
+  sendBtn:        { backgroundColor:CORES_SABE.verdeEscuro },
+  cancelBtnText:  { fontFamily: F.bold },
+  sendBtnText:    { color:"white",fontFamily: F.bold },
 
   separadorDataWrap:  { flexDirection:"row",alignItems:"center",marginVertical:16,paddingHorizontal:16 },
   separadorDataLinha: { flex:1,height:1 },
-  separadorDataTxt:   { fontSize:11,fontWeight:"700",marginHorizontal:10,letterSpacing:.5,paddingHorizontal:8,paddingVertical:3,borderRadius:8 },
+  separadorDataTxt:   { fontSize:11,fontFamily: F.bold,marginHorizontal:10,letterSpacing:.5,paddingHorizontal:8,paddingVertical:3,borderRadius:8 },
 
   // Subpainel de anexo estilo WhatsApp
   subpainel:    { flexDirection:"row",justifyContent:"space-around",alignItems:"center",paddingVertical:18,paddingHorizontal:24,borderTopWidth:1 },
   subItem:      { alignItems:"center",gap:8 },
   subIconWrap:  { width:58,height:58,borderRadius:29,justifyContent:"center",alignItems:"center",elevation:4,shadowColor:"#000",shadowOpacity:.15,shadowRadius:6 },
-  subLabel:     { fontSize:12,fontWeight:"700" },
+  subLabel:     { fontSize:12,fontFamily: F.bold },
 
   // Vídeo na mensagem (thumbnail)
   videoThumb:   { height:130,borderRadius:12,backgroundColor:"#000",justifyContent:"center",alignItems:"center",gap:6 },
-  videoLabel:   { color:"rgba(255,255,255,0.75)",fontSize:11,fontWeight:"700" },
+  videoLabel:   { color:"rgba(255,255,255,0.75)",fontSize:11,fontFamily: F.bold },
 
   // Documento na mensagem
   docBolha:     { flexDirection:"row",alignItems:"center",gap:10,paddingVertical:6,borderTopWidth:1,marginTop:4 },
-  docBolhaNome: { color:"#fff",fontSize:13,fontWeight:"700",flex:1 },
+  docBolhaNome: { color:"#fff",fontSize:13,fontFamily: F.bold,flex:1 },
   docBolhaTipo: { color:"rgba(255,255,255,0.55)",fontSize:10,marginTop:2 },
 
   // Preview documento no modal
   docPreviewBox:{ alignItems:"center",gap:8,padding:20,borderRadius:16,borderWidth:1,marginBottom:20,width:260 },
-  docNome:      { fontSize:14,fontWeight:"700",textAlign:"center" },
-  docTamanho:   { fontSize:11,fontWeight:"600" },
+  docNome:      { fontSize:14,fontFamily: F.bold,textAlign:"center" },
+  docTamanho:   { fontSize:11,fontFamily: F.semibold },
 
   // Finalizar match
   finalizarBtn: { width: 38, height: 38, borderRadius: 19, justifyContent: "center", alignItems: "center" },
@@ -1607,8 +1572,8 @@ const avaliacaoStyles = StyleSheet.create({
   estrelasRow: { flexDirection: "row", marginBottom: 8 },
   comentarioInput: { width: "100%", borderWidth: 1, borderRadius: 12, padding: 12, minHeight: 60, fontSize: 13, marginTop: 10, marginBottom: 4, textAlignVertical: "top" },
   btnConfirmar: { width: "100%", paddingVertical: 14, borderRadius: 14, alignItems: "center" },
-  btnConfirmarTxt: { color: "#fff", fontWeight: "800", fontSize: 15 },
-  btnCancelar: { marginTop: 14, fontSize: 13, fontWeight: "600" },
+  btnConfirmarTxt: { color: "#fff", fontFamily: F.black, fontSize: 15 },
+  btnCancelar: { marginTop: 14, fontSize: 13, fontFamily: F.semibold },
 
   // Toast de XP
   toastOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 999, justifyContent: "flex-end", alignItems: "center", paddingBottom: Platform.OS === "ios" ? 44 : 32 },
@@ -1624,6 +1589,6 @@ const avaliacaoStyles = StyleSheet.create({
   levelUpBody: { padding: 24, alignItems: "center", gap: 10 },
   levelUpNivel: { fontSize: 22, textAlign: "center" },
   levelUpConceito: { fontSize: 13, textAlign: "center", lineHeight: 19, opacity: 0.85 },
-  levelUpBtn: { marginTop: 8, paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14, width: "100%", alignItems: "center", backgroundColor: "#E91E63" },
-  levelUpBtnTxt: { fontFamily: F.bold, fontSize: 15, color: "#fff" },
+  levelUpBtn: { marginTop: 8, paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14, width: "100%", alignItems: "center", backgroundColor: CORES_SABE.verdeEscuro },
+  levelUpBtnTxt: { fontFamily: F.bold, fontSize: 15, color: CORES_SABE.fundo },
 });

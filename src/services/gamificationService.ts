@@ -149,6 +149,7 @@ export const awardDailyCheckIn = async (meuUid: string): Promise<CheckInResult> 
       moedas_saldo:       increment(moedasGanhas),
       streak_dias:        novoStreak,
       ultimo_checkin_dia: hoje,
+      ultimo_checkin_ts:  Date.now(), // ✅ timestamp exato — usado pra esconder o card por 24h reais na Home
     });
 
     console.log(`✅ Check-in dia ${novoStreak}! +${xpGanho} XP${levelUp ? ' 🎉 LEVEL UP!' : ''}`);

@@ -22,6 +22,7 @@ import {
 
 import Boasvindas      from './src/screens/Boasvindas';
 import EscolhaPapel    from './src/screens/EscolhaPapel';
+import FeedResumos     from './src/screens/FeedResumos';
 import Cadastro        from './src/screens/Cadastro';
 import Login           from './src/screens/Login';
 import Index           from './src/screens/Index';
@@ -195,6 +196,7 @@ export default function App() {
           <Stack.Screen name="Ajuda"           component={Ajuda} />
           <Stack.Screen name="Leaderboard" component={Leaderboard} options={{ headerShown: false }} />
           <Stack.Screen name="Loja" component={Loja} options={{ headerShown: false }} />
+          <Stack.Screen name="Resumos" component={FeedResumos} options={{ headerShown: false }} />
         </Stack.Navigator>
       </NavigationContainer>
     </AppSettingsProvider>

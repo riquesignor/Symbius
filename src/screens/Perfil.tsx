@@ -15,17 +15,21 @@ import Svg, { Polygon, Circle, Line, Text as SvgText, G } from 'react-native-svg
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { calcularFaseCoruja, calcularProgressoXp } from '../utils/gamification';
 
-import { F, CORES } from '../constants/theme';
+import { F } from '../constants/theme';
+import { TEMA_SABE as CORES, CORES_SABE } from '../constants/temaSabe';
+import SabeTabBar from '../components/SabeTabBar';
 
 // ════════════════════════════════════════════════════════════════════════
 //  ÁREAS DE CONHECIMENTO
 // ════════════════════════════════════════════════════════════════════════
+// Cores fixas (não seguem o tema ativo) — o radar de matérias precisa das 5
+// sempre distintas entre si, então ficam desacopladas de CORES/TEMA_SABE.
 const AREAS = [
-  { key: 'exatas',     label: 'Exatas',      cor: CORES.azulCeu },
-  { key: 'humanas',    label: 'Humanas',     cor: CORES.laranja },
-  { key: 'biologicas', label: 'Biológicas',  cor: CORES.verde },
-  { key: 'linguagens', label: 'Linguagens',  cor: CORES.rosa },
-  { key: 'tecnologia', label: 'Lógica',      cor: CORES.roxo },
+  { key: 'exatas',     label: 'Exatas',      cor: '#3498db' },
+  { key: 'humanas',    label: 'Humanas',     cor: '#e67e22' },
+  { key: 'biologicas', label: 'Biológicas',  cor: '#27ae60' },
+  { key: 'linguagens', label: 'Linguagens',  cor: '#E51C6A' },
+  { key: 'tecnologia', label: 'Lógica',      cor: '#8e44ad' },
 ];
 
 const MATERIA_AREA: Record<string, string> = {
@@ -162,11 +166,79 @@ const RadarChart = ({ scores, size, modoEscuro }: any) => {
 
 
 
+// ── Estilos do novo cabeçalho/hero do Perfil (pixel-fiel ao mockup sabé) ──
+const heroStyles = StyleSheet.create({
+  topHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingBottom: 8,
+  },
+  topHeaderTitulo: { fontFamily: F.bold, color: CORES_SABE.texto },
+
+  heroWrap: { alignItems: 'center', paddingHorizontal: 24, paddingTop: 8, paddingBottom: 4 },
+  avatarWrap: { position: 'relative' },
+  avatar: { width: 88, height: 88, borderRadius: 44 },
+  avatarPlaceholder: {
+    backgroundColor: CORES_SABE.fundoSuave, justifyContent: 'center', alignItems: 'center',
+  },
+  avatarBadge: {
+    position: 'absolute', bottom: -4, right: -4, width: 32, height: 32, borderRadius: 16,
+    backgroundColor: CORES_SABE.fundoSuave, borderWidth: 2, borderColor: CORES_SABE.fundo,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  fotoEditBtn: {
+    position: 'absolute', top: -2, right: -2, width: 22, height: 22, borderRadius: 11,
+    backgroundColor: CORES_SABE.verdeEscuro, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: CORES_SABE.fundo,
+  },
+
+  nome: { fontFamily: F.black, color: CORES_SABE.texto, marginTop: 14, textAlign: 'center' },
+  handle: { fontFamily: F.medium, color: CORES_SABE.textoSec, marginTop: 2 },
+
+  levelPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10,
+    backgroundColor: CORES_SABE.fundoSuave, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14,
+  },
+  levelPillTxt: { fontFamily: F.bold, color: CORES_SABE.texto },
+
+  xpBarWrap: { width: '100%', maxWidth: 220, marginTop: 12 },
+  xpBarLabel: { fontFamily: F.medium, color: CORES_SABE.textoSec, marginBottom: 6, textAlign: 'center' },
+  xpBarBg: { width: '100%', height: 6, borderRadius: 3, backgroundColor: CORES_SABE.borda, overflow: 'hidden' },
+  xpBarFill: { height: 6, borderRadius: 3, backgroundColor: CORES_SABE.verdeEscuro },
+
+  papelTabs: {
+    flexDirection: 'row', gap: 6, backgroundColor: CORES_SABE.fundoSuave,
+    padding: 4, borderRadius: 14, marginTop: 18, width: '100%', maxWidth: 260,
+  },
+  papelTab: { flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center' },
+  papelTabAtivo: { backgroundColor: CORES_SABE.verdeEscuro },
+  papelTabTxt: { fontFamily: F.semibold, color: CORES_SABE.textoSec },
+  papelTabTxtAtivo: { fontFamily: F.bold, color: CORES_SABE.creme },
+
+  conquistasRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 22, paddingHorizontal: 8 },
+  conquistaItem: { alignItems: 'center', gap: 6, flex: 1 },
+  conquistaCirculo: {
+    width: 52, height: 52, borderRadius: 26, backgroundColor: CORES_SABE.fundoSuave,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  conquistaNum: { fontFamily: F.bold, color: CORES_SABE.texto },
+  conquistaLabel: { fontFamily: F.medium, color: CORES_SABE.textoSec, textAlign: 'center' },
+
+  btnEditarPerfil: {
+    width: '100%', marginTop: 20, paddingVertical: 14, borderRadius: 16,
+    backgroundColor: CORES_SABE.fundoSuave, borderWidth: 1, borderColor: CORES_SABE.borda2,
+    alignItems: 'center',
+  },
+  btnEditarPerfilTxt: { fontFamily: F.bold, color: CORES_SABE.texto },
+});
+
 export default function Perfil({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const uid = route?.params?.uid;
 
-  const { cores: C, fonteScale, modoEscuro } = useAppSettings();
+  const { fonteScale } = useAppSettings();
+  // ── TELA DE TESTE (Sabé): paleta verde fixa, ignora o tema real do usuário.
+  const modoEscuro = false; // paleta sabé agora é modo claro
+  const C = CORES; // CORES já é TEMA_SABE (import aliasado acima)
   const fs = (size: number) => size * fonteScale;
 
   const [usuario,      setUsuario]      = useState<any>(null);
@@ -178,6 +250,12 @@ export default function Perfil({ navigation, route }: any) {
   const [modalBio,     setModalBio]     = useState(false);
   const [bioTemp,      setBioTemp]      = useState('');
   const [modalSkill,   setModalSkill]   = useState<'ensina' | 'melhorar' | null>(null);
+
+  // ── Papel na comunidade (Aprendiz/Mentor) — front-end apenas por enquanto:
+  // só grava a tag em `papel_comunidade` (mesmo campo já usado no cadastro e
+  // no filtro do Leaderboard); nenhuma lógica de contagem/gamificação nova.
+  const [papelAtivo, setPapelAtivo] = useState<'aprender' | 'ensinar'>('aprender');
+  const [salvandoPapel, setSalvandoPapel] = useState(false);
   const [modalConfirmSair, setModalConfirmSair] = useState(false);
 
   useEffect(() => {
@@ -195,6 +273,12 @@ export default function Perfil({ navigation, route }: any) {
     carregarMedalhas();
     return () => unsubUser();
   }, [uid]);
+
+  useEffect(() => {
+    if (usuario?.papel_comunidade === 'ensinar' || usuario?.papel_comunidade === 'aprender') {
+      setPapelAtivo(usuario.papel_comunidade);
+    }
+  }, [usuario?.papel_comunidade]);
 
   const carregarMedalhas = async () => {
     try {
@@ -257,6 +341,19 @@ export default function Perfil({ navigation, route }: any) {
     } catch { setToast('Erro ao salvar'); }
   };
 
+  const escolherPapel = async (papel: 'aprender' | 'ensinar') => {
+    if (!uid || papel === papelAtivo) { setPapelAtivo(papel); return; }
+    setPapelAtivo(papel);
+    setSalvandoPapel(true);
+    try {
+      await updateDoc(doc(db, 'usuarios', uid), { papel_comunidade: papel });
+    } catch {
+      setToast('Erro ao salvar');
+    } finally {
+      setSalvandoPapel(false);
+    }
+  };
+
   const sair = async () => {
     await AsyncStorage.removeItem('uid');
     navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
@@ -300,7 +397,7 @@ export default function Perfil({ navigation, route }: any) {
       )}
 
      
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+      <View style={heroStyles.topHeader}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={[styles.btnVoltar, { backgroundColor: C.branco }]}
@@ -308,10 +405,7 @@ export default function Perfil({ navigation, route }: any) {
           <Ionicons name="arrow-back" size={18} color={C.azulEscuro} />
         </TouchableOpacity>
 
-        <Text style={[styles.logoText, { fontSize: fs(22) }]}>
-          <Text style={{ color: C.azulEscuro }}>JU</Text>
-          <Text style={{ color: CORES.rosa }}>MO</Text>
-        </Text>
+        <Text style={[heroStyles.topHeaderTitulo, { fontSize: fs(15) }]}>Perfil</Text>
 
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TouchableOpacity
@@ -325,7 +419,7 @@ export default function Perfil({ navigation, route }: any) {
             style={[styles.btnMenu, { backgroundColor: C.branco }]}
             onPress={() => navigation.navigate('Leaderboard', { uid })}
           >
-            <FontAwesome5 name="trophy" size={15} color={CORES.amarelo} />
+            <FontAwesome5 name="trophy" size={15} color={CORES_SABE.laranja} />
           </TouchableOpacity>
         </View>
       </View>
@@ -336,38 +430,111 @@ export default function Perfil({ navigation, route }: any) {
       >
         
         <FadeInView delay={0}>
-          <View style={[styles.heroCard, { backgroundColor: C.branco }]}>
-            <View style={styles.fotoWrap}>
+          <View style={heroStyles.heroWrap}>
+            <View style={heroStyles.avatarWrap}>
               {usuario.foto ? (
-                <Image source={{ uri: usuario.foto }} style={styles.foto} />
+                <Image source={{ uri: usuario.foto }} style={heroStyles.avatar} />
               ) : (
-                <View style={[styles.fotoPlaceholder, { backgroundColor: CORES.rosa + '20' }]}>
-                  <Text style={[styles.fotoLetra, { fontSize: fs(34) }]}>
+                <View style={[heroStyles.avatar, heroStyles.avatarPlaceholder]}>
+                  <Text style={{ fontSize: fs(34), color: CORES_SABE.textoSec }}>
                     {usuario.nome_completo?.charAt(0)?.toUpperCase() || '?'}
                   </Text>
                 </View>
               )}
-              <TouchableOpacity style={styles.fotoEditBtn} activeOpacity={0.8}>
-                <Ionicons name="camera" size={11} color="#FFF" />
+              <View style={heroStyles.avatarBadge}>
+                <Text style={{ fontSize: 16 }}>{calcularFaseCoruja(usuario.xp_total || 0).icone}</Text>
+              </View>
+              <TouchableOpacity style={heroStyles.fotoEditBtn} activeOpacity={0.8}>
+                <Ionicons name="camera" size={11} color={CORES_SABE.creme} />
               </TouchableOpacity>
             </View>
 
-            <View style={styles.heroInfo}>
-              <Text
-                style={[styles.nome, { color: C.azulEscuro, fontSize: fs(22) }]}
-                numberOfLines={2}
-              >
-                {usuario.nome_completo || 'Sem nome'}
+            <Text style={[heroStyles.nome, { fontSize: fs(19) }]} numberOfLines={2}>
+              {usuario.nome_completo || 'Sem nome'}
+            </Text>
+            <Text style={[heroStyles.handle, { fontSize: fs(13) }]}>
+              @{(usuario.nome_completo || 'usuario')
+                .normalize('NFD').replace(/[̀-ͯ]/g, '')
+                .toLowerCase().trim().replace(/[^a-z0-9]+/g, '.').replace(/^\.|\.$/g, '')}
+            </Text>
+
+            {isTutor && (
+              <View style={[styles.tutorBadge, { borderColor: CORES.verde + '60', marginTop: 6, alignSelf: 'center' }]}>
+                <FontAwesome5 name="graduation-cap" size={9} color={CORES.verde} />
+                <Text style={[styles.tutorBadgeText, { fontSize: fs(9) }]}>TUTOR</Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={heroStyles.levelPill}
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('Leaderboard', { uid })}
+            >
+              <Text style={{ fontSize: 14 }}>{calcularFaseCoruja(usuario.xp_total || 0).icone}</Text>
+              <Text style={[heroStyles.levelPillTxt, { fontSize: fs(12.5) }]}>
+                {calcularFaseCoruja(usuario.xp_total || 0).label}
               </Text>
-              {isTutor && (
-                <View style={[styles.tutorBadge, { borderColor: CORES.verde + '60' }]}>
-                  <FontAwesome5 name="graduation-cap" size={9} color={CORES.verde} />
-                  <Text style={[styles.tutorBadgeText, { fontSize: fs(9) }]}>TUTOR</Text>
-                </View>
-              )}
+            </TouchableOpacity>
+
+            <View style={heroStyles.xpBarWrap}>
+              <Text style={[heroStyles.xpBarLabel, { fontSize: fs(11) }]}>
+                {usuario.xp_total || 0} XP · faltam {calcularProgressoXp(usuario.xp_total || 0).faltam}
+              </Text>
+              <View style={heroStyles.xpBarBg}>
+                <View style={[heroStyles.xpBarFill, { width: `${calcularProgressoXp(usuario.xp_total || 0).percentual}%` }]} />
+              </View>
             </View>
+
+            {/* Aprendiz / Mentor — front-end apenas: grava a tag em
+                `papel_comunidade` (mesmo campo do cadastro / filtro do
+                Leaderboard). Nenhuma lógica de contagem nova aqui ainda. */}
+            <View style={heroStyles.papelTabs}>
+              <TouchableOpacity
+                style={[heroStyles.papelTab, papelAtivo === 'aprender' && heroStyles.papelTabAtivo]}
+                onPress={() => escolherPapel('aprender')}
+                disabled={salvandoPapel}
+              >
+                <Text style={[heroStyles.papelTabTxt, papelAtivo === 'aprender' && heroStyles.papelTabTxtAtivo, { fontSize: fs(12.5) }]}>
+                  Aprendiz
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[heroStyles.papelTab, papelAtivo === 'ensinar' && heroStyles.papelTabAtivo]}
+                onPress={() => escolherPapel('ensinar')}
+                disabled={salvandoPapel}
+              >
+                <Text style={[heroStyles.papelTabTxt, papelAtivo === 'ensinar' && heroStyles.papelTabTxtAtivo, { fontSize: fs(12.5) }]}>
+                  Mentor
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Conquistas — reaproveita só campos reais já carregados
+                (nenhum contador novo/fake). */}
+            <View style={heroStyles.conquistasRow}>
+              <View style={heroStyles.conquistaItem}>
+                <View style={heroStyles.conquistaCirculo}><Text style={{ fontSize: 20 }}>🤝</Text></View>
+                <Text style={[heroStyles.conquistaNum, { fontSize: fs(13) }]}>{usuario.matches_bonificados_hoje || 0}</Text>
+                <Text style={[heroStyles.conquistaLabel, { fontSize: fs(10) }]}>Matches hoje</Text>
+              </View>
+              <View style={heroStyles.conquistaItem}>
+                <View style={heroStyles.conquistaCirculo}><Text style={{ fontSize: 20 }}>🏅</Text></View>
+                <Text style={[heroStyles.conquistaNum, { fontSize: fs(13) }]}>{medalhas.length}</Text>
+                <Text style={[heroStyles.conquistaLabel, { fontSize: fs(10) }]}>Medalhas</Text>
+              </View>
+              <View style={heroStyles.conquistaItem}>
+                <View style={heroStyles.conquistaCirculo}><Text style={{ fontSize: 20 }}>🌱</Text></View>
+                <Text style={[heroStyles.conquistaNum, { fontSize: fs(13) }]}>{usuario.moedas_saldo || 0}</Text>
+                <Text style={[heroStyles.conquistaLabel, { fontSize: fs(10) }]}>Sementes</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity style={heroStyles.btnEditarPerfil} activeOpacity={0.85} onPress={abrirEdicaoBio}>
+              <Text style={[heroStyles.btnEditarPerfilTxt, { fontSize: fs(14) }]}>Editar perfil</Text>
+            </TouchableOpacity>
           </View>
         </FadeInView>
+
 
         
         <FadeInView delay={100}>
@@ -917,6 +1084,8 @@ export default function Perfil({ navigation, route }: any) {
           </View>
         </View>
       </Modal>
+
+      <SabeTabBar ativa="perfil" navigation={navigation} uid={uid} />
     </SafeAreaView>
   );
 }
