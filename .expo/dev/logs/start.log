@@ -1,0 +1,61 @@
+{"_e":"root:init","_t":1789949839351,"format":"v0-jsonl","version":"57.0.10"}
+{"_e":"env:mode","_t":1789949839351,"nodeEnv":"development","babelEnv":"development","mode":"development"}
+{"_e":"env:load","_t":1789949839352,"mode":"development","files":[],"env":{}}
+{"_e":"devserver:start","_t":1789949839479,"mode":"development","web":true,"baseUrl":"","asyncRoutes":false,"routerRoot":"../../../app","serverComponents":false,"serverActions":false,"serverRendering":false,"apiRoutes":false,"exporting":false}
+{"_e":"metro:config","_t":1789949839630,"serverRoot":"../../..","projectRoot":"../../..","exporting":false,"flags":{"autolinkingModuleResolution":false,"serverActions":false,"serverComponents":false,"reactCompiler":false,"optimizeGraph":false,"treeshaking":false,"logbox":false}}
+{"_e":"expo:dev-tools-plugin:load","_t":1789949839765,"plugins":[]}
+{"_e":"metro:server_log","_t":1789949839991,"level":"error","data":["An unknown error occurred while installing React Native DevTools. Details:\n\n[39777:0920/211719.756267:FATAL:sandbox/linux/suid/client/setuid_sandbox_host.cc:166] The SUID sandbox helper binary was found, but is not configured correctly. Rather than run without sandboxing I'm aborting now. You need to make sure that /home/joao/.cache/dotslash/64/ed7915e5fef86802e862c274e17f780fa75388/React Native DevTools-linux-x64/chrome-sandbox is owned by root and has mode 4755.\n"]}
+{"_e":"metro:instantiate","_t":1789949842552,"atlas":false,"workers":10,"host":"::","port":8081}
+{"_e":"metro:bundling:started","_t":1789949842837,"id":"1","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:progress","_t":1789949842837,"id":"1","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1789949842839,"id":"1","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1789949843087,"id":"1","progress":0.010000000000000002,"total":1,"current":1}
+{"_e":"metro:bundling:progress","_t":1789949843187,"id":"1","progress":0.18367346938775508,"total":21,"current":9}
+{"_e":"metro:bundling:progress","_t":1789949843291,"id":"1","progress":0.23182441700960216,"total":27,"current":13}
+{"_e":"metro:bundling:progress","_t":1789949843440,"id":"1","progress":0.23182441700960216,"total":39,"current":17}
+{"_e":"metro:bundling:progress","_t":1789949843540,"id":"1","progress":0.2875446334803613,"total":69,"current":37}
+{"_e":"metro:bundling:progress","_t":1789949843640,"id":"1","progress":0.2875446334803613,"total":192,"current":94}
+{"_e":"metro:bundling:progress","_t":1789949843741,"id":"1","progress":0.2875446334803613,"total":268,"current":99}
+{"_e":"metro:bundling:progress","_t":1789949843841,"id":"1","progress":0.2875446334803613,"total":283,"current":103}
+{"_e":"metro:bundling:progress","_t":1789949843942,"id":"1","progress":0.2875446334803613,"total":291,"current":111}
+{"_e":"metro:bundling:progress","_t":1789949844042,"id":"1","progress":0.2875446334803613,"total":299,"current":124}
+{"_e":"metro:bundling:progress","_t":1789949844144,"id":"1","progress":0.2875446334803613,"total":315,"current":143}
+{"_e":"metro:bundling:progress","_t":1789949844243,"id":"1","progress":0.2875446334803613,"total":403,"current":181}
+{"_e":"metro:bundling:progress","_t":1789949844343,"id":"1","progress":0.3269086505486969,"total":432,"current":247}
+{"_e":"metro:bundling:progress","_t":1789949844443,"id":"1","progress":0.38044628460091373,"total":488,"current":301}
+{"_e":"metro:bundling:progress","_t":1789949844543,"id":"1","progress":0.3973501275510204,"total":560,"current":353}
+{"_e":"metro:bundling:progress","_t":1789949844643,"id":"1","progress":0.4002073556991605,"total":607,"current":384}
+{"_e":"metro:bundling:progress","_t":1789949844743,"id":"1","progress":0.48065204299319175,"total":626,"current":434}
+{"_e":"metro:bundling:progress","_t":1789949844843,"id":"1","progress":0.4941672385060288,"total":707,"current":497}
+{"_e":"metro:bundling:progress","_t":1789949844943,"id":"1","progress":0.595764654065514,"total":732,"current":565}
+{"_e":"metro:bundling:progress","_t":1789949845043,"id":"1","progress":0.7280899211401142,"total":777,"current":663}
+{"_e":"metro:bundling:progress","_t":1789949845143,"id":"1","progress":0.780499180281531,"total":798,"current":705}
+{"_e":"metro:bundling:progress","_t":1789949845243,"id":"1","progress":0.7836953604518193,"total":828,"current":733}
+{"_e":"metro:bundling:progress","_t":1789949845343,"id":"1","progress":0.7836953604518193,"total":918,"current":785}
+{"_e":"metro:bundling:progress","_t":1789949845443,"id":"1","progress":0.8134578402534994,"total":938,"current":846}
+{"_e":"metro:bundling:progress","_t":1789949845544,"id":"1","progress":0.8134578402534994,"total":1000,"current":892}
+{"_e":"metro:bundling:progress","_t":1789949845643,"id":"1","progress":0.8134578402534994,"total":1028,"current":926}
+{"_e":"metro:bundling:progress","_t":1789949845744,"id":"1","progress":0.8134578402534994,"total":1061,"current":952}
+{"_e":"metro:bundling:progress","_t":1789949845845,"id":"1","progress":0.8134578402534994,"total":1122,"current":994}
+{"_e":"metro:bundling:progress","_t":1789949845945,"id":"1","progress":0.8134578402534994,"total":1143,"current":1021}
+{"_e":"metro:bundling:progress","_t":1789949846045,"id":"1","progress":0.8346093710898078,"total":1157,"current":1057}
+{"_e":"metro:bundling:progress","_t":1789949846146,"id":"1","progress":0.867963467393046,"total":1185,"current":1104}
+{"_e":"metro:bundling:progress","_t":1789949846245,"id":"1","progress":0.8885249870925244,"total":1185,"current":1117}
+{"_e":"metro:bundling:progress","_t":1789949846346,"id":"1","progress":0.9292701643336729,"total":1194,"current":1151}
+{"_e":"metro:bundling:progress","_t":1789949846446,"id":"1","progress":0.9292833781115984,"total":1222,"current":1178}
+{"_e":"metro:bundling:progress","_t":1789949846547,"id":"1","progress":0.9419050491262043,"total":1255,"current":1218}
+{"_e":"metro:bundling:progress","_t":1789949846649,"id":"1","progress":0.9561821811855515,"total":1309,"current":1280}
+{"_e":"metro:bundling:progress","_t":1789949846749,"id":"1","progress":0.9984911356354575,"total":1325,"current":1324}
+{"_e":"metro:bundling:progress","_t":1789949846881,"id":"1","progress":0.999,"total":1325,"current":1325}
+{"_e":"metro:bundling:done","_t":1789949846995,"id":"1","total":1325,"ms":4157.511665}
+{"_e":"metro:client_log","_t":1789949847327,"level":"info","data":["%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools","font-weight:bold"]}
+{"_e":"metro:client_log","_t":1789949847327,"level":"warn","data":["[expo-notifications] Listening to push token changes is not yet fully supported on web. Adding a listener will have no effect."]}
+{"_e":"metro:client_log","_t":1789949847327,"level":"warn","data":["\"shadow*\" style props are deprecated. Use \"boxShadow\"."]}
+{"_e":"metro:client_log","_t":1789949847327,"level":"warn","data":["\"textShadow*\" style props are deprecated. Use \"textShadow\"."]}
+{"_e":"metro:client_log","_t":1789949847327,"level":"log","data":["Running application \"main\" with appParams:\n","{\"hydrate\": undefined, \"rootTag\": \"#root\"}","\nDevelopment-level warnings: ON.\nPerformance optimizations: OFF."]}
+{"_e":"metro:client_log","_t":1789949848857,"level":"warn","data":["props.pointerEvents is deprecated. Use style.pointerEvents"]}
+{"_e":"metro:bundling:started","_t":1789949853782,"id":"g","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:client_log","_t":1789949866823,"level":"warn","data":["Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md"]}
+{"_e":"metro:client_log","_t":1789949956613,"level":"log","data":["✅ Cosmético comprado! -20 Moedas"]}
+{"_e":"metro:client_log","_t":1789949958062,"level":"log","data":["✅ Cosmético equipado!"]}
+{"_e":"metro:client_log","_t":1789949984239,"level":"log","data":["✅ Cosmético equipado!"]}
