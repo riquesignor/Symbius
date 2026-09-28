@@ -7,8 +7,15 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from './src/config/firebaseConfig';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppSettingsProvider } from './src/contexts/AppSettingsContext'; 
+import { AppSettingsProvider } from './src/contexts/AppSettingsContext';
 import * as Notifications from 'expo-notifications';
+import {
+  configurarPushParaUsuario,
+  registrarListenerForeground,
+  registrarListenerToqueBackground,
+  obterNotificacaoQueAbriuApp,
+} from './src/services/pushNotificationsService';
+import { type RemoteMessage } from '@react-native-firebase/messaging';
 
 
 import {
@@ -104,6 +111,51 @@ export default function App() {
 
     return () => subscription.remove();
   }, []);
+
+  // Configura FCM (token + listeners) assim que a sessão for confirmada
+  useEffect(() => {
+    if (!initialUid) return;
+    configurarPushParaUsuario(initialUid);
+  }, [initialUid]);
+
+  // Navega pra tela certa a partir dos `data` da mensagem FCM
+  const navegarPorNotificacaoFcm = (mensagem: RemoteMessage) => {
+    const data: any = mensagem.data;
+    const nav = navigationRef.current as any;
+    if (!nav || !data) return;
+
+    if (data.tipo === 'mensagem') {
+      nav.navigate('Chat', { outroUid: data.outroUid, outroNome: data.outroNome });
+    } else if (data.tipo === 'solicitacao_match') {
+      nav.navigate('Match', { uid: initialUid });
+    } else if (data.tipo === 'evento_admin') {
+      nav.navigate('Calendario', { uid: initialUid });
+    }
+  };
+
+  // App aberto (foreground): FCM não mostra alerta sozinho — deixa só o log,
+  // o banner in-app do NotificacaoProvider já cobre esse caso via Firestore.
+  useEffect(() => {
+    const unsubscribe = registrarListenerForeground((mensagem) => {
+      console.log('📩 Push recebido em foreground:', mensagem.messageId);
+    });
+    return unsubscribe;
+  }, []);
+
+  // App em background (processo vivo) e usuário tocou na notificação
+  useEffect(() => {
+    const unsubscribe = registrarListenerToqueBackground((mensagem) => {
+      navegarPorNotificacaoFcm(mensagem);
+    });
+    return unsubscribe;
+  }, [initialUid]);
+
+  // App estava fechado (processo morto) e abriu por causa do toque na notificação
+  useEffect(() => {
+    obterNotificacaoQueAbriuApp().then((mensagem) => {
+      if (mensagem) navegarPorNotificacaoFcm(mensagem);
+    });
+  }, [initialUid]);
 
   useEffect(() => {
     const verificarSessao = async () => {

@@ -16,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { useNotificacao } from '../contexts/NotificacaoProvider';
+import { dispararPush } from '../services/pushNotificationsService';
 
 import { F, CORES } from '../constants/theme';
 import { CORES_SYMBIUS } from '../constants/temaSymbius';
@@ -366,8 +367,9 @@ const EncaminharModal = ({ visible, onClose, meuUid, meuNome, minhaFoto, mensage
       await addDoc(collection(db, "mensagens"), payload);
       const outroSnap = await getDoc(firestoreDoc(db, "usuarios", paraUid));
       const outroData = outroSnap.exists() ? outroSnap.data() : {};
+      const ultimaMsgTexto = mensagem.tipo === "imagem" ? "📷 Imagem encaminhada" : `↪️ ${mensagem.mensagem}`;
       await setDoc(firestoreDoc(db, "conversas", conversaId), {
-        ultimaMensagem: mensagem.tipo === "imagem" ? "📷 Imagem encaminhada" : `↪️ ${mensagem.mensagem}`,
+        ultimaMensagem: ultimaMsgTexto,
         data_postagem: serverTimestamp(),
         quemEnviou: meuUid, visto: false,
         dadosMembros: {
@@ -375,6 +377,12 @@ const EncaminharModal = ({ visible, onClose, meuUid, meuNome, minhaFoto, mensage
           [paraUid]:  { nome: (outroData as any).nome_completo || "Usuário", foto: (outroData as any).foto || null },
         },
       }, { merge: true });
+      dispararPush({
+        destinatarioUid: paraUid,
+        titulo: meuNome,
+        corpo: ultimaMsgTexto,
+        dados: { tipo: "mensagem", outroUid: meuUid, outroNome: meuNome },
+      });
       setEnviados(prev => [...prev, paraUid]);
     } catch (e) { console.log("Encaminhar erro:", e); }
   };
@@ -737,6 +745,12 @@ export default function Chat({ route, navigation }: any) {
       docIdMap.current[ref.id] = ref.id;
       setMessages(prev => prev.filter(m => m.docId !== tempId));
       await setDoc(firestoreDoc(db, "conversas", conversaId), { ultimaMensagem: msgTexto, data_postagem: serverTimestamp(), quemEnviou: uidAtual, visto: false, dadosMembros: { [uidAtual]: { nome: meuNome, foto: minhaFoto||null }, [outroUid]: { nome: outroNome||"Usuário", foto: null } } }, { merge: true });
+      dispararPush({
+        destinatarioUid: outroUid,
+        titulo: meuNome,
+        corpo: msgTexto,
+        dados: { tipo: "mensagem", outroUid: uidAtual, outroNome: meuNome },
+      });
     } catch (e: any) { console.log(e.message); setMessages(prev => prev.filter(m => m.docId !== tempId)); Alert.alert("Erro", "Não foi possível enviar."); }
   };
 
@@ -769,6 +783,12 @@ export default function Chat({ route, navigation }: any) {
       docIdMap.current[ref.id] = ref.id;
       setMessages(prev => prev.filter(m => m.docId !== tempId));
       await setDoc(firestoreDoc(db, "conversas", conversaId), { ultimaMensagem: ultimaMsgTexto, data_postagem: serverTimestamp(), quemEnviou: uidAtual, visto: false, dadosMembros: { [uidAtual]: { nome: meuNome, foto: minhaFoto||null }, [outroUid]: { nome: outroNome||"Usuário", foto: null } } }, { merge: true });
+      dispararPush({
+        destinatarioUid: outroUid,
+        titulo: meuNome,
+        corpo: ultimaMsgTexto,
+        dados: { tipo: "mensagem", outroUid: uidAtual, outroNome: meuNome },
+      });
     } catch { setMessages(prev => prev.filter(m => m.docId !== tempId)); Alert.alert("Erro", "Não foi possível enviar."); }
     finally {
       setUploading(false);

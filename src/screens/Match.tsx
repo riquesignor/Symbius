@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppSettings } from '../contexts/AppSettingsContext';
+import { dispararPush } from '../services/pushNotificationsService';
 
 // ── Fonte Poppins ──
 import { F } from '../constants/theme';
@@ -372,6 +373,12 @@ export default function Match({ navigation, route }: any) {
         deUid: meuUid, paraUid,
         status: 'pendente', membros: [meuUid, paraUid],
         criadoEm: serverTimestamp(),
+      });
+      dispararPush({
+        destinatarioUid: paraUid,
+        titulo: '🎓 Nova solicitação de match',
+        corpo: `${meusDados?.nome_completo || 'Alguém'} quer estudar com você!`,
+        dados: { tipo: 'solicitacao_match', deUid: meuUid },
       });
     } catch (e) { console.log(e); }
     setCardAtual(prev => prev + 1);

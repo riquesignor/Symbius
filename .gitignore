@@ -1,4 +1,5 @@
 node_modules/
 .expo/
-node_modules/
-.expo/
+.vercel
+.env*
+!.env.example
