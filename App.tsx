@@ -7,8 +7,8 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from './src/config/firebaseConfig';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppSettingsProvider } from './src/contexts/AppSettingsContext';
-import { NotificacaoProvider } from './src/contexts/NotificacaoProvider';
+import { AppSettingsProvider } from './src/contexts/AppSettingsContext'; 
+import * as Notifications from 'expo-notifications';
 
 
 import {
@@ -41,6 +41,17 @@ import Loja            from './src/screens/Loja';
 
 const Stack = createStackNavigator();
 
+// ✅ ADICIONAR: Setup de notificações
+Notifications.setNotificationHandler({
+  handleNotification: async () => {
+    return {
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    } as any;
+  },
+});
+
 export default function App() {
   const navigationRef = useRef(null);
   const [initialRoute, setInitialRoute] = useState<string | null>(null);
@@ -60,6 +71,39 @@ export default function App() {
     console.log('✅ navigationRef setado global');
   }
 }, [navigationRef]);
+
+  useEffect(() => {
+    const pedirPermissaoNotif = async () => {
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== 'granted') {
+          console.log('⚠️ Permissão de notificações foi negada');
+        }
+      } catch (e) {
+        console.log('Erro ao pedir permissão notif:', e);
+      }
+    };
+
+    pedirPermissaoNotif();
+  }, []);
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data;
+      
+      console.log('👆 User tocou notificação:', data);
+
+      // Se for mensagem de chat, abrir a tela de chat
+      if (data?.tipo === 'mensagem' && navigationRef.current) {
+        (navigationRef.current as any).navigate('Chat', {
+          outroUid: data.outroUid,
+          outroNome: data.outroNome,
+        });
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     const verificarSessao = async () => {
@@ -126,7 +170,6 @@ export default function App() {
 
   return (
     <AppSettingsProvider>
-      <NotificacaoProvider>
       <NavigationContainer ref={navigationRef}>
         <Stack.Navigator
           initialRouteName={initialRoute}
@@ -156,7 +199,6 @@ export default function App() {
           <Stack.Screen name="Resumos" component={FeedResumos} options={{ headerShown: false }} />
         </Stack.Navigator>
       </NavigationContainer>
-      </NotificacaoProvider>
     </AppSettingsProvider>
   );
 }

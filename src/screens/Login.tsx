@@ -60,7 +60,6 @@ export default function Login({ navigation }: any) {
 
       // 4. Guardar UID e navegar
       await AsyncStorage.setItem('uid', uid);
-      (globalThis as any).definirUidNotificacao?.(uid);
       navigation.reset({
         index: 0,
         routes: [{ name: 'Index', params: { uid } }],
