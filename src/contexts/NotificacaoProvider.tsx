@@ -10,8 +10,10 @@ import {
   collection, query, where, onSnapshot, orderBy, limit,
   getDoc, doc as firestoreDoc, setDoc, serverTimestamp,
 } from 'firebase/firestore';
+import Constants from 'expo-constants';
 import { db } from '../config/firebaseConfig';
 import { useAppSettings } from './AppSettingsContext';
+import { registrarDispositivo } from '../config/notificationHub';
 
 // ════ SETUP EXPO NOTIFICATIONS ════
 Notifications.setNotificationHandler({
@@ -192,6 +194,30 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
       } catch (e) { console.log('Erro série:', e); }
     })();
   }, []);
+
+  // ════ PONTE GLOBAL — cobre login "a quente" (app já aberto) ════
+  useEffect(() => {
+    (globalThis as any).definirUidNotificacao = (uid: string | null) => setUidAtual(uid);
+    return () => { delete (globalThis as any).definirUidNotificacao; };
+  }, []);
+
+  // ════ REGISTRA PUSH TOKEN NO NOTIFICATIONHUB ════
+  useEffect(() => {
+    if (!uidAtual) return;
+    (async () => {
+      try {
+        const { status: atual } = await Notifications.getPermissionsAsync();
+        if (atual !== 'granted') return;
+
+        const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+        const { data: expoPushToken } = await Notifications.getExpoPushTokenAsync({ projectId });
+
+        const deviceType = Platform.OS === 'ios' ? 'iOS' : Platform.OS === 'android' ? 'Android' : 'Web';
+        await registrarDispositivo(uidAtual, expoPushToken, deviceType);
+        console.log('✅ Push token registrado no NotificationHub');
+      } catch (e) { console.log('❌ Erro ao registrar push token:', e); }
+    })();
+  }, [uidAtual]);
 
   // ════  ONLINE STATUS GLOBAL ════
   // Marca online ao logar; atualiza conforme AppState; marca offline ao sair
