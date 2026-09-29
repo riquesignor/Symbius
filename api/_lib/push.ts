@@ -3,6 +3,18 @@ import { messagingAdmin, dbAdmin, authAdmin } from './firebaseAdmin';
 
 export const CANAL_ANDROID = 'symbius';
 
+// Só o app na web (npm run web) precisa disso: o navegador bloqueia chamadas
+// entre origens sem esses cabeçalhos. A autenticação é por Bearer token (sem
+// cookies), então liberar a origem não abre nada além do que o token já protege.
+// Retorna true quando era só a verificação prévia (OPTIONS) e já foi respondida.
+export const liberarCors = (req: any, res: any): boolean => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  if (req.method === 'OPTIONS') { res.status(204).end(); return true; }
+  return false;
+};
+
 export const uidDoToken = async (authorization: string | undefined): Promise<string | null> => {
   const idToken = authorization?.startsWith('Bearer ') ? authorization.slice(7) : null;
   if (!idToken) return null;

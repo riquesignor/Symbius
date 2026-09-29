@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { dbAdmin } from './_lib/firebaseAdmin';
-import { uidDoToken, permitePush, enviarParaTokens, Destino } from './_lib/push';
+import { liberarCors, uidDoToken, permitePush, enviarParaTokens, Destino } from './_lib/push';
 
 const extrairSerie = (turma: string): string | null => {
   const m = (turma || '').match(/^(\d+)/);
@@ -10,6 +10,7 @@ const extrairSerie = (turma: string): string | null => {
 // POST /api/enviar-push-serie — só administradores.
 // Body: { series: ['1º','2º'], titulo, corpo, dados: { tipo: 'evento_admin', tipoEvento, ... } }
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (liberarCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ erro: 'Método não permitido' });
 
   const uid = await uidDoToken(req.headers.authorization);

@@ -1,11 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { dbAdmin } from './_lib/firebaseAdmin';
-import { uidDoToken, permitePush, enviarParaTokens } from './_lib/push';
+import { liberarCors, uidDoToken, permitePush, enviarParaTokens } from './_lib/push';
 
 // POST /api/enviar-push
 // Headers: Authorization: Bearer <firebase-id-token-do-remetente>
 // Body: { destinatarioUid, titulo, corpo, dados: { tipo, ... } }
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (liberarCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ erro: 'Método não permitido' });
 
   const remetenteUid = await uidDoToken(req.headers.authorization);
