@@ -48,12 +48,6 @@
           "photosPermission": "O Symbius precisa acessar suas fotos para você enviar imagens no chat e trocar sua foto de perfil.",
           "cameraPermission": "O Symbius precisa acessar a câmera para você tirar fotos e enviar no chat ou no perfil."
         }
-      ],
-      [
-        "expo-notifications",
-        {
-          "color": "#1F3D2B"
-        }
       ]
     ]
   }
