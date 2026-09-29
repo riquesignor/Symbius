@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../config/firebaseConfig';
 import { CORES as CORES_LIGHT, CORES_DARK, Tema } from '../constants/theme';
+import { reiniciarApp } from '../utils/reiniciarApp';
 
 
 type Cores = Tema;
@@ -20,12 +21,14 @@ interface AppSettingsContextType {
   notifAvisos: boolean;
   notifEventos: boolean;
   notifMatch: boolean;
+  notifMensagens: boolean;
   somNotif: string;
   vibracao: boolean;
   setNotifGeral: (v: boolean) => void;
   setNotifAvisos: (v: boolean) => void;
   setNotifEventos: (v: boolean) => void;
   setNotifMatch: (v: boolean) => void;
+  setNotifMensagens: (v: boolean) => void;
   setSomNotif: (v: string) => void;
   setVibracao: (v: boolean) => void;
 
@@ -57,6 +60,7 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [notifAvisos, setNotifAvisosState] = useState(true);
   const [notifEventos, setNotifEventosState] = useState(true);
   const [notifMatch, setNotifMatchState] = useState(true);
+  const [notifMensagens, setNotifMensagensState] = useState(true);
   const [somNotif, setSomNotifState] = useState('Normal');
   const [vibracao, setVibracaoState] = useState(true);
   const [visibilidade, setVisibilidadeState] = useState('Público');
@@ -96,7 +100,7 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       const configs = await AsyncStorage.multiGet([
         'cfg_modoEscuro', 'cfg_tamanhoFonte', 'cfg_notifGeral',
-        'cfg_notifAvisos', 'cfg_notifEventos', 'cfg_notifMatch',
+        'cfg_notifAvisos', 'cfg_notifEventos', 'cfg_notifMatch', 'cfg_notifMensagens',
         'cfg_somNotif', 'cfg_vibracao', 'cfg_serieFiltro',
       ]);
       const map: Record<string, string | null> = {};
@@ -108,6 +112,7 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (map.cfg_notifAvisos   !== null) setNotifAvisosState(map.cfg_notifAvisos !== '0');
       if (map.cfg_notifEventos  !== null) setNotifEventosState(map.cfg_notifEventos !== '0');
       if (map.cfg_notifMatch    !== null) setNotifMatchState(map.cfg_notifMatch !== '0');
+      if (map.cfg_notifMensagens !== null) setNotifMensagensState(map.cfg_notifMensagens !== '0');
       if (map.cfg_somNotif      !== null) setSomNotifState(map.cfg_somNotif || 'Normal');
       if (map.cfg_vibracao      !== null) setVibracaoState(map.cfg_vibracao !== '0');
       if (map.cfg_serieFiltro   !== null) setSerieFiltroState(map.cfg_serieFiltro || 'Não definir');
@@ -116,6 +121,13 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const uid = await AsyncStorage.getItem('uid');
       if (uid) {
         await recarregarDoFirebase(uid);
+        sincronizarPrefsNotif(uid, {
+          geral:     map.cfg_notifGeral     !== '0',
+          avisos:    map.cfg_notifAvisos    !== '0',
+          eventos:   map.cfg_notifEventos   !== '0',
+          match:     map.cfg_notifMatch     !== '0',
+          mensagens: map.cfg_notifMensagens !== '0',
+        });
         // Marca online assim que o Firebase confirmar que está acessível
         // (aqui Auth já está pronto pois recarregarDoFirebase fez um getDoc com sucesso)
         setDoc(doc(db, 'usuarios', uid), { online: true }, { merge: true })
@@ -141,6 +153,16 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
+  // O backend (api/enviar-push) lê notif_prefs pra decidir se manda o push —
+  // sem isso, desligar uma categoria aqui só afetaria o banner in-app.
+  const sincronizarPrefsNotif = (uid: string, prefs: Record<string, boolean>) => {
+    setDoc(doc(db, 'usuarios', uid), { notif_prefs: prefs }, { merge: true }).catch(() => {});
+  };
+  const salvarPrefNotif = async (campo: string, valor: boolean) => {
+    const uid = auth.currentUser?.uid || (await AsyncStorage.getItem('uid'));
+    if (uid) setDoc(doc(db, 'usuarios', uid), { notif_prefs: { [campo]: valor } }, { merge: true }).catch(() => {});
+  };
+
   // ── Helpers de salvar ──
   const salvarLocal = async (chave: string, valor: any) => {
     try {
@@ -159,9 +181,12 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   // ── Setters públicos (atualizam state + persistem) ──
-  const setModoEscuro = (v: boolean) => {
+  // A paleta é aplicada antes das telas carregarem (index.ts), então trocar
+  // o tema exige recarregar o JS.
+  const setModoEscuro = async (v: boolean) => {
     setModoEscuroState(v);
-    salvarLocal('cfg_modoEscuro', v);
+    await salvarLocal('cfg_modoEscuro', v);
+    reiniciarApp();
   };
   const setTamanhoFonte = (v: string) => {
     setTamanhoFonteState(v);
@@ -170,18 +195,27 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const setNotifGeral = (v: boolean) => {
     setNotifGeralState(v);
     salvarLocal('cfg_notifGeral', v);
+    salvarPrefNotif('geral', v);
   };
   const setNotifAvisos = (v: boolean) => {
     setNotifAvisosState(v);
     salvarLocal('cfg_notifAvisos', v);
+    salvarPrefNotif('avisos', v);
   };
   const setNotifEventos = (v: boolean) => {
     setNotifEventosState(v);
     salvarLocal('cfg_notifEventos', v);
+    salvarPrefNotif('eventos', v);
   };
   const setNotifMatch = (v: boolean) => {
     setNotifMatchState(v);
     salvarLocal('cfg_notifMatch', v);
+    salvarPrefNotif('match', v);
+  };
+  const setNotifMensagens = (v: boolean) => {
+    setNotifMensagensState(v);
+    salvarLocal('cfg_notifMensagens', v);
+    salvarPrefNotif('mensagens', v);
   };
   const setSomNotif = (v: string) => {
     setSomNotifState(v);
@@ -207,8 +241,8 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const value: AppSettingsContextType = {
     modoEscuro, tamanhoFonte,
     setModoEscuro, setTamanhoFonte,
-    notifGeral, notifAvisos, notifEventos, notifMatch, somNotif, vibracao,
-    setNotifGeral, setNotifAvisos, setNotifEventos, setNotifMatch, setSomNotif, setVibracao,
+    notifGeral, notifAvisos, notifEventos, notifMatch, notifMensagens, somNotif, vibracao,
+    setNotifGeral, setNotifAvisos, setNotifEventos, setNotifMatch, setNotifMensagens, setSomNotif, setVibracao,
     visibilidade, statusOnline, serieFiltro,
     setVisibilidade, setStatusOnline, setSerieFiltro,
     cores, fonteScale, carregando,

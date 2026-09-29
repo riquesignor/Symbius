@@ -1,17 +1,18 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
-  SafeAreaView, StatusBar, TextInput, ActivityIndicator, Alert,
+  StatusBar, TextInput, ActivityIndicator,
   Image, FlatList, Dimensions, Modal,
 } from 'react-native';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { db } from '../config/firebaseConfig';
 import {
-  doc, getDoc, getDocs, collection, query, orderBy, onSnapshot,
+  doc, getDoc, getDocs, collection, query, where, orderBy, onSnapshot,
   updateDoc, increment, arrayUnion,
 } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { calcularNivel, calcularProgressoXp } from '../utils/gamification';
 import { awardDailyCheckIn, CheckInResult, LevelUpInfo } from '../services/gamificationService';
@@ -62,6 +63,16 @@ const postValido = (post: any) => {
   return d >= 0 && d <= DIAS_VALIDADE_POST;
 };
 
+const SUBS_AGENDA: { sub: string; rotulo: string; icon: any }[] = [
+  { sub: 'provas',   rotulo: 'Prova',   icon: 'document-text' },
+  { sub: 'feriados', rotulo: 'Feriado', icon: 'sunny' },
+  { sub: 'avisos',   rotulo: 'Aviso',   icon: 'megaphone' },
+  { sub: 'eventos',  rotulo: 'Evento',  icon: 'sparkles' },
+];
+
+const quandoTexto = (dias: number) =>
+  dias === 0 ? 'hoje' : dias === 1 ? 'amanhã' : dias > 0 ? `em ${dias} dias` : `há ${Math.abs(dias)} dias`;
+
 const ACOES = [
   { chave: 'match',   label: 'Encontrar match', icone: 'location-outline'    as const, cor: CORES_SYMBIUS.verdeMedio },
   { chave: 'duvida',  label: 'Tirar dúvida',    icone: 'help-buoy-outline'   as const, cor: CORES_SYMBIUS.laranja },
@@ -70,6 +81,7 @@ const ACOES = [
 ];
 
 export default function Index({ navigation, route }: any) {
+  const insets = useSafeAreaInsets();
   const [uid, setUid] = useState<string | null>(route?.params?.uid || null);
   const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -132,46 +144,55 @@ export default function Index({ navigation, route }: any) {
     }).catch(() => {});
   }, []);
 
-  // Lembretes vencidos + provas próximas (mesma lógica do Index original)
+  // Agenda no sino: eventos da série nos próximos 7 dias + lembretes pessoais
+  // próximos (até 3 dias) ou vencidos. Tocar em qualquer um abre o Calendário.
   useEffect(() => {
-    if (!uid) return;
+    if (!uid || !userData) return;
     (async () => {
       try {
         const hoje = new Date();
         hoje.setHours(0, 0, 0, 0);
-        const itens: any[] = [];
+        const diasAte = (dataStr: string) => {
+          const [a, m, d] = dataStr.split('-').map(Number);
+          return Math.round((new Date(a, m - 1, d).getTime() - hoje.getTime()) / 86400000);
+        };
+        const notifs: any[] = [];
+
+        const ehAdmin = userData?.tipo?.toLowerCase() === 'administrador';
+        const numSerie = (userData?.turma || '').match(/^(\d+)/)?.[1];
+        const serie = numSerie ? `${numSerie}º` : null;
+        await Promise.all(SUBS_AGENDA.map(async ({ sub, rotulo, icon }) => {
+          if (!ehAdmin && !serie) return;
+          try {
+            const ref = collection(db, 'eventos_admin', 'tipos', sub);
+            const snap = await getDocs(ehAdmin ? ref : query(ref, where('series', 'array-contains', serie)));
+            snap.forEach(d => {
+              const ev: any = d.data();
+              if (!ev.data) return;
+              const dias = diasAte(ev.data);
+              if (dias >= 0 && dias <= 7) notifs.push({ id: d.id, tipo: 'evento', rotulo, titulo: ev.titulo, data: ev.data, dias, icon });
+            });
+          } catch {}
+        }));
 
         const raLimpo = userData?.ra?.replace(/[\/\\]/g, '');
         const raValido = raLimpo && raLimpo !== 'N/A' && raLimpo.length > 0;
-        const userIdentifier = raValido ? raLimpo : uid;
         try {
-          const snapL = await getDocs(collection(db, 'lembretes', userIdentifier, 'lembretes'));
-          snapL.forEach(d => itens.push({ id: d.id, fonte: 'lembrete', tipo: 'lembrete', ...d.data() }));
-        } catch (e) {}
+          const snapL = await getDocs(collection(db, 'lembretes', raValido ? raLimpo : uid, 'lembretes'));
+          snapL.forEach(d => {
+            const l: any = d.data();
+            if (!l.data) return;
+            const dias = diasAte(l.data);
+            if (dias < 0) notifs.push({ id: d.id, tipo: 'lembrete_vencido', titulo: l.titulo, data: l.data, dias, icon: 'alert-circle' });
+            else if (dias <= 3) notifs.push({ id: d.id, tipo: 'lembrete_proximo', titulo: l.titulo, data: l.data, dias, icon: 'bookmark' });
+          });
+        } catch {}
 
-        try {
-          const snapE = await getDocs(collection(db, 'eventos_admin', 'tipos', 'provas'));
-          snapE.forEach((d: any) => itens.push({ id: d.id, fonte: 'admin', tipo: 'Prova', ...d.data() }));
-        } catch (e) {}
-
-        const notifs: any[] = [];
-        itens.forEach(item => {
-          if (item.tipo === 'lembrete' && item.data) {
-            const [a, m, dd] = item.data.split('-').map(Number);
-            const dt = new Date(a, m - 1, dd);
-            dt.setHours(0, 0, 0, 0);
-            if (dt < hoje) {
-              notifs.push({ id: item.id, tipo: 'lembrete_vencido', titulo: item.titulo, data: item.data, icon: 'alert-circle' });
-            }
-          }
-          if (item.tipo === 'Prova' && item.data) {
-            notifs.push({ id: item.id, tipo: 'prova_proxima', titulo: item.titulo, data: item.data, icon: 'document-text' });
-          }
-        });
+        notifs.sort((a, b) => a.data.localeCompare(b.data));
         setNotificacoesAgenda(notifs);
       } catch (e) { console.error('Erro ao carregar notificações de agenda:', e); }
     })();
-  }, [uid, userData?.ra]);
+  }, [uid, userData?.ra, userData?.turma, userData?.tipo]);
 
   const totalNotificacoesAtivas =
     notificacoesChat.length + notificacoesAgenda.filter(n => !notifDescartadas.has(n.id)).length;
@@ -343,16 +364,16 @@ export default function Index({ navigation, route }: any) {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, styles.centro]}>
+      <View style={[styles.container, styles.centro]}>
         <ActivityIndicator size="large" color={CORES_SYMBIUS.verdeEscuro} />
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+    <View style={styles.container}>
+      <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 12 }]} showsVerticalScrollIndicator={false}>
 
         {/* HEADER */}
         <View style={styles.topoMarca}>
@@ -699,17 +720,32 @@ export default function Index({ navigation, route }: any) {
                 {notificacoesAgenda.filter(n => !notifDescartadas.has(n.id)).length > 0 && (
                   <>
                     <Text style={[styles.notifGrupoLabel, { marginTop: notificacoesChat.length > 0 ? 12 : 0 }]}>AGENDA</Text>
-                    {notificacoesAgenda.filter(n => !notifDescartadas.has(n.id)).map(item => (
-                      <View key={item.id} style={styles.notifCard}>
-                        <View style={[styles.notifIconWrap, { backgroundColor: (item.tipo === 'lembrete_vencido' ? '#e74c3c' : CORES_SYMBIUS.laranja) + '18' }]}>
-                          <Ionicons name={item.icon} size={16} color={item.tipo === 'lembrete_vencido' ? '#e74c3c' : CORES_SYMBIUS.laranja} />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.notifCardTitulo} numberOfLines={1}>{item.titulo}</Text>
-                          <Text style={styles.notifCardMeta}>{item.tipo === 'lembrete_vencido' ? '⚠️ Vencido' : '📅 Próximo'}</Text>
-                        </View>
-                      </View>
-                    ))}
+                    {notificacoesAgenda.filter(n => !notifDescartadas.has(n.id)).map(item => {
+                      const vencido = item.tipo === 'lembrete_vencido';
+                      const cor = vencido ? '#e74c3c' : CORES_SYMBIUS.laranja;
+                      const meta = item.tipo === 'evento'
+                        ? `${item.rotulo} · ${quandoTexto(item.dias)}`
+                        : `Lembrete · ${vencido ? 'vencido ' : ''}${quandoTexto(item.dias)}`;
+                      return (
+                        <TouchableOpacity
+                          key={item.id}
+                          style={styles.notifCard}
+                          activeOpacity={0.8}
+                          onPress={() => { setModalNotif(false); irPara('Calendario'); }}
+                          accessibilityRole="button"
+                          accessibilityHint="Abre o calendário"
+                        >
+                          <View style={[styles.notifIconWrap, { backgroundColor: cor + '18' }]}>
+                            <Ionicons name={item.icon} size={16} color={cor} />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.notifCardTitulo} numberOfLines={1}>{item.titulo}</Text>
+                            <Text style={styles.notifCardMeta}>{meta}</Text>
+                          </View>
+                          <Ionicons name="chevron-forward" size={16} color={CORES_SYMBIUS.textoTerciario} />
+                        </TouchableOpacity>
+                      );
+                    })}
                   </>
                 )}
               </ScrollView>
@@ -762,7 +798,7 @@ export default function Index({ navigation, route }: any) {
 
       {/* MENU "MAIS" — dúvidas / contato / admin */}
       <Modal visible={miniMenuAberto} transparent animationType="fade" onRequestClose={() => setMiniMenuAberto(false)}>
-        <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMiniMenuAberto(false)}>
+        <TouchableOpacity style={[styles.menuOverlay, { paddingTop: insets.top + 44 }]} activeOpacity={1} onPress={() => setMiniMenuAberto(false)}>
           <View style={styles.menuPopup}>
             <TouchableOpacity
               style={styles.menuItem}
@@ -800,14 +836,14 @@ export default function Index({ navigation, route }: any) {
           </View>
         </TouchableOpacity>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
   centro: { justifyContent: 'center', alignItems: 'center' },
-  scroll: { paddingHorizontal: PAD_H, paddingTop: 8, paddingBottom: 24 },
+  scroll: { paddingHorizontal: PAD_H, paddingBottom: 24 },
 
   topoMarca: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   marca: { fontSize: 22, fontFamily: F.bold, color: CORES_SYMBIUS.verdeEscuro },

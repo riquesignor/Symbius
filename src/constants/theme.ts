@@ -35,28 +35,25 @@ export const CORES = {
 
 // ─── Paleta — modo escuro ─────────────────────────────────────────────
 export const CORES_DARK = {
-  // Primários
-  azulEscuro:  '#FFFFFF',   // texto principal vira branco
-  azulMedio:   '#E0E0E0',
-  rosa:        '#FF5C97',   // acento mais vibrante no escuro
-  amarelo:     '#FFC82C',
+  // Mesmo verde-carvão da paleta Symbius escura (constants/coresSymbius.ts)
+  azulEscuro:  '#F4F1E8',
+  azulMedio:   '#A9BFAE',
+  rosa:        '#3F8A5C',
+  amarelo:     '#E8A33D',
 
-  // Superfícies
-  fundo:       '#0F1419',
-  branco:      '#1A1F26',   // cards ficam escuros
-  cinzaClaro:  '#2A2F36',   // bordas escuras
-  cinzaInput:  '#1E2530',
+  fundo:       '#0F1F16',
+  branco:      '#16281C',
+  cinzaClaro:  '#26402F',
+  cinzaInput:  '#1F3527',
 
-  // Texto
-  textoSec:    '#7A8595',
-  preto:       '#FFFFFF',
+  textoSec:    '#A9BFAE',
+  preto:       '#F4F1E8',
 
-  // Semânticas (mantidas iguais para não perder legibilidade)
-  verde:       '#27ae60',
+  verde:       '#5CBF60',
   vermelho:    '#e74c3c',
   roxo:        '#a569d8',
-  laranja:     '#e67e22',
-  azulCeu:     '#3498db',
+  laranja:     '#E8A33D',
+  azulCeu:     '#6AA8D6',
 } as const;
 
 // ─── Tipo exportado ───────────────────────────────────────────────────

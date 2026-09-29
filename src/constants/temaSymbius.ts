@@ -1,5 +1,5 @@
 import { Tema } from './theme';
-import { CORES_SYMBIUS } from '../screens/Boasvindas';
+import { CORES_SYMBIUS } from './coresSymbius';
 import { Animal } from '../utils/gamification';
 
 export { CORES_SYMBIUS };
@@ -10,8 +10,6 @@ export { CORES_SYMBIUS };
 // a tela continua lendo C.fundo, C.azulEscuro, CORES.rosa etc. normalmente,
 // só que agora esses tokens resolvem pra paleta clara do Symbius.
 //
-// ⚠️ Modo claro apenas. O modo escuro do Symbius ainda não tem paleta definida
-// (o usuário vai enviar depois) — não inventar valores aqui.
 export const TEMA_SYMBIUS: Tema = {
   azulEscuro:  CORES_SYMBIUS.texto,        // texto principal
   azulMedio:   CORES_SYMBIUS.verdeEscuro,  // variação / secundário do primário

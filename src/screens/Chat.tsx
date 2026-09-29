@@ -17,6 +17,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { useNotificacao } from '../contexts/NotificacaoProvider';
 import { dispararPush } from '../services/pushNotificationsService';
+import {
+  escolherImagemBase64, escolherVideoBase64, escolherDocumentoBase64, abrirArquivoBase64,
+} from '../utils/midiaNativa';
 
 import { F, CORES } from '../constants/theme';
 import { CORES_SYMBIUS } from '../constants/temaSymbius';
@@ -525,6 +528,7 @@ export default function Chat({ route, navigation }: any) {
   const [perfilVisible,    setPerfilVisible]     = useState(false);
   const [encaminharMsg,    setEncaminharMsg]     = useState<any | null>(null);
   const [favoritos,        setFavoritos]         = useState<any[]>([]);
+  const [silenciado,       setSilenciado]        = useState(false);
 
   // ── Finalizar Match / Gamificação ────────────────────────
   const [souAluno,         setSouAluno]          = useState<boolean | null>(null); // true=aluno (avalia), false=professor (não avalia), null=carregando
@@ -634,9 +638,66 @@ export default function Chat({ route, navigation }: any) {
         setMeuNome(snap.data().nome_completo || "Usuário");
         setMinhaFoto(snap.data().foto || null);
         setFavoritos(snap.data().favoritos || []);
+        setSilenciado((snap.data().silenciados || []).includes(outroUid));
       }
     });
   }, [uidAtual]);
+
+  // Silenciar: para de receber push e banner das mensagens dessa pessoa
+  // (o backend e o NotificacaoProvider leem usuarios/{uid}.silenciados).
+  const alternarSilenciar = async () => {
+    if (!uidAtual || !outroUid) return;
+    const novo = !silenciado;
+    setSilenciado(novo);
+    try {
+      await updateDoc(firestoreDoc(db, "usuarios", uidAtual), {
+        silenciados: novo ? arrayUnion(outroUid) : arrayRemove(outroUid),
+      });
+    } catch {
+      setSilenciado(!novo);
+      Alert.alert("Erro", "Não foi possível alterar. Tente novamente.");
+    }
+  };
+
+  // ── Anexos no celular (a versão web usa <input type="file"> lá em cima) ──
+  const anexarImagem = async (origem: 'galeria' | 'camera') => {
+    setUploading(true);
+    try {
+      const b64 = await escolherImagemBase64({ origem, ladoMax: 1024, qualidade: 0.6 });
+      if (!b64) return;
+      setPreviewImage(`data:image/jpeg;base64,${b64}`);
+      setPreviewBase64(b64);
+      setPreviewTipo('imagem');
+      setPreviewVisible(true);
+    } catch { Alert.alert("Erro", "Não foi possível abrir a imagem."); }
+    finally { setUploading(false); }
+  };
+
+  const anexarVideo = async () => {
+    setUploading(true);
+    try {
+      const r = await escolherVideoBase64();
+      if (!r) return;
+      setPreviewVideo(null);
+      setPreviewVideoB64(r.base64);
+      setPreviewDoc({ nome: 'Vídeo', tamanho: r.tamanho });
+      setPreviewTipo('video');
+      setPreviewVisible(true);
+    } catch { Alert.alert("Erro", "Não foi possível abrir o vídeo."); }
+    finally { setUploading(false); }
+  };
+
+  const anexarDocumento = async () => {
+    setUploading(true);
+    try {
+      const r = await escolherDocumentoBase64();
+      if (!r) return;
+      setPreviewDoc(r);
+      setPreviewTipo('documento');
+      setPreviewVisible(true);
+    } catch { Alert.alert("Erro", "Não foi possível abrir o documento."); }
+    finally { setUploading(false); }
+  };
 
   useEffect(() => {
     if (!uidAtual) return;
@@ -914,7 +975,16 @@ export default function Chat({ route, navigation }: any) {
 
   // ── Baixar imagem ──────────────────────────────────────
   const baixarMidia = (msg: any) => {
-    if (Platform.OS !== "web") { Alert.alert("Info", "Download disponível apenas no web."); return; }
+    if (Platform.OS !== "web") {
+      if (msg.tipo === 'imagem') abrirArquivoBase64(msg.mensagem, `symbius_imagem_${Date.now()}.jpg`, 'image/jpeg');
+      else if (msg.tipo === 'video') abrirArquivoBase64(msg.mensagem, `symbius_video_${Date.now()}.mp4`, 'video/mp4');
+      else {
+        const ext = msg.tipoArquivo || 'pdf';
+        const mime = ext === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        abrirArquivoBase64(msg.mensagem, msg.nomeArquivo || `symbius_doc_${Date.now()}.${ext}`, mime);
+      }
+      return;
+    }
     let dataUrl: string; let filename: string;
     if (msg.tipo === 'imagem') {
       const b64 = msg.mensagem;
@@ -961,7 +1031,7 @@ export default function Chat({ route, navigation }: any) {
     <KeyboardAvoidingView style={[styles.container, { backgroundColor: CC.fundo }]} behavior={Platform.OS==="ios"?"padding":"height"}>
 
       {/* ── HEADER ── */}
-      <View style={[styles.header, { backgroundColor: CC.headerBg, borderBottomColor: CC.headerBorder }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 10, backgroundColor: CC.headerBg, borderBottomColor: CC.headerBorder }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.backBtn, { backgroundColor: CC.backBtn }]}>
           <Ionicons name="arrow-back" size={22} color={CC.backIcon} />
         </TouchableOpacity>
@@ -979,6 +1049,19 @@ export default function Chat({ route, navigation }: any) {
           </View>
           <Ionicons name="chevron-forward" size={14} color={CC.textoSec} style={{ marginLeft: 4 }} />
         </TouchableOpacity>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <TouchableOpacity
+          style={[styles.finalizarBtn, { backgroundColor: silenciado ? CORES_SYMBIUS.laranjaTexto + '25' : CC.backBtn }]}
+          onPress={alternarSilenciar}
+          activeOpacity={0.7}
+          accessibilityLabel={silenciado ? "Reativar notificações desta conversa" : "Silenciar esta conversa"}
+        >
+          <Ionicons
+            name={silenciado ? "notifications-off" : "notifications-outline"}
+            size={19}
+            color={silenciado ? CORES_SYMBIUS.laranjaTexto : CC.backIcon}
+          />
+        </TouchableOpacity>
         {souAluno === true ? (
           <TouchableOpacity
             style={[styles.finalizarBtn, { backgroundColor: matchFinalizado ? CC.backBtn : CORES_SYMBIUS.verdeEscuro + '25' }]}
@@ -992,10 +1075,15 @@ export default function Chat({ route, navigation }: any) {
               color={matchFinalizado ? '#94A3B8' : CORES_SYMBIUS.verdeEscuro}
             />
           </TouchableOpacity>
-        ) : (
-          <View style={{ width: 38 }} />
-        )}
+        ) : null}
+        </View>
       </View>
+      {silenciado && (
+        <TouchableOpacity style={[styles.avisoSilenciado, { backgroundColor: CORES_SYMBIUS.fundoLaranjaClaro }]} onPress={alternarSilenciar}>
+          <Ionicons name="notifications-off" size={13} color={CORES_SYMBIUS.laranjaTexto} />
+          <Text style={[styles.avisoSilenciadoTxt, { color: CORES_SYMBIUS.laranjaTexto }]}>Conversa silenciada · toque para reativar</Text>
+        </TouchableOpacity>
+      )}
 
       {/* ── MENSAGENS ── */}
       <ScrollView
@@ -1122,21 +1210,29 @@ export default function Chat({ route, navigation }: any) {
       {subpainelVisible && (
         <View style={[styles.subpainel, { backgroundColor: CC.inputBg, borderTopColor: CC.inputBorder }]}>
           {/* Foto */}
-          <TouchableOpacity style={styles.subItem} onPress={() => { setSubpainelVisible(false); fileInputRef.current?.click(); }}>
+          <TouchableOpacity style={styles.subItem} onPress={() => { setSubpainelVisible(false); Platform.OS === "web" ? fileInputRef.current?.click() : anexarImagem('galeria'); }}>
             <View style={[styles.subIconWrap, { backgroundColor: CORES_SYMBIUS.verdeEscuro }]}>
               <Ionicons name="image" size={26} color="#fff" />
             </View>
-            <Text style={[styles.subLabel, { color: CC.menuTitle }]}>Foto</Text>
+            <Text style={[styles.subLabel, { color: CC.menuTitle }]}>Galeria</Text>
           </TouchableOpacity>
+          {Platform.OS !== "web" && (
+            <TouchableOpacity style={styles.subItem} onPress={() => { setSubpainelVisible(false); anexarImagem('camera'); }}>
+              <View style={[styles.subIconWrap, { backgroundColor: CORES_SYMBIUS.laranjaTexto }]}>
+                <Ionicons name="camera" size={26} color="#fff" />
+              </View>
+              <Text style={[styles.subLabel, { color: CC.menuTitle }]}>Câmera</Text>
+            </TouchableOpacity>
+          )}
           {/* Vídeo */}
-          <TouchableOpacity style={styles.subItem} onPress={() => { setSubpainelVisible(false); videoInputRef.current?.click(); }}>
+          <TouchableOpacity style={styles.subItem} onPress={() => { setSubpainelVisible(false); Platform.OS === "web" ? videoInputRef.current?.click() : anexarVideo(); }}>
             <View style={[styles.subIconWrap, { backgroundColor: "#7C3AED" }]}>
               <Ionicons name="videocam" size={26} color="#fff" />
             </View>
             <Text style={[styles.subLabel, { color: CC.menuTitle }]}>Vídeo</Text>
           </TouchableOpacity>
           {/* Documento */}
-          <TouchableOpacity style={styles.subItem} onPress={() => { setSubpainelVisible(false); docInputRef.current?.click(); }}>
+          <TouchableOpacity style={styles.subItem} onPress={() => { setSubpainelVisible(false); Platform.OS === "web" ? docInputRef.current?.click() : anexarDocumento(); }}>
             <View style={[styles.subIconWrap, { backgroundColor: CORES_SYMBIUS.texto }]}>
               <Ionicons name="document-text" size={26} color="#fff" />
             </View>
@@ -1146,7 +1242,7 @@ export default function Chat({ route, navigation }: any) {
       )}
 
       {/* ── INPUT ── */}
-      <View style={[styles.inputArea, { backgroundColor: CC.inputBg, borderTopColor: CC.inputBorder }]}>
+      <View style={[styles.inputArea, { backgroundColor: CC.inputBg, borderTopColor: CC.inputBorder }, Platform.OS === "android" && { paddingBottom: 14 + insets.bottom }]}>
         <TextInput value={inputText} onChangeText={handleTyping} style={[styles.input, { backgroundColor: CC.scrollBg, color: CC.inputText, borderColor: CC.inputBorder }]} placeholder="Digite aqui..." placeholderTextColor={CC.inputPlaceholder} multiline />
         {/* Grampo lado direito antes do send */}
         <TouchableOpacity
@@ -1223,6 +1319,14 @@ export default function Chat({ route, navigation }: any) {
             )}
 
             {/* Vídeo */}
+            {previewTipo === 'video' && Platform.OS !== "web" && (
+              <View style={[styles.docPreviewBox, { backgroundColor: CC.scrollBg, borderColor: CC.inputBorder }]}>
+                <Ionicons name="videocam" size={48} color={CORES_SYMBIUS.verdeEscuro} />
+                <Text style={[styles.docTamanho, { color: CC.textoSec }]}>
+                  {previewDoc?.tamanho ? `${(previewDoc.tamanho / 1024).toFixed(0)} KB` : 'Vídeo'}
+                </Text>
+              </View>
+            )}
             {previewTipo === 'video' && previewVideo && Platform.OS === "web" && (
               // @ts-ignore
               <video src={previewVideo} controls style={{ width:280,height:200,borderRadius:12,marginBottom:20,backgroundColor:"#000" }} />
@@ -1322,7 +1426,12 @@ export default function Chat({ route, navigation }: any) {
             const src = b64.startsWith("data:") ? b64 : `data:video/mp4;base64,${b64}`;
             // @ts-ignore
             return <video src={src} controls autoPlay style={{ maxWidth:"95%", maxHeight:"72%", borderRadius:8, backgroundColor:"#000" }} />;
-          })() : null}
+          })() : (
+            <TouchableOpacity style={{ alignItems: "center", gap: 10 }} onPress={() => baixarMidia(fullVideoMsg)}>
+              <Ionicons name="play-circle" size={84} color="#fff" />
+              <Text style={{ color: "#fff", fontFamily: F.semibold }}>Abrir no player do celular</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -1577,6 +1686,8 @@ const styles = StyleSheet.create({
   docTamanho:   { fontSize:11,fontFamily: F.semibold },
 
   // Finalizar match
+  avisoSilenciado:    { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 6 },
+  avisoSilenciadoTxt: { fontSize: 11.5, fontFamily: F.semibold },
   finalizarBtn: { width: 38, height: 38, borderRadius: 19, justifyContent: "center", alignItems: "center" },
 });
 

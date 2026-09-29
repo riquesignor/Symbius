@@ -1,63 +1,39 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { messagingAdmin, dbAdmin, authAdmin } from './_lib/firebaseAdmin';
+import { dbAdmin } from './_lib/firebaseAdmin';
+import { uidDoToken, permitePush, enviarParaTokens } from './_lib/push';
 
-// ══════════════════════════════════════════════════════════════════════
-// Envia push (FCM) pra um usuário específico. Chamado pelo app logo após
-// salvar no Firestore (nova mensagem de chat, solicitação de match, etc).
-// Entrega mesmo com o app fechado.
-//
 // POST /api/enviar-push
 // Headers: Authorization: Bearer <firebase-id-token-do-remetente>
-// Body: { destinatarioUid, titulo, corpo, dados? }
-// ══════════════════════════════════════════════════════════════════════
-
+// Body: { destinatarioUid, titulo, corpo, dados: { tipo, ... } }
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ erro: 'Método não permitido' });
-  }
+  if (req.method !== 'POST') return res.status(405).json({ erro: 'Método não permitido' });
 
-  const authHeader = req.headers.authorization || '';
-  const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!idToken) {
-    return res.status(401).json({ erro: 'Token de autenticação ausente' });
-  }
-
-  try {
-    await authAdmin.verifyIdToken(idToken);
-  } catch {
-    return res.status(401).json({ erro: 'Token de autenticação inválido' });
-  }
+  const remetenteUid = await uidDoToken(req.headers.authorization);
+  if (!remetenteUid) return res.status(401).json({ erro: 'Não autenticado' });
 
   const { destinatarioUid, titulo, corpo, dados } = req.body || {};
-  if (!destinatarioUid || !titulo || !corpo) {
-    return res.status(400).json({ erro: 'destinatarioUid, titulo e corpo são obrigatórios' });
+  if (!destinatarioUid || !titulo || !corpo || !dados?.tipo) {
+    return res.status(400).json({ erro: 'destinatarioUid, titulo, corpo e dados.tipo são obrigatórios' });
   }
+  if (destinatarioUid === remetenteUid) return res.status(200).json({ enviado: false, motivo: 'Destinatário é o próprio remetente' });
 
   try {
     const snap = await dbAdmin.collection('usuarios').doc(destinatarioUid).get();
-    const fcmToken = snap.data()?.fcmToken;
+    const usuario = snap.data();
+    if (!usuario?.fcmToken) return res.status(200).json({ enviado: false, motivo: 'Destinatário sem token FCM' });
+    if (!permitePush(usuario, dados.tipo, remetenteUid)) return res.status(200).json({ enviado: false, motivo: 'Bloqueado pelas preferências do destinatário' });
 
-    if (!fcmToken) {
-      return res.status(200).json({ enviado: false, motivo: 'Destinatário sem token FCM registrado' });
-    }
-
-    await messagingAdmin.send({
-      token: fcmToken,
-      notification: { title: titulo, body: corpo },
-      data: dados ? stringificarValores(dados) : undefined,
-      android: { priority: 'high' },
-    });
-
-    return res.status(200).json({ enviado: true });
+    // O remetente vem do token verificado, não do corpo — evita alguém se
+    // passar por outra pessoa no toque da notificação.
+    const { enviados, erros } = await enviarParaTokens(
+      [{ uid: destinatarioUid, token: usuario.fcmToken }],
+      String(titulo).slice(0, 120),
+      String(corpo).slice(0, 240),
+      { ...dados, remetenteUid, ...(dados.tipo === 'mensagem' ? { outroUid: remetenteUid } : {}) },
+    );
+    return res.status(200).json(enviados > 0 ? { enviado: true } : { enviado: false, motivo: erros[0] || 'falha no FCM' });
   } catch (e: any) {
     console.error('Erro ao enviar push:', e);
     return res.status(500).json({ erro: 'Falha ao enviar notificação' });
   }
-}
-
-// FCM `data` exige que todos os valores sejam string
-function stringificarValores(obj: Record<string, any>): Record<string, string> {
-  const resultado: Record<string, string> = {};
-  for (const chave in obj) resultado[chave] = String(obj[chave]);
-  return resultado;
 }

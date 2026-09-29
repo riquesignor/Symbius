@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity,
-  Image, SafeAreaView, StatusBar, Dimensions, Platform,
+  Image, StatusBar, Dimensions, Platform,
   ActivityIndicator, FlatList, Vibration, Animated, PanResponder,
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
@@ -45,6 +45,22 @@ const formatarHora = (data: any): string => {
 };
 
 type Aba  = 'descobrir' | 'solicitacoes' | 'matches';
+
+// Estado da relação com cada pessoa, montado a partir de TODAS as
+// solicitações (enviadas e recebidas) — é o que decide quem some do Descobrir.
+interface Relacao {
+  aceito: boolean;
+  pendenteEnviada: string | null;  // id da solicitação que eu mandei
+  pendenteRecebida: string | null; // id da solicitação que recebi
+  recusadoEm: number;              // ms da recusa mais recente (0 = nunca)
+}
+
+const CHAVE_PULADOS = 'match_pulados';
+const QUINZE_DIAS_MS = 15 * 24 * 60 * 60 * 1000;
+
+// criadoEm é serverTimestamp: fica null até o servidor confirmar a escrita.
+// Antes isso virava 0 e a solicitação era ignorada no filtro.
+const tsMs = (t: any) => (t?.toMillis ? t.toMillis() : t?.seconds ? t.seconds * 1000 : Date.now());
 
 // ── Helper: formata "último acesso" estilo Instagram ──
 const formatarUltimoAcesso = (ultimoAcesso: any): string => {
@@ -125,76 +141,37 @@ export default function Match({ navigation, route }: any) {
   const C = CORES; // CORES já é TEMA_SYMBIUS (import aliasado acima)
   const fs = (size: number) => size * fonteScale;
 
-  const [abaAtiva,       setAbaAtiva]       = useState<Aba>('descobrir');
-  const abaAtivaRef = useRef<Aba>('descobrir');
+  const abaInicial: Aba = ['descobrir', 'solicitacoes', 'matches'].includes(route?.params?.aba) ? route.params.aba : 'descobrir';
+  const [abaAtiva,       setAbaAtiva]       = useState<Aba>(abaInicial);
+  const abaAtivaRef = useRef<Aba>(abaInicial);
   useEffect(() => { abaAtivaRef.current = abaAtiva; }, [abaAtiva]);
+  // Notificação/banner pode reabrir a tela já montada pedindo outra aba
+  useEffect(() => { if (route?.params?.aba) setAbaAtiva(route.params.aba); }, [route?.params?.aba]);
   const [materiasFiltro, setMateriasFiltro] = useState<string[]>([]);
-  const [interagidosCarregado, setInteragidosCarregado] = useState(false);
-  const uidsInteragidosRef = useRef<Map<string, number>>(new Map());
-  const [candidatos,     setCandidatos]     = useState<any[]>([]);
-  const [solicitacoes,   setSolicitacoes]   = useState<any[]>([]);
+  const [relacoesCarregadas, setRelacoesCarregadas] = useState(false);
+  const [relacoes,       setRelacoes]       = useState<Map<string, Relacao>>(new Map());
+  const [pulados,        setPulados]        = useState<Record<string, number>>({});
+  const [candidatosBrutos, setCandidatosBrutos] = useState<any[]>([]);
+  const [solicitacoesBrutas, setSolicitacoesBrutas] = useState<any[]>([]);
   const [matches,        setMatches]        = useState<any[]>([]);
   const [meusDados,      setMeusDados]      = useState<any>(null);
   const [carregando,     setCarregando]     = useState(false);
+  const [enviandoPara,   setEnviandoPara]   = useState<string | null>(null);
   const [popupInfo,      setPopupInfo]      = useState(false);
   const [popupMateria,   setPopupMateria]   = useState(false);
-  const [cardAtual,      setCardAtual]      = useState(0);
 
   const meuUid = route?.params?.uid;
 
-  // ── Swipe animation ──
-  const swipeX           = useRef(new Animated.Value(0)).current;
-  const swipeY           = useRef(new Animated.Value(0)).current;
-  const SWIPE_LIMIAR     = width * 0.30;
-  // Refs para callbacks frescos dentro do PanResponder
-  const candidatosRef    = useRef<any[]>([]);
-  const cardAtualRef     = useRef(0);
-  const enviarSolRef     = useRef<(uid: string) => void>(() => {});
-  const recusarRef       = useRef<() => void>(() => {});
-
-  // Sincroniza refs com state corrente
-  useEffect(() => { candidatosRef.current = candidatos; }, [candidatos]);
-  useEffect(() => { cardAtualRef.current  = cardAtual;  }, [cardAtual]);
-  // enviarSolRef e recusarRef são atualizados após as funções serem definidas (ver abaixo)
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder:  (_, g) => Math.abs(g.dx) > 5,
-      onPanResponderMove:           (_, g) => {
-        swipeX.setValue(g.dx);
-        swipeY.setValue(g.dy * 0.15);
-      },
-      onPanResponderRelease: (_, g) => {
-        const LIMIAR = width * 0.30;
-        if (g.dx > LIMIAR) {
-          Vibration.vibrate(40);
-          const destX = width * 1.5;
-          Animated.parallel([
-            Animated.timing(swipeX, { toValue: destX, duration: 220, useNativeDriver: true }),
-            Animated.timing(swipeY, { toValue: 30,    duration: 220, useNativeDriver: true }),
-          ]).start(() => {
-            swipeX.setValue(0); swipeY.setValue(0);
-            const c = candidatosRef.current[cardAtualRef.current];
-            if (c) enviarSolRef.current(c.id);
-          });
-        } else if (g.dx < -LIMIAR) {
-          Animated.parallel([
-            Animated.timing(swipeX, { toValue: -width * 1.5, duration: 220, useNativeDriver: true }),
-            Animated.timing(swipeY, { toValue: 30,           duration: 220, useNativeDriver: true }),
-          ]).start(() => {
-            swipeX.setValue(0); swipeY.setValue(0);
-            recusarRef.current();
-          });
-        } else {
-          Animated.parallel([
-            Animated.spring(swipeX, { toValue: 0, useNativeDriver: true }),
-            Animated.spring(swipeY, { toValue: 0, useNativeDriver: true }),
-          ]).start();
-        }
-      },
-    })
-  ).current;
+  // Pessoas puladas no Descobrir ficam escondidas por 15 dias (só neste aparelho)
+  useEffect(() => {
+    AsyncStorage.getItem(CHAVE_PULADOS).then(raw => {
+      if (!raw) return;
+      const agora = Date.now();
+      const obj: Record<string, number> = JSON.parse(raw);
+      const validos = Object.fromEntries(Object.entries(obj).filter(([, ts]) => agora - ts < QUINZE_DIAS_MS));
+      setPulados(validos);
+    }).catch(() => {});
+  }, []);
 
   // ── Arrastar o dedo pra esquerda/direita muda a aba ativa (com animação de movimento) ──
   const ABAS_MATCH: Aba[] = ['descobrir', 'solicitacoes', 'matches'];
@@ -241,60 +218,76 @@ export default function Match({ navigation, route }: any) {
     });
   }, [meuUid]);
 
-  // ── Ouve todas as solicitações onde sou parte ──
+  // ── Relação com cada pessoa (solicitações enviadas + recebidas) ──
   useEffect(() => {
     if (!meuUid) return;
     const qEnv = query(collection(db, 'match_solicitacoes'), where('deUid',   '==', meuUid));
     const qRec = query(collection(db, 'match_solicitacoes'), where('paraUid', '==', meuUid));
 
-    let envSnap: any = null, recSnap: any = null;
-    let envOk = false, recOk = false;
+    let envDocs: any[] | null = null;
+    let recDocs: any[] | null = null;
 
     const recalcular = () => {
-      const uids = new Map<string, number>();
-      const registrar = (uid: string, ts: number) => {
-        if (!uid) return;
-        const atual = uids.get(uid) ?? 0;
-        if (ts > atual) uids.set(uid, ts);
+      if (!envDocs || !recDocs) return;
+      const mapa = new Map<string, Relacao>();
+      const rel = (uid: string) => {
+        if (!mapa.has(uid)) mapa.set(uid, { aceito: false, pendenteEnviada: null, pendenteRecebida: null, recusadoEm: 0 });
+        return mapa.get(uid)!;
       };
-      envSnap?.docs?.forEach((d: any) => registrar(d.data().paraUid, d.data().criadoEm?.seconds ?? 0));
-      recSnap?.docs?.forEach((d: any) => registrar(d.data().deUid,   d.data().criadoEm?.seconds ?? 0));
-      uidsInteragidosRef.current = uids;
-      if (envOk && recOk) setInteragidosCarregado(true);
+      const processar = (d: any, outroUid: string, enviada: boolean) => {
+        if (!outroUid) return;
+        const sol = d.data();
+        const r = rel(outroUid);
+        if (sol.status === 'aceito') r.aceito = true;
+        else if (sol.status === 'pendente') {
+          if (enviada) r.pendenteEnviada = d.id; else r.pendenteRecebida = d.id;
+        } else if (sol.status === 'recusado') r.recusadoEm = Math.max(r.recusadoEm, tsMs(sol.criadoEm));
+      };
+      envDocs.forEach(d => processar(d, d.data().paraUid, true));
+      recDocs.forEach(d => processar(d, d.data().deUid, false));
+      setRelacoes(mapa);
+      setSolicitacoesBrutas(recDocs.filter(d => d.data().status === 'pendente').map(d => ({ id: d.id, ...d.data() })));
+      setRelacoesCarregadas(true);
     };
 
-    const u1 = onSnapshot(qEnv, s => { envSnap = s; envOk = true; recalcular(); });
-    const u2 = onSnapshot(qRec, s => { recSnap = s; recOk = true; recalcular(); });
+    const u1 = onSnapshot(qEnv, snap => { envDocs = snap.docs; recalcular(); });
+    const u2 = onSnapshot(qRec, snap => { recDocs = snap.docs; recalcular(); });
     return () => { u1(); u2(); };
   }, [meuUid]);
 
   // ── Carrega candidatos quando filtro muda ──
   useEffect(() => {
-    if (!meusDados || !interagidosCarregado) return;
+    if (!meusDados) return;
     carregarCandidatos();
-  }, [meusDados, materiasFiltro.join(','), interagidosCarregado]);
+  }, [meusDados, materiasFiltro.join(',')]);
 
-  // ── Ouve solicitações pendentes recebidas ──
-  useEffect(() => {
-    if (!meuUid) return;
-    const q = query(
-      collection(db, 'match_solicitacoes'),
-      where('paraUid', '==', meuUid),
-      where('status',  '==', 'pendente')
-    );
-    const unsub = onSnapshot(q, async snap => {
-      const lista = (await Promise.all(snap.docs.map(async d => {
-        const data = d.data();
-        const rSnap = await getDoc(doc(db, 'usuarios', data.deUid));
-        if (!rSnap.exists()) return null;
-        return { id: d.id, ...data, remetente: rSnap.data() };
-      }))).filter(Boolean);
-
-      
-      setSolicitacoes(lista);
+  // ── Solicitações recebidas: some quem já é match e repetidas da mesma pessoa ──
+  const [perfisRemetentes, setPerfisRemetentes] = useState<Record<string, any>>({});
+  const solicitacoes = useMemo(() => {
+    const porRemetente = new Map<string, any>();
+    solicitacoesBrutas.forEach(sol => {
+      if (relacoes.get(sol.deUid)?.aceito) return;
+      const atual = porRemetente.get(sol.deUid);
+      if (!atual || tsMs(sol.criadoEm) > tsMs(atual.criadoEm)) porRemetente.set(sol.deUid, sol);
     });
-    return () => unsub();
-  }, [meuUid]);
+    return Array.from(porRemetente.values())
+      .map(sol => ({ ...sol, remetente: perfisRemetentes[sol.deUid] }))
+      .filter(sol => sol.remetente)
+      .sort((x, y) => tsMs(y.criadoEm) - tsMs(x.criadoEm));
+  }, [solicitacoesBrutas, relacoes, perfisRemetentes]);
+
+  useEffect(() => {
+    const faltando = [...new Set(solicitacoesBrutas.map(sol => sol.deUid))].filter(uid => !perfisRemetentes[uid]);
+    if (faltando.length === 0) return;
+    Promise.all(faltando.map(async uid => {
+      const snap = await getDoc(doc(db, 'usuarios', uid));
+      return [uid, snap.exists() ? snap.data() : null] as const;
+    })).then(pares => setPerfisRemetentes(prev => {
+      const novo = { ...prev };
+      pares.forEach(([uid, dados]) => { if (dados) novo[uid] = dados; });
+      return novo;
+    })).catch(() => {});
+  }, [solicitacoesBrutas]);
 
   // ── Ouve matches confirmados ──
   useEffect(() => {
@@ -342,33 +335,83 @@ export default function Match({ navigation, route }: any) {
 
   const carregarCandidatos = async () => {
     setCarregando(true);
-    setCardAtual(0);
     try {
       const snap = await getDocs(collection(db, 'usuarios'));
-      const jaInteragidos = uidsInteragidosRef.current;
-      const QUINZE_DIAS_SEG = 15 * 24 * 60 * 60;
-      const agoraSeg = Date.now() / 1000;
-      const todos = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter((u: any) => {
-          if (u.id === meuUid)         return false;
-          if (u.status !== 1)          return false;
-          const ts = jaInteragidos.get(u.id);
-          if (ts !== undefined && (agoraSeg - ts) < QUINZE_DIAS_SEG) return false;
-          // Sempre busca quem pode ensinar (opção "Quero Ensinar" removida)
-          const materias = u.ensinar || [];
-          if (materiasFiltro.length > 0) return materiasFiltro.some(m => materias.includes(m));
-          return materias.length > 0;
-        });
-      setCandidatos(todos);
+      setCandidatosBrutos(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (e) { console.log(e); }
     finally { setCarregando(false); }
   };
 
-  const enviarSolicitacao = async (paraUid: string) => {
+  // Quem aparece no Descobrir: ensina algo (e bate com o filtro), e NÃO é
+  // match, não tem solicitação pendente em nenhum sentido, não recusou/foi
+  // recusado nos últimos 15 dias e não foi pulado recentemente.
+  const candidatos = useMemo(() => {
+    const agora = Date.now();
+    return candidatosBrutos.filter((u: any) => {
+      if (u.id === meuUid || u.status !== 1) return false;
+      const r = relacoes.get(u.id);
+      if (r && (r.aceito || r.pendenteEnviada || r.pendenteRecebida)) return false;
+      if (r?.recusadoEm && agora - r.recusadoEm < QUINZE_DIAS_MS) return false;
+      if (pulados[u.id]) return false;
+      const materias = u.ensinar || [];
+      if (materiasFiltro.length > 0) return materiasFiltro.some(m => materias.includes(m));
+      return materias.length > 0;
+    });
+  }, [candidatosBrutos, relacoes, pulados, materiasFiltro, meuUid]);
+
+  const criarConversaDoMatch = async (outroUid: string) => {
     if (!meuUid) return;
-    uidsInteragidosRef.current.set(paraUid, Date.now() / 1000);
+    const conversaId = [meuUid, outroUid].sort().join('_');
+    const [meuSnap, outroSnap] = await Promise.all([
+      getDoc(doc(db, 'usuarios', meuUid)),
+      getDoc(doc(db, 'usuarios', outroUid)),
+    ]);
+    const meuData: any   = meuSnap.exists()  ? meuSnap.data()  : {};
+    const outroData: any = outroSnap.exists() ? outroSnap.data() : {};
+    await setDoc(doc(db, 'conversas', conversaId), {
+      membros: [meuUid, outroUid],
+      ultimaMensagem: '🤝 Vocês fizeram match!',
+      data_postagem: serverTimestamp(),
+      quemEnviou: outroUid, visto: false, isMatch: true,
+      dadosMembros: {
+        [meuUid]:   { nome: meuData.nome_completo   || 'Usuário', foto: meuData.foto   || null },
+        [outroUid]: { nome: outroData.nome_completo || 'Usuário', foto: outroData.foto || null },
+      },
+    }, { merge: true });
+  };
+
+  const responderSolicitacao = async (solId: string, deUid: string, aceitar: boolean) => {
+    if (!meuUid) return;
     try {
+      await updateDoc(doc(db, 'match_solicitacoes', solId), { status: aceitar ? 'aceito' : 'recusado' });
+      if (!aceitar) return;
+
+      // Se eu também tinha mandado pra essa pessoa, fecha a minha junto —
+      // senão ela continuava vendo meu pedido pendente mesmo já sendo match.
+      const minhaPendente = relacoes.get(deUid)?.pendenteEnviada;
+      if (minhaPendente) await updateDoc(doc(db, 'match_solicitacoes', minhaPendente), { status: 'aceito' });
+
+      await criarConversaDoMatch(deUid);
+      dispararPush({
+        destinatarioUid: deUid,
+        titulo: '🤝 Deu match!',
+        corpo: `${meusDados?.nome_completo || 'Alguém'} aceitou estudar com você. Bora conversar?`,
+        dados: { tipo: 'match_aceito', deUid: meuUid },
+      });
+    } catch (e) { console.log(e); }
+  };
+
+  const enviarSolicitacao = async (paraUid: string) => {
+    if (!meuUid || enviandoPara) return;
+    const r = relacoes.get(paraUid);
+    if (r?.aceito || r?.pendenteEnviada) return;
+    setEnviandoPara(paraUid);
+    try {
+      // A pessoa já tinha me chamado: em vez de criar outra solicitação, é match direto.
+      if (r?.pendenteRecebida) {
+        await responderSolicitacao(r.pendenteRecebida, paraUid, true);
+        return;
+      }
       await addDoc(collection(db, 'match_solicitacoes'), {
         deUid: meuUid, paraUid,
         status: 'pendente', membros: [meuUid, paraUid],
@@ -381,41 +424,13 @@ export default function Match({ navigation, route }: any) {
         dados: { tipo: 'solicitacao_match', deUid: meuUid },
       });
     } catch (e) { console.log(e); }
-    setCardAtual(prev => prev + 1);
+    finally { setEnviandoPara(null); }
   };
 
-  const recusarCard = () => setCardAtual(prev => prev + 1);
-
-  // Mantém refs sincronizados para uso dentro do PanResponder
-  // (useEffect roda após cada render, após todas as funções terem sido declaradas)
-  useEffect(() => { enviarSolRef.current = enviarSolicitacao; });
-  useEffect(() => { recusarRef.current   = recusarCard; });
-
-  const responderSolicitacao = async (solId: string, deUid: string, aceitar: boolean) => {
-    try {
-      await updateDoc(doc(db, 'match_solicitacoes', solId), {
-        status: aceitar ? 'aceito' : 'recusado',
-      });
-      if (aceitar && meuUid) {
-        const conversaId = [meuUid, deUid].sort().join('_');
-        const [meuSnap, outroSnap] = await Promise.all([
-          getDoc(doc(db, 'usuarios', meuUid)),
-          getDoc(doc(db, 'usuarios', deUid)),
-        ]);
-        const meuData   = meuSnap.exists()  ? meuSnap.data()  : {};
-        const outroData = outroSnap.exists() ? outroSnap.data() : {};
-        await setDoc(doc(db, 'conversas', conversaId), {
-          membros: [meuUid, deUid],
-          ultimaMensagem: '🤝 Vocês fizeram match!',
-          data_postagem: serverTimestamp(),
-          quemEnviou: deUid, visto: false, isMatch: true,
-          dadosMembros: {
-            [meuUid]: { nome: meuData.nome_completo   || 'Usuário', foto: meuData.foto   || null },
-            [deUid]:  { nome: outroData.nome_completo || 'Usuário', foto: outroData.foto || null },
-          },
-        }, { merge: true });
-      }
-    } catch (e) { console.log(e); }
+  const pularCandidato = (uid: string) => {
+    const novo = { ...pulados, [uid]: Date.now() };
+    setPulados(novo);
+    AsyncStorage.setItem(CHAVE_PULADOS, JSON.stringify(novo)).catch(() => {});
   };
 
   const abrirChat = (outroUid: string, outroNome: string, outraFoto: string) => {
@@ -464,125 +479,115 @@ export default function Match({ navigation, route }: any) {
     return tb - ta;
   });
 
-  // ── CARD DE CANDIDATO ──
-  const card = candidatos[cardAtual];
-
-  const renderCard = () => {
-    if (carregando) return (
-      <View style={styles.centro}>
-        <ActivityIndicator size="large" color={CORES.rosa} />
-      </View>
-    );
-    if (!card) return (
-      <View style={styles.centro}>
-        <Text style={{ fontSize: 56 }}>🦉</Text>
-        <Text style={styles.txtVazio}>Ninguém mais por aqui!</Text>
-        <Text style={[styles.txtVazio, { fontSize: 13, marginTop: 4 }]}>
-          Tente mudar o filtro ou volte mais tarde.
-        </Text>
-        {materiasFiltro.length > 0 && (
-          <TouchableOpacity
-            style={[styles.btnRecarregar, { backgroundColor: CORES.cinzaClaro }]}
-            onPress={() => setMateriasFiltro([])}
-          >
-            <Text style={[styles.btnRecarregarTxt, { color: CORES.azulEscuro }]}>
-              Limpar filtros
-            </Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity style={styles.btnRecarregar} onPress={carregarCandidatos}>
-          <Text style={styles.btnRecarregarTxt}>Recarregar</Text>
-        </TouchableOpacity>
-      </View>
-    );
-
-    // Sempre mostra as matérias que o outro pode ensinar
-    const materias: string[] = card.ensinar || [];
-
-    // Rotação proporcional ao deslocamento X
-    const rotate = swipeX.interpolate({
-      inputRange:  [-width / 2, 0, width / 2],
-      outputRange: ['-12deg',  '0deg', '12deg'],
-      extrapolate: 'clamp',
-    });
-    // Opacidade do overlay "CURTIR" (direita)
-    const opacidadeCurtir = swipeX.interpolate({
-      inputRange:  [0, width * 0.25],
-      outputRange: [0, 1],
-      extrapolate: 'clamp',
-    });
-    // Opacidade do overlay "PULAR" (esquerda)
-    const opacidadePular = swipeX.interpolate({
-      inputRange:  [-width * 0.25, 0],
-      outputRange: [1, 0],
-      extrapolate: 'clamp',
-    });
-
+  // ── FEED DE CANDIDATOS (lista vertical, estilo feed) ──
+  const renderCandidato = ({ item }: any) => {
+    const materias: string[] = item.ensinar || [];
+    const enviando = enviandoPara === item.id;
     return (
-      <View style={styles.cardWrap}>
-        <Animated.View
-          style={[
-            styles.matchCard,
-            {
-              transform: [
-                { translateX: swipeX },
-                { translateY: swipeY },
-                { rotate },
-              ],
-            },
-          ]}
-          {...panResponder.panHandlers}
-        >
-          <Image source={{ uri: getImageUri(card.foto) }} style={styles.cardFoto} />
-          <View style={styles.cardOverlay} />
-
-          {/* Overlay CURTIR (verde, esquerda superior) */}
-          <Animated.View style={[styles.swiperLabel, styles.swiperLabelCurtir, { opacity: opacidadeCurtir }]}>
-            <Ionicons name="heart" size={22} color="#4CAF50" />
-            <Text style={[styles.swiperLabelTxt, { color: '#4CAF50' }]}>CURTIR</Text>
-          </Animated.View>
-
-          {/* Overlay PULAR (vermelho, direita superior) */}
-          <Animated.View style={[styles.swiperLabel, styles.swiperLabelPular, { opacity: opacidadePular }]}>
-            <Ionicons name="close" size={22} color="#FF5252" />
-            <Text style={[styles.swiperLabelTxt, { color: '#FF5252' }]}>PULAR</Text>
-          </Animated.View>
-
-          <View style={styles.cardInfo}>
-            <Text style={styles.cardNome}>{card.nome_completo}</Text>
-            <Text style={styles.cardTurma}>{card.turma || card.ra || ''}</Text>
-            {card.avaliacao_contagem > 0 && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2, marginBottom: 4 }}>
-                <Ionicons name="star" size={13} color="#FFC82C" />
-                <Text style={{ fontSize: 12, fontFamily: F.bold, color: CORES.branco }}>
-                  {card.avaliacao_media.toFixed(1)} ({card.avaliacao_contagem} avaliações)
+      <View style={styles.feedCard}>
+        <TouchableOpacity style={styles.feedTopo} onPress={() => abrirPerfil(item.id)} activeOpacity={0.8}>
+          <Image source={{ uri: getImageUri(item.foto) }} style={styles.feedAvatar} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.feedNome} numberOfLines={1}>{item.nome_completo}</Text>
+            <Text style={styles.feedTurma} numberOfLines={1}>{item.turma || item.ra || ''}</Text>
+            {item.avaliacao_contagem > 0 && (
+              <View style={styles.feedNota}>
+                <Ionicons name="star" size={12} color="#E8A33D" />
+                <Text style={styles.feedNotaTxt}>
+                  {Number(item.avaliacao_media || 0).toFixed(1)} · {item.avaliacao_contagem} avaliações
                 </Text>
               </View>
             )}
-            <View style={styles.materiasRow}>
-              {materias.slice(0, 4).map((m: string) => (
-                <View key={m} style={styles.materiaTag}>
-                  <Text style={styles.materiaTagTxt}>{m}</Text>
-                </View>
-              ))}
-            </View>
           </View>
-        </Animated.View>
+          <Ionicons name="chevron-forward" size={18} color={CORES_SYMBIUS.textoTerciario} />
+        </TouchableOpacity>
 
-        <Text style={styles.arenaContador}>{cardAtual + 1} de {candidatos.length}</Text>
+        {!!item.bio && <Text style={styles.feedBio} numberOfLines={3}>{item.bio}</Text>}
 
-        <View style={styles.acoesRow}>
-          <TouchableOpacity style={styles.btnRecusar} onPress={recusarCard}>
-            <Ionicons name="close" size={28} color="#FF5252" />
+        <Text style={styles.feedRotulo}>PODE TE AJUDAR EM</Text>
+        <View style={styles.feedMaterias}>
+          {materias.slice(0, 6).map((m: string) => (
+            <View key={m} style={[styles.feedMateria, materiasFiltro.includes(m) && styles.feedMateriaDestaque]}>
+              <Text style={[styles.feedMateriaTxt, materiasFiltro.includes(m) && { color: CORES_SYMBIUS.creme }]}>{m}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.feedAcoes}>
+          <TouchableOpacity
+            style={styles.feedBtnRecusar}
+            onPress={() => pularCandidato(item.id)}
+            accessibilityLabel={`Pular ${item.nome_completo}`}
+          >
+            <Ionicons name="close" size={20} color="#D9534F" />
+            <Text style={styles.feedBtnRecusarTxt}>Pular</Text>
           </TouchableOpacity>
-          <Text style={[styles.arenaContador, { fontSize: 11, color: CORES.textoSec, marginHorizontal: 8 }]}>
-            arraste o card
-          </Text>
-          <TouchableOpacity style={styles.btnAceitar} onPress={() => enviarSolicitacao(card.id)}>
-            <Ionicons name="heart" size={28} color={CORES.branco} />
+          <TouchableOpacity
+            style={[styles.feedBtnAceitar, enviando && { opacity: 0.6 }]}
+            onPress={() => enviarSolicitacao(item.id)}
+            disabled={enviando}
+            accessibilityLabel={`Quero estudar com ${item.nome_completo}`}
+          >
+            {enviando
+              ? <ActivityIndicator size="small" color={CORES_SYMBIUS.creme} />
+              : <Ionicons name="checkmark-circle" size={20} color={CORES_SYMBIUS.creme} />}
+            <Text style={styles.feedBtnAceitarTxt}>Quero estudar</Text>
           </TouchableOpacity>
         </View>
       </View>
+    );
+  };
+
+  const renderDescobrir = () => {
+    if (carregando || !relacoesCarregadas) return (
+      <View style={styles.centro}>
+        <ActivityIndicator size="large" color={CORES_SYMBIUS.verdeEscuro} />
+      </View>
+    );
+    return (
+      <FlatList
+        data={candidatos}
+        keyExtractor={i => i.id}
+        renderItem={renderCandidato}
+        contentContainerStyle={{ padding: 16, paddingBottom: 24, flexGrow: 1 }}
+        showsVerticalScrollIndicator={false}
+        ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+        ListHeaderComponent={solicitacoes.length > 0 ? (
+          <TouchableOpacity style={styles.avisoSolic} onPress={() => setAbaAtiva('solicitacoes')} activeOpacity={0.85}>
+            <View style={styles.avisoSolicIcone}>
+              <Ionicons name="mail-unread" size={18} color={CORES_SYMBIUS.creme} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.avisoSolicTitulo}>
+                {solicitacoes.length === 1 ? '1 pessoa quer estudar com você' : `${solicitacoes.length} pessoas querem estudar com você`}
+              </Text>
+              <Text style={styles.avisoSolicSub}>Toque para responder</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={CORES_SYMBIUS.creme} />
+          </TouchableOpacity>
+        ) : null}
+        ListHeaderComponentStyle={{ marginBottom: 12 }}
+        ListEmptyComponent={(
+          <View style={[styles.centro, { paddingTop: 40 }]}>
+            <Text style={{ fontSize: 56 }}>🦉</Text>
+            <Text style={styles.txtVazio}>Ninguém novo por aqui!</Text>
+            <Text style={[styles.txtVazio, { fontSize: 13, marginTop: 4 }]}>
+              Tente mudar o filtro ou volte mais tarde.
+            </Text>
+            {materiasFiltro.length > 0 && (
+              <TouchableOpacity
+                style={[styles.btnRecarregar, { backgroundColor: CORES_SYMBIUS.fundoSuave }]}
+                onPress={() => setMateriasFiltro([])}
+              >
+                <Text style={[styles.btnRecarregarTxt, { color: CORES_SYMBIUS.texto }]}>Limpar filtros</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.btnRecarregar} onPress={carregarCandidatos}>
+              <Text style={styles.btnRecarregarTxt}>Recarregar</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      />
     );
   };
 
@@ -683,9 +688,9 @@ export default function Match({ navigation, route }: any) {
   // RENDER PRINCIPAL
   // ══════════════════════════════════════════════════════════
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: C.fundo }]}>
+    <View style={[styles.container, { backgroundColor: C.fundo }]}>
       <StatusBar
-        barStyle={modoEscuro ? 'light-content' : 'dark-content'}
+        barStyle={CORES_SYMBIUS.barStyle}
         backgroundColor={C.fundo}
       />
 
@@ -759,7 +764,7 @@ export default function Match({ navigation, route }: any) {
             </TouchableOpacity>
           </View>
 
-          {renderCard()}
+          {renderDescobrir()}
         </View>
       )}
 
@@ -890,11 +895,46 @@ export default function Match({ navigation, route }: any) {
       )}
 
       <SymbiusTabBar ativa="match" navigation={navigation} uid={meuUid} />
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  feedCard: {
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 20, padding: 16,
+    borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
+  },
+  feedTopo:      { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  feedAvatar:    { width: 56, height: 56, borderRadius: 28, backgroundColor: CORES_SYMBIUS.fundoSuave },
+  feedNome:      { fontSize: 16, fontFamily: F.bold, color: CORES_SYMBIUS.texto },
+  feedTurma:     { fontSize: 12, fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 1 },
+  feedNota:      { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+  feedNotaTxt:   { fontSize: 11, fontFamily: F.semibold, color: CORES_SYMBIUS.textoSec },
+  feedBio:       { fontSize: 13, fontFamily: F.regular, color: CORES_SYMBIUS.texto, lineHeight: 19, marginTop: 12 },
+  feedRotulo:    { fontSize: 10, fontFamily: F.bold, letterSpacing: 0.6, color: CORES_SYMBIUS.textoSec, marginTop: 12, marginBottom: 6 },
+  feedMaterias:  { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  feedMateria:   { backgroundColor: CORES_SYMBIUS.fundoSuave, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 },
+  feedMateriaDestaque: { backgroundColor: CORES_SYMBIUS.verdeEscuro },
+  feedMateriaTxt: { fontSize: 11.5, fontFamily: F.semibold, color: CORES_SYMBIUS.texto },
+  feedAcoes:     { flexDirection: 'row', gap: 10, marginTop: 14 },
+  feedBtnRecusar: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    borderRadius: 14, paddingVertical: 11, borderWidth: 1.5, borderColor: '#D9534F55',
+  },
+  feedBtnRecusarTxt: { fontSize: 13.5, fontFamily: F.bold, color: '#D9534F' },
+  feedBtnAceitar: {
+    flex: 1.6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    borderRadius: 14, paddingVertical: 11, backgroundColor: CORES_SYMBIUS.verdeEscuro,
+  },
+  feedBtnAceitarTxt: { fontSize: 13.5, fontFamily: F.bold, color: CORES_SYMBIUS.creme },
+  avisoSolic: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: CORES_SYMBIUS.laranjaTexto, borderRadius: 16, padding: 14,
+  },
+  avisoSolicIcone: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.18)', justifyContent: 'center', alignItems: 'center' },
+  avisoSolicTitulo: { fontSize: 14, fontFamily: F.bold, color: CORES_SYMBIUS.creme },
+  avisoSolicSub:    { fontSize: 11.5, fontFamily: F.medium, color: 'rgba(244,241,232,0.85)', marginTop: 1 },
+
   container:          { flex: 1, backgroundColor: CORES.fundo },
   navbar:             { minHeight: 64, backgroundColor: CORES.branco, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
   logoWrap:           { position: 'relative', flexDirection: 'row', alignItems: 'center' },

@@ -8,6 +8,7 @@ import { db, auth } from '../config/firebaseConfig';
 import { signOut, sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth';
 import { collection, query, where, getDocs, updateDoc, doc, getDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
 import { CORES_SYMBIUS } from './Boasvindas';
 import { F } from '../constants/theme';
 
@@ -56,6 +57,13 @@ export default function Login({ navigation }: any) {
         setMsgAviso('🚫 Conta desativada, entre em contato com a coordenação.');
         await signOut(auth);
         return;
+      }
+
+      // Conta criada mas e-mail ainda não confirmado na hora do cadastro:
+      // se já confirmou, libera (status 1) — é o que mantém a sessão ao reabrir.
+      if (userData.status === 0) {
+        await user.reload();
+        if (user.emailVerified) await updateDoc(userDocRef, { status: 1 });
       }
 
       // 4. Guardar UID e navegar
@@ -133,14 +141,25 @@ export default function Login({ navigation }: any) {
 
             {/* SENHA */}
             <Text style={styles.fieldLabel}>Senha:</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Digite aqui..."
-              placeholderTextColor={CORES_SYMBIUS.textoTerciario}
-              value={senha}
-              onChangeText={setSenha}
-              secureTextEntry={secureText}
-            />
+            <View style={styles.senhaWrap}>
+              <TextInput
+                style={[styles.input, styles.senhaInput]}
+                placeholder="Digite aqui..."
+                placeholderTextColor={CORES_SYMBIUS.textoTerciario}
+                value={senha}
+                onChangeText={setSenha}
+                secureTextEntry={secureText}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                style={styles.olhoBtn}
+                onPress={() => setSecureText(v => !v)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityLabel={secureText ? 'Mostrar senha' : 'Ocultar senha'}
+              >
+                <Ionicons name={secureText ? 'eye-outline' : 'eye-off-outline'} size={22} color={CORES_SYMBIUS.textoSec} />
+              </TouchableOpacity>
+            </View>
 
             {/* ESQUECEU */}
             <TouchableOpacity onPress={() => setModalReset(true)}>
@@ -267,6 +286,10 @@ const styles = StyleSheet.create({
     color: CORES_SYMBIUS.texto,
     marginBottom: 18,
   },
+
+  senhaWrap:  { position: 'relative', justifyContent: 'center' },
+  senhaInput: { paddingRight: 50 },
+  olhoBtn:    { position: 'absolute', right: 14, top: 14 },
 
   // ESQUECEU
   forgotText: { fontSize: 13, color: CORES_SYMBIUS.textoSec, marginBottom: 20, textAlign: 'right' },

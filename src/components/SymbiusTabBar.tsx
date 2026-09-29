@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, View, TouchableOpacity, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CORES_SYMBIUS } from '../screens/Boasvindas';
 import { F } from '../constants/theme';
 
@@ -25,13 +26,14 @@ const ITENS: { chave: SymbiusAba; label: string; icone: keyof typeof Ionicons.gl
 ];
 
 export default function SymbiusTabBar({ ativa, navigation, uid }: Props) {
+  const insets = useSafeAreaInsets();
   const irPara = (destino: string) => {
     if (destino === ativa && ITENS.find(i => i.chave === ativa)?.destino === destino) return;
     navigation.navigate(destino, uid ? { uid } : undefined);
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: 12 + insets.bottom }]}>
       {ITENS.map((item) => {
         const ativo = item.chave === ativa;
         return (

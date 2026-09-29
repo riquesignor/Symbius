@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, FlatList,
-  SafeAreaView, StatusBar, ActivityIndicator, Modal, TextInput,
+  StatusBar, ActivityIndicator, Modal, TextInput,
   KeyboardAvoidingView, Platform, Image, Alert, PanResponder, Animated, Dimensions,
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
@@ -14,9 +14,18 @@ import { CORES_SYMBIUS } from './Boasvindas';
 import SymbiusTabBar from '../components/SymbiusTabBar';
 import { F } from '../constants/theme';
 import {
-  Resumo, buscarResumos, criarResumo, alternarCurtidaResumo,
+  Resumo, buscarResumos, criarResumo, reagirResumo, Reacao,
   editarResumo, apagarResumo, alternarPrivacidadeResumo,
+  Comentario, ouvirComentarios, comentarResumo, apagarComentario, AnexoResumo,
 } from '../services/resumosService';
+import { dispararPush } from '../services/pushNotificationsService';
+import { escolherDocumentoBase64, abrirArquivoBase64 } from '../utils/midiaNativa';
+
+const fotoUri = (foto?: string | null) =>
+  !foto ? null : foto.startsWith('http') || foto.startsWith('data:') ? foto : `data:image/jpeg;base64,${foto}`;
+
+const mimeDoArquivo = (tipo?: string) =>
+  tipo === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 // ══════════════════════════════════════════════════════════════════════
 // ⚠️  TELA DE TESTE — Feed de Resumos ("Symbius"). Feature nova de verdade:
@@ -89,6 +98,27 @@ export default function FeedResumos({ navigation, route }: any) {
   const [publicando, setPublicando] = useState(false);
   const [resumoEditando, setResumoEditando] = useState<Resumo | null>(null);
   const [menuResumo, setMenuResumo] = useState<Resumo | null>(null);
+  const [anexo, setAnexo] = useState<AnexoResumo | null>(null);
+
+  // ── Comentários ──
+  const [resumoComentarios, setResumoComentarios] = useState<Resumo | null>(null);
+  const [comentarios, setComentarios] = useState<Comentario[]>([]);
+  const [textoComentario, setTextoComentario] = useState('');
+  const [enviandoComentario, setEnviandoComentario] = useState(false);
+
+  useEffect(() => {
+    if (!resumoComentarios) { setComentarios([]); return; }
+    return ouvirComentarios(resumoComentarios.id, setComentarios);
+  }, [resumoComentarios?.id]);
+
+  // Veio de uma notificação de curtida/comentário: abre direto os comentários desse resumo
+  const resumoIdParam = route?.params?.resumoId;
+  useEffect(() => {
+    if (!resumoIdParam || resumos.length === 0) return;
+    const alvo = resumos.find(r => r.id === resumoIdParam);
+    if (alvo) setResumoComentarios(alvo);
+    navigation.setParams({ resumoId: undefined });
+  }, [resumoIdParam, resumos.length]);
 
   const carregarPerfil = useCallback(async () => {
     let uidAtual = uid;
@@ -102,7 +132,7 @@ export default function FeedResumos({ navigation, route }: any) {
       if (snap.exists()) {
         const d = snap.data() as any;
         setMeuNome(d.nome_completo || 'Anônimo');
-        setMinhaFoto(d.foto_url || null);
+        setMinhaFoto(d.foto || d.foto_url || null);
       }
     } catch (e) { console.log('Erro ao carregar perfil do feed:', e); }
   }, [uid]);
@@ -117,29 +147,92 @@ export default function FeedResumos({ navigation, route }: any) {
   useEffect(() => { carregarPerfil(); }, [carregarPerfil]);
   useEffect(() => { carregarResumos(); }, [carregarResumos]);
 
-  const handleCurtir = async (item: Resumo) => {
+  const handleReagir = async (item: Resumo, reacao: Reacao) => {
     if (!uid || processandoCurtida) return;
-    const jaCurtiu = item.curtidas?.includes(uid);
     setProcessandoCurtida(item.id);
-    // Atualização otimista
-    setResumos(prev => prev.map(r => r.id === item.id ? {
-      ...r,
-      curtidasCount: r.curtidasCount + (jaCurtiu ? -1 : 1),
-      curtidas: jaCurtiu ? r.curtidas.filter(u => u !== uid) : [...r.curtidas, uid],
-    } : r));
-    await alternarCurtidaResumo(item.id, uid, !!jaCurtiu);
+    // Atualização otimista (curtir e não curtir se excluem)
+    setResumos(prev => prev.map(r => {
+      if (r.id !== item.id) return r;
+      const curtidas = r.curtidas || [];
+      const descurtidas = r.descurtidas || [];
+      const alvo = reacao === 'curtir' ? curtidas : descurtidas;
+      const jaTinha = alvo.includes(uid);
+      const novoAlvo = jaTinha ? alvo.filter(u => u !== uid) : [...alvo, uid];
+      const novasCurtidas = reacao === 'curtir' ? novoAlvo : curtidas.filter(u => u !== uid);
+      const novasDescurtidas = reacao === 'curtir' ? descurtidas.filter(u => u !== uid) : novoAlvo;
+      return {
+        ...r,
+        curtidas: novasCurtidas, curtidasCount: novasCurtidas.length,
+        descurtidas: novasDescurtidas, descurtidasCount: novasDescurtidas.length,
+      };
+    }));
+    const resultado = await reagirResumo(item.id, uid, reacao);
     setProcessandoCurtida(null);
+    if (resultado === null) { carregarResumos(); return; }
+    if (resultado === 'adicionou' && reacao === 'curtir' && item.autorUid !== uid) {
+      dispararPush({
+        destinatarioUid: item.autorUid,
+        titulo: '👍 Curtiram seu resumo',
+        corpo: `${meuNome} curtiu "${item.titulo}"`,
+        dados: { tipo: 'resumo_curtida', resumoId: item.id },
+      });
+    }
+  };
+
+  const handleComentar = async () => {
+    const alvo = resumoComentarios;
+    if (!uid || !alvo || !textoComentario.trim() || enviandoComentario) return;
+    setEnviandoComentario(true);
+    const texto = textoComentario.trim();
+    const ok = await comentarResumo(alvo.id, { autorUid: uid, autorNome: meuNome, autorFoto: minhaFoto, texto });
+    setEnviandoComentario(false);
+    if (!ok) { Alert.alert('Erro', 'Não foi possível comentar.'); return; }
+    setTextoComentario('');
+    setResumos(prev => prev.map(r => r.id === alvo.id ? { ...r, comentariosCount: (r.comentariosCount || 0) + 1 } : r));
+    if (alvo.autorUid !== uid) {
+      dispararPush({
+        destinatarioUid: alvo.autorUid,
+        titulo: '💬 Novo comentário no seu resumo',
+        corpo: `${meuNome}: ${texto.slice(0, 100)}`,
+        dados: { tipo: 'resumo_comentario', resumoId: alvo.id },
+      });
+    }
+  };
+
+  const handleApagarComentario = (c: Comentario) => {
+    const alvo = resumoComentarios;
+    if (!alvo) return;
+    Alert.alert('Apagar comentário?', '', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Apagar', style: 'destructive', onPress: async () => {
+          if (await apagarComentario(alvo.id, c.id)) {
+            setResumos(prev => prev.map(r => r.id === alvo.id ? { ...r, comentariosCount: Math.max(0, (r.comentariosCount || 1) - 1) } : r));
+          }
+        },
+      },
+    ]);
+  };
+
+  const anexarArquivo = async () => {
+    const r = await escolherDocumentoBase64();
+    if (r) setAnexo(r);
+  };
+
+  const abrirAnexo = (item: Resumo) => {
+    if (!item.arquivoBase64) return;
+    abrirArquivoBase64(item.arquivoBase64, item.arquivoNome || `resumo.${item.arquivoTipo || 'pdf'}`, mimeDoArquivo(item.arquivoTipo));
   };
 
   const fecharModalPublicar = () => {
     setModalVisible(false);
     setResumoEditando(null);
-    setMateria(''); setTitulo(''); setCorpo('');
+    setMateria(''); setTitulo(''); setCorpo(''); setAnexo(null);
   };
 
   const abrirModalNovo = () => {
     setResumoEditando(null);
-    setMateria(''); setTitulo(''); setCorpo('');
+    setMateria(''); setTitulo(''); setCorpo(''); setAnexo(null);
     setModalVisible(true);
   };
 
@@ -172,7 +265,7 @@ export default function FeedResumos({ navigation, route }: any) {
 
     const ok = await criarResumo({
       autorUid: uid, autorNome: meuNome, autorFoto: minhaFoto,
-      materia, titulo, corpo,
+      materia, titulo, corpo, anexo,
     });
     setPublicando(false);
     if (ok) {
@@ -210,11 +303,13 @@ export default function FeedResumos({ navigation, route }: any) {
 
   const renderItem = ({ item }: { item: Resumo }) => {
     const curti = !!(uid && item.curtidas?.includes(uid));
+    const descurti = !!(uid && item.descurtidas?.includes(uid));
+    const foto = fotoUri(item.autorFoto);
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          {item.autorFoto ? (
-            <Image source={{ uri: item.autorFoto }} style={styles.avatar} />
+          {foto ? (
+            <Image source={{ uri: foto }} style={styles.avatar} />
           ) : (
             <View style={[styles.avatar, styles.avatarFallback]}>
               <Ionicons name="person" size={16} color={CORES_SYMBIUS.textoSec} />
@@ -249,26 +344,65 @@ export default function FeedResumos({ navigation, route }: any) {
         <Text style={[styles.titulo, { fontSize: fs(14.5) }]}>{item.titulo}</Text>
         <Text style={[styles.corpo, { fontSize: fs(12.5) }]} numberOfLines={3}>{item.corpo}</Text>
 
-        <TouchableOpacity
-          style={styles.curtidaBtn}
-          onPress={() => handleCurtir(item)}
-          disabled={processandoCurtida === item.id}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Ionicons name={curti ? 'heart' : 'heart-outline'} size={16} color={curti ? CORES_SYMBIUS.verdeEscuro : CORES_SYMBIUS.textoSec} />
-          <Text style={[styles.curtidaTxt, { fontSize: fs(12), color: curti ? CORES_SYMBIUS.verdeEscuro : CORES_SYMBIUS.textoSec }]}>
-            {item.curtidasCount || 0}
-          </Text>
-        </TouchableOpacity>
+        {!!item.arquivoBase64 && (
+          <TouchableOpacity style={styles.anexoChip} onPress={() => abrirAnexo(item)} activeOpacity={0.8}>
+            <Ionicons name="document-text" size={22} color={CORES_SYMBIUS.laranjaTexto} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.anexoNome} numberOfLines={1}>{item.arquivoNome || 'Arquivo'}</Text>
+              <Text style={styles.anexoMeta}>
+                {(item.arquivoTipo || 'pdf').toUpperCase()}{item.arquivoTamanho ? ` · ${Math.round(item.arquivoTamanho / 1024)} KB` : ''} · toque para abrir
+              </Text>
+            </View>
+            <Ionicons name="open-outline" size={18} color={CORES_SYMBIUS.textoSec} />
+          </TouchableOpacity>
+        )}
+
+        <View style={styles.acoesRow}>
+          <TouchableOpacity
+            style={styles.curtidaBtn}
+            onPress={() => handleReagir(item, 'curtir')}
+            disabled={processandoCurtida === item.id}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Curtir"
+          >
+            <Ionicons name={curti ? 'thumbs-up' : 'thumbs-up-outline'} size={16} color={curti ? CORES_SYMBIUS.verdeEscuro : CORES_SYMBIUS.textoSec} />
+            <Text style={[styles.curtidaTxt, { fontSize: fs(12), color: curti ? CORES_SYMBIUS.verdeEscuro : CORES_SYMBIUS.textoSec }]}>
+              {item.curtidasCount || 0}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.curtidaBtn}
+            onPress={() => handleReagir(item, 'descurtir')}
+            disabled={processandoCurtida === item.id}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Não curti"
+          >
+            <Ionicons name={descurti ? 'thumbs-down' : 'thumbs-down-outline'} size={16} color={descurti ? '#D64545' : CORES_SYMBIUS.textoSec} />
+            <Text style={[styles.curtidaTxt, { fontSize: fs(12), color: descurti ? '#D64545' : CORES_SYMBIUS.textoSec }]}>
+              {item.descurtidasCount || 0}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.curtidaBtn}
+            onPress={() => setResumoComentarios(item)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Comentários"
+          >
+            <Ionicons name="chatbubble-outline" size={16} color={CORES_SYMBIUS.textoSec} />
+            <Text style={[styles.curtidaTxt, { fontSize: fs(12), color: CORES_SYMBIUS.textoSec }]}>
+              {item.comentariosCount || 0}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={CORES_SYMBIUS.fundo} />
+    <View style={styles.container}>
+      <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
 
-      <View style={[styles.header, { paddingTop: insets.top || 12 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Ionicons name="chevron-back" size={24} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
@@ -349,13 +483,30 @@ export default function FeedResumos({ navigation, route }: any) {
               textAlignVertical="top"
             />
 
+            {!resumoEditando && (
+              anexo ? (
+                <View style={styles.anexoChip}>
+                  <Ionicons name="document-text" size={20} color={CORES_SYMBIUS.laranjaTexto} />
+                  <Text style={[styles.anexoNome, { flex: 1 }]} numberOfLines={1}>{anexo.nome}</Text>
+                  <TouchableOpacity onPress={() => setAnexo(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={20} color={CORES_SYMBIUS.textoSec} />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.btnAnexar} onPress={anexarArquivo}>
+                  <Ionicons name="attach" size={18} color={CORES_SYMBIUS.verdeEscuro} />
+                  <Text style={styles.btnAnexarTxt}>Anexar PDF ou DOCX (até 700 KB)</Text>
+                </TouchableOpacity>
+              )
+            )}
+
             <TouchableOpacity
               style={[styles.btnPublicar, (!titulo.trim() || !corpo.trim() || publicando) && styles.btnDesabilitado]}
               onPress={handlePublicar}
               disabled={!titulo.trim() || !corpo.trim() || publicando}
             >
               {publicando
-                ? <ActivityIndicator color={CORES_SYMBIUS.fundo} />
+                ? <ActivityIndicator color={CORES_SYMBIUS.creme} />
                 : <Text style={styles.btnPublicarTxt}>{resumoEditando ? 'Salvar' : 'Publicar'}</Text>}
             </TouchableOpacity>
           </View>
@@ -393,8 +544,71 @@ export default function FeedResumos({ navigation, route }: any) {
         </TouchableOpacity>
       </Modal>
 
+      {/* Comentários */}
+      <Modal visible={!!resumoComentarios} animationType="slide" transparent onRequestClose={() => setResumoComentarios(null)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { maxHeight: '85%', paddingBottom: 16 + insets.bottom }]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.modalTitulo, { fontSize: fs(15) }]}>Comentários</Text>
+                <Text style={[styles.materiaTempo, { fontSize: fs(11) }]} numberOfLines={1}>{resumoComentarios?.titulo}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setResumoComentarios(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={22} color={CORES_SYMBIUS.texto} />
+              </TouchableOpacity>
+            </View>
+
+            <FlatList
+              data={comentarios}
+              keyExtractor={c => c.id}
+              style={{ flexGrow: 0, maxHeight: 360 }}
+              ListEmptyComponent={<Text style={[styles.vazioTxt, { paddingVertical: 24 }]}>Nenhum comentário ainda. Seja o primeiro!</Text>}
+              renderItem={({ item: c }) => {
+                const fotoC = fotoUri(c.autorFoto);
+                return (
+                  <TouchableOpacity
+                    style={styles.comentario}
+                    activeOpacity={1}
+                    onLongPress={() => c.autorUid === uid && handleApagarComentario(c)}
+                  >
+                    {fotoC
+                      ? <Image source={{ uri: fotoC }} style={styles.avatar} />
+                      : <View style={[styles.avatar, styles.avatarFallback]}><Ionicons name="person" size={14} color={CORES_SYMBIUS.textoSec} /></View>}
+                    <View style={styles.comentarioBolha}>
+                      <Text style={styles.comentarioAutor}>{c.autorNome} <Text style={styles.comentarioTempo}>· {formatarTempo(c.criadoEm)}</Text></Text>
+                      <Text style={styles.comentarioTexto}>{c.texto}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+
+            <View style={styles.comentarioInputRow}>
+              <TextInput
+                style={[styles.input, { flex: 1, paddingVertical: 10 }]}
+                placeholder="Escreva um comentário..."
+                placeholderTextColor={CORES_SYMBIUS.textoSec}
+                value={textoComentario}
+                onChangeText={setTextoComentario}
+                multiline
+                maxLength={1000}
+              />
+              <TouchableOpacity
+                style={[styles.btnEnviarComentario, (!textoComentario.trim() || enviandoComentario) && styles.btnDesabilitado]}
+                onPress={handleComentar}
+                disabled={!textoComentario.trim() || enviandoComentario}
+              >
+                {enviandoComentario
+                  ? <ActivityIndicator size="small" color={CORES_SYMBIUS.creme} />
+                  : <Ionicons name="send" size={18} color={CORES_SYMBIUS.creme} />}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       <SymbiusTabBar ativa="feed" navigation={navigation} uid={uid} />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -411,7 +625,7 @@ const styles = StyleSheet.create({
   abaPill: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10 },
   abaPillAtiva: { backgroundColor: CORES_SYMBIUS.verdeEscuro },
   abaTxt: { color: CORES_SYMBIUS.textoSec, fontFamily: F.bold },
-  abaTxtAtiva: { color: CORES_SYMBIUS.fundo },
+  abaTxtAtiva: { color: CORES_SYMBIUS.creme },
 
   lista: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 40 },
   card: {
@@ -455,7 +669,29 @@ const styles = StyleSheet.create({
   inputMultilinha: { minHeight: 100 },
   btnPublicar: { backgroundColor: CORES_SYMBIUS.verdeEscuro, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
   btnDesabilitado: { opacity: 0.5 },
-  btnPublicarTxt: { color: CORES_SYMBIUS.fundo, fontFamily: F.black, fontSize: 14.5 },
+  btnPublicarTxt: { color: CORES_SYMBIUS.creme, fontFamily: F.black, fontSize: 14.5 },
+  btnAnexar: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center',
+    borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed', borderColor: CORES_SYMBIUS.borda2, paddingVertical: 12,
+  },
+  btnAnexarTxt: { color: CORES_SYMBIUS.verdeEscuro, fontFamily: F.semibold, fontSize: 13 },
+  anexoChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: CORES_SYMBIUS.fundoSuave,
+    borderRadius: 12, padding: 10, marginBottom: 10,
+  },
+  anexoNome: { color: CORES_SYMBIUS.texto, fontFamily: F.bold, fontSize: 12.5 },
+  anexoMeta: { color: CORES_SYMBIUS.textoSec, fontFamily: F.medium, fontSize: 10.5, marginTop: 1 },
+  acoesRow: { flexDirection: 'row', alignItems: 'center', gap: 22 },
+  comentario: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  comentarioBolha: { flex: 1, backgroundColor: CORES_SYMBIUS.fundoSuave, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
+  comentarioAutor: { color: CORES_SYMBIUS.texto, fontFamily: F.bold, fontSize: 12.5 },
+  comentarioTempo: { color: CORES_SYMBIUS.textoSec, fontFamily: F.regular, fontSize: 11 },
+  comentarioTexto: { color: CORES_SYMBIUS.texto, fontFamily: F.regular, fontSize: 13, lineHeight: 18, marginTop: 2 },
+  comentarioInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 4 },
+  btnEnviarComentario: {
+    width: 44, height: 44, borderRadius: 22, backgroundColor: CORES_SYMBIUS.verdeEscuro,
+    justifyContent: 'center', alignItems: 'center',
+  },
 
   menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 30 },
   menuPopup: {

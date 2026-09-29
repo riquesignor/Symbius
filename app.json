@@ -28,6 +28,9 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "updates": {
+      "enabled": false
+    },
     "extra": {
       "eas": {
         "projectId": "486c40c2-3997-4660-898b-e4e292260e1c"
@@ -37,7 +40,21 @@
       "expo-font",
       "@react-native-firebase/app",
       "@react-native-firebase/messaging",
-      "expo-build-properties"
+      "expo-build-properties",
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O Symbius precisa acessar suas fotos para você enviar imagens no chat e trocar sua foto de perfil.",
+          "cameraPermission": "O Symbius precisa acessar a câmera para você tirar fotos e enviar no chat ou no perfil."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#1F3D2B"
+        }
+      ]
     ]
   }
 }

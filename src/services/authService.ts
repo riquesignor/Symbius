@@ -5,6 +5,8 @@ import {
   signOut 
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { removerTokenFcm } from './pushNotificationsService';
 
 export const cadastrarNoSymbius = async (
   email: string, 
@@ -60,4 +62,13 @@ export const cadastrarNoSymbius = async (
     }
     throw error;
   }
+};
+
+// Logout completo: sem remover o token FCM o aparelho continuaria recebendo
+// push da conta que saiu; sem o signOut o Firebase Auth (persistido) manteria
+// a sessão e o NotificacaoProvider continuaria ouvindo a conta antiga.
+export const sairDaConta = async (uid?: string | null) => {
+  if (uid) await removerTokenFcm(uid);
+  await AsyncStorage.removeItem('uid');
+  await signOut(auth).catch(() => {});
 };

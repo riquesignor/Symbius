@@ -11,6 +11,7 @@
   import { useAppSettings } from '../contexts/AppSettingsContext';
   import { doc, getDoc, updateDoc, collection, getDocs } from 'firebase/firestore';
   import { useNotificacao } from '../contexts/NotificacaoProvider';
+  import { sairDaConta as encerrarSessao } from '../services/authService';
   import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 
   import { F } from '../constants/theme';
@@ -83,6 +84,7 @@
     notifAvisos,   setNotifAvisos,
     notifEventos,  setNotifEventos,
     notifMatch,    setNotifMatch,
+    notifMensagens, setNotifMensagens,
     somNotif,      setSomNotif,
     vibracao,      setVibracao,
     visibilidade,  setVisibilidade,
@@ -224,11 +226,18 @@
     };
 
     // ════ HANDLERS — TOGGLES ════
+    // O tema é aplicado antes das telas carregarem, então trocar reinicia o app.
     const toggleModoEscuro = (v: boolean) => {
-      setModoEscuro(v);
-      salvarLocal('cfg_modoEscuro', v);
-      if (v && vibracao) Vibration.vibrate(20);
-      setToast(v ? 'Modo escuro ativado' : 'Modo claro ativado');
+      setConfirmacao({
+        titulo: v ? 'Ativar modo escuro?' : 'Voltar pro modo claro?',
+        msg: 'O app vai reiniciar rapidinho para aplicar o novo tema em todas as telas.',
+        btnTxt: 'Aplicar',
+        onOk: () => {
+          setConfirmacao(null);
+          if (vibracao) Vibration.vibrate(20);
+          setModoEscuro(v);
+        },
+      });
     };
 
     const toggleNotifGeral = (v: boolean) => {
@@ -250,6 +259,11 @@
     const toggleNotifMatch = (v: boolean) => {
       setNotifMatch(v);
       salvarLocal('cfg_notifMatch', v);
+    };
+
+    const toggleNotifMensagens = (v: boolean) => {
+      setNotifMensagens(v);
+      setToast(v ? 'Notificações de mensagens ativadas' : 'Notificações de mensagens desativadas');
     };
 
     const toggleVibracao = (v: boolean) => {
@@ -323,8 +337,7 @@
         perigo: true,
         onOk: async () => {
           try {
-            await AsyncStorage.removeItem('uid');
-            await auth.signOut();
+            await encerrarSessao(uid);
             setConfirmacao(null);
             navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
           } catch { setToast('Erro ao sair'); }
@@ -460,7 +473,7 @@
     }
 
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: C.fundo }]}>
+      <View style={[styles.container, { backgroundColor: C.fundo }]}>
         <StatusBar barStyle={modoEscuro ? "light-content" : "light-content"} backgroundColor={CORES.azulEscuro} />
 
         {/* TOAST */}
@@ -484,7 +497,7 @@
             <Text style={styles.headerTitulo}>Configurações</Text>
           </View>
           <TouchableOpacity style={styles.headerIconWrap} onPress={() => toggleModoEscuro(!modoEscuro)}>
-            <Ionicons name="sunny" size={18} color={CORES.amarelo} />
+            <Ionicons name={modoEscuro ? 'sunny' : 'moon'} size={18} color={CORES.amarelo} />
           </TouchableOpacity>
         </View>
 
@@ -499,7 +512,7 @@
                 icon="moon"
                 iconCor={CORES.roxo || '#8e44ad'}
                 label="Modo Escuro"
-                descricao="Tema escuro nesta tela"
+                descricao="Vale para o app inteiro"
                 toggle={modoEscuro}
                 onToggle={toggleModoEscuro}
               />
@@ -547,9 +560,18 @@
                 onToggle={toggleNotifEventos}
               />
               <SettingRow
+                icon="chatbubbles"
+                iconCor={CORES.azulEscuro}
+                label="Mensagens"
+                descricao="Chat com seus matches"
+                toggle={notifMensagens && notifGeral}
+                onToggle={toggleNotifMensagens}
+              />
+              <SettingRow
                 icon="heart"
                 iconCor={CORES.rosa}
                 label="Match"
+                descricao="Solicitações e matches aceitos"
                 toggle={notifMatch && notifGeral}
                 onToggle={toggleNotifMatch}
               />
@@ -962,7 +984,7 @@
             </View>
           </View>
         </Modal>
-      </SafeAreaView>
+      </View>
     );
   }
 

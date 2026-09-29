@@ -5,61 +5,9 @@ import {
 import Svg, { Path, Ellipse, G } from 'react-native-svg';
 import { F } from '../constants/theme';
 
-// ── Paleta "Symbius" — modo claro ──────────────────────────────────────────
-// Isolada do theme.ts atual (azul/rosa) de propósito, pra não afetar o
-// resto do app. Extraída pixel-a-pixel do mockup HTML fornecido.
-//
-// ⚠️ Apenas modo claro por enquanto — o modo escuro do Symbius será enviado
-// separadamente pelo usuário.
-export const CORES_SYMBIUS = {
-  // fundo geral do app
-  fundo:             '#FAF9F5',
-  fundoCard:         '#FFFFFF',
-  fundoSuave:        '#F0EEE6', // pills, busca, bolha recebida, caixas de ícone
-  fundoLaranjaClaro: '#FCEFE3', // caixa "precisa aprender" no popup do chat
+import { CORES_SYMBIUS } from '../constants/coresSymbius';
 
-  // verde da marca
-  verdeEscuro: '#1F3D2B', // botões primários, tab ativa, bolha enviada
-  verdeMedio:  '#2E5B3F', // círculos de ícone sobre fundo verde
-
-  creme: '#F4F1E8', // texto/ícone sobre fundo verde
-
-  // texto
-  texto:          '#1A1A1A',
-  textoSec:       '#7C8177',
-  textoTerciario: '#9AA398',
-  textoMuted:     '#8A8F84',
-
-  // bordas / divisórias
-  borda:  '#ECE9DE',
-  borda2: '#E3E0D6',
-
-  // acentos
-  laranja:      '#E8A33D',
-  laranjaTexto: '#B4682A',
-  azul:         '#4A90C2',
-  sucesso:      '#4CAF50',
-  pontoInativo: '#DDD9CC',
-
-  // splash (Boasvindas) — permanece verde escuro sempre, mesmo em modo claro
-  splashBg:       '#1F3D2B',
-  splashDecor1:   '#264D33',
-  splashDecor2:   '#2E5B3F',
-  splashTexto:    '#F4F1E8',
-  splashTextoSec: '#B9C9B4',
-};
-
-// ─── Paleta "Symbius" — modo escuro (recomendação do usuário, ainda não
-// ligada a nenhum toggle — guardada aqui pra quando o modo escuro real
-// for implementado nas telas). Extensão escura do verde da marca em vez
-// de um cinza/preto neutro genérico. ───────────────────────────────────
-export const CORES_SYMBIUS_DARK = {
-  fundo:      '#0F1F16', // verde-carvão — fundo base
-  fundoCard:  '#16281C', // cards / superfícies
-  fundoSuave: '#2A4A34', // elementos ativos / inputs
-  texto:      '#F4F1E8', // texto principal (igual ao claro)
-  textoSec:   '#8FAE96', // texto secundário
-};
+export { CORES_SYMBIUS, CORES_SYMBIUS_DARK } from '../constants/coresSymbius';
 
 export default function Boasvindas({ navigation }: any) {
   return (

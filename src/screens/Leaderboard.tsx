@@ -182,7 +182,7 @@ export default function Leaderboard({ navigation, route }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={CORES_SYMBIUS.fundo} />
+      <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top || 12 }]}>

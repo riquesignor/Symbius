@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
-  SafeAreaView, StatusBar, Modal, TextInput, ActivityIndicator,
+  StatusBar, Modal, TextInput, ActivityIndicator,
   Image, Animated, Platform, PanResponder
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
@@ -18,6 +18,20 @@ import { calcularFaseCoruja, calcularProgressoXp } from '../utils/gamification';
 import { F } from '../constants/theme';
 import { TEMA_SYMBIUS as CORES, CORES_SYMBIUS } from '../constants/temaSymbius';
 import SymbiusTabBar from '../components/SymbiusTabBar';
+import { escolherImagemBase64, OrigemImagem } from '../utils/midiaNativa';
+import { sairDaConta } from '../services/authService';
+
+const fotoUri = (foto?: string | null) =>
+  !foto ? null : foto.startsWith('http') || foto.startsWith('data:') ? foto : `data:image/jpeg;base64,${foto}`;
+
+// "Henrique Signor" → "HS"; nome único → só a primeira letra
+const iniciais = (nome?: string) => {
+  const partes = (nome || '').trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return '?';
+  const primeira = partes[0].charAt(0);
+  const ultima = partes.length > 1 ? partes[partes.length - 1].charAt(0) : '';
+  return (primeira + ultima).toUpperCase();
+};
 
 // ════════════════════════════════════════════════════════════════════════
 //  ÁREAS DE CONHECIMENTO
@@ -169,9 +183,12 @@ const RadarChart = ({ scores, size, modoEscuro }: any) => {
 // ── Estilos do novo cabeçalho/hero do Perfil (pixel-fiel ao mockup Symbius) ──
 const heroStyles = StyleSheet.create({
   topHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingBottom: 8,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 20, paddingBottom: 8, minHeight: 44,
   },
+  // Absoluto nas duas laterais: centraliza em relação à tela, independente
+  // dos botões que ficam só do lado direito.
+  topHeaderTituloCentro: { position: 'absolute', left: 0, right: 0, height: 36, lineHeight: 36, textAlign: 'center' },
   topHeaderTitulo: { fontFamily: F.bold, color: CORES_SYMBIUS.texto },
 
   heroWrap: { alignItems: 'center', paddingHorizontal: 24, paddingTop: 8, paddingBottom: 4 },
@@ -180,6 +197,7 @@ const heroStyles = StyleSheet.create({
   avatarPlaceholder: {
     backgroundColor: CORES_SYMBIUS.fundoSuave, justifyContent: 'center', alignItems: 'center',
   },
+  avatarCarregando: { position: 'absolute', top: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center' },
   avatarBadge: {
     position: 'absolute', bottom: -4, right: -4, width: 32, height: 32, borderRadius: 16,
     backgroundColor: CORES_SYMBIUS.fundoSuave, borderWidth: 2, borderColor: CORES_SYMBIUS.fundo,
@@ -277,6 +295,35 @@ export default function Perfil({ navigation, route }: any) {
   ).current;
   const [salvandoPapel, setSalvandoPapel] = useState(false);
   const [modalConfirmSair, setModalConfirmSair] = useState(false);
+  const [modalFoto,    setModalFoto]    = useState(false);
+  const [salvandoFoto, setSalvandoFoto] = useState(false);
+
+  const trocarFoto = async (origem: OrigemImagem) => {
+    setModalFoto(false);
+    try {
+      // Foto de perfil fica pequena: aparece no máximo a ~90px na tela
+      const b64 = await escolherImagemBase64({ origem, ladoMax: 400, qualidade: 0.7, quadrada: true });
+      if (!b64) return;
+      setSalvandoFoto(true);
+      await updateDoc(doc(db, 'usuarios', uid), { foto: b64 });
+      setToast('Foto atualizada');
+    } catch (e) {
+      console.log('Erro ao trocar foto:', e);
+      setToast('Erro ao salvar a foto');
+    } finally {
+      setSalvandoFoto(false);
+    }
+  };
+
+  const removerFoto = async () => {
+    setModalFoto(false);
+    setSalvandoFoto(true);
+    try {
+      await updateDoc(doc(db, 'usuarios', uid), { foto: null });
+      setToast('Foto removida');
+    } catch { setToast('Erro ao remover'); }
+    finally { setSalvandoFoto(false); }
+  };
 
   useEffect(() => {
     if (!toast) return;
@@ -376,7 +423,7 @@ export default function Perfil({ navigation, route }: any) {
   useEffect(() => { escolherPapelRef.current = escolherPapel; });
 
   const sair = async () => {
-    await AsyncStorage.removeItem('uid');
+    await sairDaConta(uid);
     navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
   };
 
@@ -403,11 +450,8 @@ export default function Perfil({ navigation, route }: any) {
   const topMaterias = [...ensina].slice(0, 3);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: C.fundo }]}>
-      <StatusBar
-        barStyle={modoEscuro ? 'light-content' : 'dark-content'}
-        backgroundColor={C.fundo}
-      />
+    <View style={[styles.container, { backgroundColor: C.fundo }]}>
+      <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={C.fundo} />
 
       {/* TOAST */}
       {toast !== '' && (
@@ -418,17 +462,15 @@ export default function Perfil({ navigation, route }: any) {
       )}
 
      
-      <View style={heroStyles.topHeader}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={[styles.btnVoltar, { backgroundColor: C.branco }]}
+      <View style={[heroStyles.topHeader, { paddingTop: insets.top + 10 }]}>
+        <Text
+          style={[heroStyles.topHeaderTitulo, heroStyles.topHeaderTituloCentro, { top: insets.top + 10, fontSize: fs(15) }]}
+          pointerEvents="none"
         >
-          <Ionicons name="arrow-back" size={18} color={C.azulEscuro} />
-        </TouchableOpacity>
+          Perfil
+        </Text>
 
-        <Text style={[heroStyles.topHeaderTitulo, { fontSize: fs(15) }]}>Perfil</Text>
-
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flexDirection: 'row', gap: 8, marginLeft: 'auto' }}>
           <TouchableOpacity
             style={[styles.btnMenu, { backgroundColor: C.branco }]}
             onPress={() => navigation.navigate('Loja', { uid })}
@@ -452,23 +494,28 @@ export default function Perfil({ navigation, route }: any) {
         
         <FadeInView delay={0}>
           <View style={heroStyles.heroWrap}>
-            <View style={heroStyles.avatarWrap}>
-              {usuario.foto ? (
-                <Image source={{ uri: usuario.foto }} style={heroStyles.avatar} />
+            <TouchableOpacity style={heroStyles.avatarWrap} onPress={() => setModalFoto(true)} activeOpacity={0.85} accessibilityLabel="Alterar foto de perfil">
+              {fotoUri(usuario.foto) ? (
+                <Image source={{ uri: fotoUri(usuario.foto)! }} style={heroStyles.avatar} />
               ) : (
                 <View style={[heroStyles.avatar, heroStyles.avatarPlaceholder]}>
-                  <Text style={{ fontSize: fs(34), color: CORES_SYMBIUS.textoSec }}>
-                    {usuario.nome_completo?.charAt(0)?.toUpperCase() || '?'}
+                  <Text style={{ fontSize: fs(30), fontFamily: F.black, color: CORES_SYMBIUS.verdeEscuro }}>
+                    {iniciais(usuario.nome_completo)}
                   </Text>
+                </View>
+              )}
+              {salvandoFoto && (
+                <View style={[heroStyles.avatar, heroStyles.avatarCarregando]}>
+                  <ActivityIndicator color="#FFF" />
                 </View>
               )}
               <View style={heroStyles.avatarBadge}>
                 <Text style={{ fontSize: 16 }}>{calcularFaseCoruja(usuario.xp_total || 0).icone}</Text>
               </View>
-              <TouchableOpacity style={heroStyles.fotoEditBtn} activeOpacity={0.8}>
+              <View style={heroStyles.fotoEditBtn}>
                 <Ionicons name="camera" size={11} color={CORES_SYMBIUS.creme} />
-              </TouchableOpacity>
-            </View>
+              </View>
+            </TouchableOpacity>
 
             <Text style={[heroStyles.nome, { fontSize: fs(19) }]} numberOfLines={2}>
               {usuario.nome_completo || 'Sem nome'}
@@ -555,6 +602,40 @@ export default function Perfil({ navigation, route }: any) {
             </TouchableOpacity>
           </View>
         </FadeInView>
+
+        {/*SOBRE MIM*/}
+        <FadeInView delay={60}>
+          <View style={styles.secao}>
+            <View style={styles.secaoHeaderRow}>
+              <View style={styles.secaoTituloComIcon}>
+                <Ionicons name="reader-outline" size={14} color={C.textoSec} />
+                <Text style={[styles.secaoTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
+                  Sobre mim
+                </Text>
+              </View>
+              <TouchableOpacity onPress={abrirEdicaoBio}>
+                <Ionicons name="create-outline" size={16} color={CORES.rosa} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.bioCard, { backgroundColor: C.branco }]}
+              activeOpacity={0.75}
+              onPress={abrirEdicaoBio}
+            >
+              <Text
+                style={[styles.bioText, {
+                  color: usuario.bio ? C.azulEscuro : C.textoSec,
+                  fontSize: fs(13),
+                  fontStyle: usuario.bio ? 'normal' : 'italic',
+                }]}
+              >
+                {usuario.bio || 'Toque para adicionar uma descrição sobre você...'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </FadeInView>
+
 
 
         
@@ -844,39 +925,6 @@ export default function Perfil({ navigation, route }: any) {
           </View>
         </FadeInView>
 
-        {/*SOBRE MIM*/}
-        <FadeInView delay={600}>
-          <View style={styles.secao}>
-            <View style={styles.secaoHeaderRow}>
-              <View style={styles.secaoTituloComIcon}>
-                <Ionicons name="reader-outline" size={14} color={C.textoSec} />
-                <Text style={[styles.secaoTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
-                  Sobre mim
-                </Text>
-              </View>
-              <TouchableOpacity onPress={abrirEdicaoBio}>
-                <Ionicons name="create-outline" size={16} color={CORES.rosa} />
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.bioCard, { backgroundColor: C.branco }]}
-              activeOpacity={0.75}
-              onPress={abrirEdicaoBio}
-            >
-              <Text
-                style={[styles.bioText, {
-                  color: usuario.bio ? C.azulEscuro : C.textoSec,
-                  fontSize: fs(13),
-                  fontStyle: usuario.bio ? 'normal' : 'italic',
-                }]}
-              >
-                {usuario.bio || 'Toque para adicionar uma descrição sobre você...'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </FadeInView>
-
         {/* 
             INFORMAÇÕES ACADÊMICAS*/}
         <FadeInView delay={720}>
@@ -1106,8 +1154,36 @@ export default function Perfil({ navigation, route }: any) {
         </View>
       </Modal>
 
+      <Modal visible={modalFoto} transparent animationType="slide" onRequestClose={() => setModalFoto(false)}>
+        <TouchableOpacity style={styles.fotoOverlay} activeOpacity={1} onPress={() => setModalFoto(false)}>
+          <View style={[styles.fotoSheet, { paddingBottom: 20 + insets.bottom }]}>
+            <View style={styles.fotoHandle} />
+            <Text style={[styles.fotoTitulo, { fontSize: fs(15) }]}>Foto de perfil</Text>
+            <TouchableOpacity style={styles.fotoOpcao} onPress={() => trocarFoto('galeria')}>
+              <Ionicons name="images-outline" size={20} color={CORES_SYMBIUS.verdeEscuro} />
+              <Text style={[styles.fotoOpcaoTxt, { fontSize: fs(14) }]}>Escolher da galeria</Text>
+            </TouchableOpacity>
+            {Platform.OS !== 'web' && (
+              <TouchableOpacity style={styles.fotoOpcao} onPress={() => trocarFoto('camera')}>
+                <Ionicons name="camera-outline" size={20} color={CORES_SYMBIUS.verdeEscuro} />
+                <Text style={[styles.fotoOpcaoTxt, { fontSize: fs(14) }]}>Tirar foto</Text>
+              </TouchableOpacity>
+            )}
+            {!!usuario.foto && (
+              <TouchableOpacity style={styles.fotoOpcao} onPress={removerFoto}>
+                <Ionicons name="trash-outline" size={20} color="#D64545" />
+                <Text style={[styles.fotoOpcaoTxt, { fontSize: fs(14), color: '#D64545' }]}>Remover foto</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={[styles.fotoOpcao, { justifyContent: 'center', borderBottomWidth: 0 }]} onPress={() => setModalFoto(false)}>
+              <Text style={[styles.fotoOpcaoTxt, { fontSize: fs(14), color: CORES_SYMBIUS.textoSec }]}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       <SymbiusTabBar ativa="perfil" navigation={navigation} uid={uid} />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1116,6 +1192,12 @@ export default function Perfil({ navigation, route }: any) {
 // ════════════════════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  fotoOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  fotoSheet:   { backgroundColor: CORES_SYMBIUS.fundoCard, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 12 },
+  fotoHandle:  { width: 40, height: 4, borderRadius: 2, backgroundColor: CORES_SYMBIUS.borda2, alignSelf: 'center', marginBottom: 12 },
+  fotoTitulo:  { fontFamily: F.black, color: CORES_SYMBIUS.texto, marginBottom: 6 },
+  fotoOpcao:   { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: CORES_SYMBIUS.borda },
+  fotoOpcaoTxt:{ fontFamily: F.semibold, color: CORES_SYMBIUS.texto },
   centro:    { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
   semDadosText: { fontFamily: F.bold },
 

@@ -1,8 +1,9 @@
 import React from 'react';
 import {
-  StyleSheet, Text, View, TouchableOpacity, SafeAreaView, StatusBar,
+  StyleSheet, Text, View, TouchableOpacity, StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CORES_SYMBIUS } from './Boasvindas';
 import { F } from '../constants/theme';
 
@@ -21,7 +22,7 @@ export default function EscolhaPapel({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle={CORES_SYMBIUS.barStyle} />
 
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>

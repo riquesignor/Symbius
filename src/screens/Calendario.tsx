@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
-  SafeAreaView, StatusBar, Modal, TextInput,
+  StatusBar, Modal, TextInput,
   ActivityIndicator, Platform, FlatList,
   useWindowDimensions, Animated, Vibration
 } from 'react-native';
@@ -17,6 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RefreshControl } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import SymbiusTabBar from '../components/SymbiusTabBar';
+import { dispararPushSerie } from '../services/pushNotificationsService';
 
 
 
@@ -155,6 +157,11 @@ export default function Calendario({ navigation, route }: any) {
   const uid     = route?.params?.uid;
 
   const [userRA, setUserRA] = useState<string | null>(null);
+  // tipo/turma vêm do perfil no Firestore: a barra inferior navega só com
+  // { uid }, e sem isso o admin perdia o botão de criar evento e o aluno
+  // não via nenhum evento da série.
+  const [tipo,  setTipo]  = useState<string | undefined>(route?.params?.tipo);
+  const [turma, setTurma] = useState<string | undefined>(route?.params?.turma);
 
 // Fetch do RA do usuário ao montar
 useEffect(() => {
@@ -166,6 +173,8 @@ useEffect(() => {
       const dados = snap.data();
       const raLimpo = dados.ra?.replace(/[\/\\]/g, '');
       const raValido = raLimpo && raLimpo !== 'N/A' && raLimpo.length > 0;
+      setTipo(dados.tipo);
+      setTurma(dados.turma);
       setUserRA(raValido ? raLimpo : uid);
     }
   } catch (e) { console.error('Erro buscar RA:', e); }
@@ -173,8 +182,6 @@ useEffect(() => {
   buscarRA();
 }, [uid]);
 
-  const tipo    = route?.params?.tipo;
-  const turma   = route?.params?.turma;
   const isAdmin = tipo?.toLowerCase() === 'administrador';
   const serie   = extrairSerie(turma || '');
 
@@ -478,6 +485,13 @@ useEffect(() => {
         return nova;
       });
       setToast('Evento publicado');
+      const [, mEv, dEv] = adminData.split('-').map(Number);
+      dispararPushSerie({
+        series: adminSeries,
+        titulo: `Novo ${adminTipo.toLowerCase()} na agenda`,
+        corpo: `${dados.titulo} · ${dEv} de ${MESES[mEv - 1]}`,
+        dados: { tipo: 'evento_admin', eventoId: novoId, tipoEvento: adminTipo },
+      });
     }
 
     setModalAdminForm(false);
@@ -682,13 +696,13 @@ useEffect(() => {
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: C.fundo }]}>
+    <View style={[styles.container, { backgroundColor: C.fundo }]}>
       {/* StatusBar continua azul fixo (identidade visual do header) */}
       <StatusBar barStyle="light-content" backgroundColor={CORES.azulEscuro} />
 
       {/* TOAST — mantém azul escuro fixo (overlay) */}
       {toast !== '' && (
-        <View style={styles.toast}>
+        <View style={[styles.toast, { top: insets.top + 12 }]}>
           <Text style={[styles.toastText, { fontSize: fs(13) }]}>{toast}</Text>
         </View>
       )}
@@ -867,7 +881,7 @@ useEffect(() => {
 
           {/* LISTA */}
           {eventosFiltrados.length === 0 ? (
-            <View style={[styles.listaVazia, { paddingTop: insets.top }]}>
+            <View style={styles.listaVazia}>
               <Ionicons name="calendar-outline" size={32} color={C.cinzaClaro} />
               <Text style={[styles.listaVaziaText, { color: C.textoSec, fontSize: fs(12) }]}>
                 Nenhum evento{filtroTipo !== 'todos' ? ` do tipo ${filtroTipo}` : ''} em {MESES[mes]}.
@@ -1473,7 +1487,8 @@ useEffect(() => {
         </View>
       </Modal>
 
-    </SafeAreaView>
+      <SymbiusTabBar ativa="agenda" navigation={navigation} uid={uid} />
+    </View>
   );
 }
 

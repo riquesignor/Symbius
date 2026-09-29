@@ -1,4 +1,7 @@
 {
   "buildCommand": null,
-  "framework": null
+  "framework": null,
+  "crons": [
+    { "path": "/api/cron-lembretes", "schedule": "0 12 * * *" }
+  ]
 }
