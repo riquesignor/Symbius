@@ -1,12 +1,7 @@
+import { Platform } from "react-native";
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { initializeAuth } from "firebase/auth";
-// getReactNativePersistence existe em runtime (Metro resolve a condicao
-// "react-native" dos exports do @firebase/auth corretamente), mas o
-// TypeScript nao reconhece essa condicao pra fins de tipos nesse pacote
-// especifico (limitacao conhecida do firebase-js-sdk).
-// @ts-ignore
-import { getReactNativePersistence } from "@firebase/auth";
+import { getAuth, initializeAuth, type Auth } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const firebaseConfig = {
@@ -20,10 +15,22 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
-// Sem isso, o Firebase Auth so vive em memoria: ao fechar e reabrir o app,
-// auth.currentUser volta null mesmo com o `uid` ainda salvo no AsyncStorage
-// (que e o que o app usa pra pular a tela de login), quebrando qualquer
-// fluxo que dependa de auth.currentUser.getIdToken() depois de um restart.
-export const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage),
-});
+
+// No celular, sem persistência o Auth só vive em memória: ao fechar e reabrir
+// o app, auth.currentUser volta null mesmo com o `uid` salvo no AsyncStorage,
+// e o app não consegue chamar o backend de push. Na web (npm run web) essa
+// função não existe e o navegador já persiste a sessão sozinho.
+const criarAuth = (): Auth => {
+  if (Platform.OS === "web") return getAuth(app);
+  try {
+    // getReactNativePersistence só existe na build React Native do pacote;
+    // o TypeScript não enxerga essa condição de export, por isso o require.
+    const { getReactNativePersistence } = require("@firebase/auth");
+    return initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) });
+  } catch {
+    // Fast refresh recarrega este módulo e initializeAuth só pode rodar uma vez.
+    return getAuth(app);
+  }
+};
+
+export const auth = criarAuth();
