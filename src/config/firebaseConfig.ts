@@ -9,13 +9,17 @@ import { initializeAuth } from "firebase/auth";
 import { getReactNativePersistence } from "@firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+// Valores client-side do Firebase (não são segredo — o SDK é feito pra ir
+// embutido no app; quem protege os dados são as regras do Firestore). Ainda
+// assim ficam em env vars pra não amarrar o repo a um projeto Firebase
+// específico. Veja .env.example.
 const firebaseConfig = {
-  apiKey: "AIzaSyBpPd1Hb1ZwVHxgEhGXsXS_TFfxdMsOOO4",
-  authDomain: "jumo-d9094.firebaseapp.com",
-  projectId: "jumo-d9094",
-  storageBucket: "jumo-d9094.firebasestorage.app",
-  messagingSenderId: "320566695312",
-  appId: "1:320566695312:web:e6c5a4bb954de2b6150f15"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
 const app = initializeApp(firebaseConfig);
