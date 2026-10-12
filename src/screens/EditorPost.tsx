@@ -1,99 +1,84 @@
 import React, { useState } from 'react';
-import { 
-  StyleSheet, View, Text, TextInput, TouchableOpacity, 
-  Image, ScrollView, Alert, ActivityIndicator, SafeAreaView,
-  Modal
+import {
+  StyleSheet, View, Text, TextInput, TouchableOpacity,
+  Image, ScrollView, Alert, ActivityIndicator, Modal, StatusBar,
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
-import { doc, collection, addDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import * as ImagePicker from 'expo-image-picker';
+import { doc, setDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { gerarIdLegivel } from '../utils/firestoreIds';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CORES_SYMBIUS } from '../constants/coresSymbius';
+import { F } from '../constants/theme';
+import { escolherImagemBase64 } from '../utils/midiaNativa';
 
-const CORES = {
-  azulEscuro: '#0B2046',
-  rosa: '#E51C6A',
-  amarelo: '#FFC82C',
-  fundo: '#F5F7FA',
-  cinzaClaro: '#EAEFF4',
-  textoSecundario: '#8D99AE',
-  branco: '#FFFFFF',
-};
-
-// ✅ Nova lista de categorias alinhada com o Index.tsx
 const CATEGORIAS_OPCOES = [
   { label: 'Avisos',        value: 'avisos',        icon: 'campaign'     },
-  { label: 'Destaques',     value: 'destaque',       icon: 'star'         },
-  { label: 'Oportunidades', value: 'oportunidades',  icon: 'work'         },
-  { label: 'Olimpíadas',    value: 'olimpiadas',     icon: 'emoji-events' },
-  { label: 'Passeios',      value: 'passeios',       icon: 'explore'      },
+  { label: 'Destaques',     value: 'destaque',      icon: 'star'         },
+  { label: 'Oportunidades', value: 'oportunidades', icon: 'work'         },
+  { label: 'Olimpíadas',    value: 'olimpiadas',    icon: 'emoji-events' },
+  { label: 'Passeios',      value: 'passeios',      icon: 'explore'      },
 ];
 
 export default function EditorPost({ route, navigation }: any) {
   const insets = useSafeAreaInsets();
-  const { postId, categoria: categoriaParam, current } = route.params;
+  const { postId, categoria: categoriaParam, current } = route.params || {};
 
   const [titulo,     setTitulo]     = useState(current?.titulo    || '');
   const [subtitulo,  setSubtitulo]  = useState(current?.subtitulo || '');
   const [conteudo,   setConteudo]   = useState(current?.conteudo  || '');
-  const [capa,       setCapa]       = useState(current?.capa      || null);
+  const [capa,       setCapa]       = useState<string | null>(current?.capa || null);
   const [autor,      setAutor]      = useState(current?.autor     || '');
   const [tagsInput,  setTagsInput]  = useState(current?.tags ? current.tags.join(', ') : '');
   const [loading,    setLoading]    = useState(false);
+  const [carregandoCapa, setCarregandoCapa] = useState(false);
 
-  // ✅ Categoria agora é selecionável no editor
-  const [categoria,       setCategoria]       = useState(current?.categoria || categoriaParam || 'avisos');
-  const [showCatModal,    setShowCatModal]    = useState(false);
+  const [categoria,    setCategoria]    = useState(current?.categoria || categoriaParam || 'avisos');
+  const [showCatModal, setShowCatModal] = useState(false);
 
   const catAtual = CATEGORIAS_OPCOES.find(c => c.value === categoria) || CATEGORIAS_OPCOES[0];
 
   const selecionarImagem = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permissão necessária', 'Precisamos de acesso às suas fotos.');
-      return;
-    }
-    const resultado = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [16, 9],
-      quality: 0.3,
-      base64: true,
-    });
-    if (!resultado.canceled && resultado.assets[0].base64) {
-      setCapa(`data:image/jpeg;base64,${resultado.assets[0].base64}`);
+    setCarregandoCapa(true);
+    try {
+      const b64 = await escolherImagemBase64({ ladoMax: 1280, qualidade: 0.6, aspecto: [16, 9] });
+      if (b64) setCapa(`data:image/jpeg;base64,${b64}`);
+    } finally {
+      setCarregandoCapa(false);
     }
   };
 
   const salvar = async () => {
     if (!titulo.trim() || !conteudo.trim() || !capa) {
-      return Alert.alert('Erro', 'Título, conteúdo e capa são obrigatórios.');
+      return Alert.alert('Faltam informações', 'Título, conteúdo e capa são obrigatórios.');
     }
     setLoading(true);
     try {
       const tagsArray = tagsInput.split(',').map((t: string) => t.trim()).filter((t: string) => t !== '');
       const postData = {
-        titulo:           titulo.trim(),
-        subtitulo:        subtitulo.trim(),
-        conteudo:         conteudo.trim(),
+        titulo:            titulo.trim(),
+        subtitulo:         subtitulo.trim(),
+        conteudo:          conteudo.trim(),
         capa,
-        categoria,        // ✅ usa o estado selecionado
-        autor:            autor.trim() || 'Gestão JUMO',
-        tags:             tagsArray,
+        categoria,
+        autor:             autor.trim() || 'Gestão Symbius',
+        tags:              tagsArray,
         ultimaAtualizacao: serverTimestamp(),
       };
 
       if (postId) {
         await updateDoc(doc(db, 'posts', postId), postData);
-        Alert.alert('Sucesso!', 'Post atualizado.', [{ text: 'OK', onPress: () => navigation.goBack() }]);
+        Alert.alert('Pronto!', 'Post atualizado.', [{ text: 'OK', onPress: () => navigation.goBack() }]);
       } else {
-        await addDoc(collection(db, 'posts'), {
+        // ID legível (slug do título + sufixo curto) facilita achar o post no Firestore.
+        const idPost = gerarIdLegivel(postData.titulo);
+        await setDoc(doc(db, 'posts', idPost), {
           ...postData,
           visualizacoes:   0,
           leitores:        [],
           data_publicacao: serverTimestamp(),
         });
-        Alert.alert('Sucesso!', 'Post publicado.', [{ text: 'OK', onPress: () => navigation.goBack() }]);
+        Alert.alert('Pronto!', 'Post publicado.', [{ text: 'OK', onPress: () => navigation.goBack() }]);
       }
     } catch (e: any) {
       console.error(e);
@@ -104,8 +89,9 @@ export default function EditorPost({ route, navigation }: any) {
   };
 
   const excluirPost = () => {
+    if (!postId) return;
     Alert.alert(
-      'Excluir Post',
+      'Excluir post',
       'Deseja realmente excluir esta publicação? Essa ação não tem volta.',
       [
         { text: 'Cancelar', style: 'cancel' },
@@ -113,190 +99,222 @@ export default function EditorPost({ route, navigation }: any) {
           text: 'Excluir',
           style: 'destructive',
           onPress: async () => {
+            setLoading(true);
             try {
               await deleteDoc(doc(db, 'posts', postId));
-              navigation.goBack();
-            } catch (e) {
-              Alert.alert('Erro', 'Não foi possível excluir.');
+            } catch (e: any) {
+              setLoading(false);
+              Alert.alert('Erro ao excluir', e?.message || 'Verifique sua conexão ou permissões.');
+              return;
             }
-          }
-        }
-      ]
+            setLoading(false);
+            navigation.goBack();
+          },
+        },
+      ],
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
+      <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
 
-      {/* HEADER */}
-      <View style={[styles.header, { paddingBottom: insets.bottom }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color={CORES.azulEscuro} />
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Ionicons name="arrow-back" size={20} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{postId ? 'EDITAR POST' : 'NOVO POST'}</Text>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={styles.headerEyebrow}>MURAL</Text>
+          <Text style={styles.headerTitle}>{postId ? 'Editar post' : 'Novo post'}</Text>
+        </View>
         {postId
-          ? <TouchableOpacity onPress={excluirPost}>
-              <MaterialIcons name="delete-outline" size={24} color="#FF5252" />
+          ? (
+            <TouchableOpacity onPress={excluirPost} style={styles.headerBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <MaterialIcons name="delete-outline" size={20} color="#D64545" />
             </TouchableOpacity>
-          : <View style={{ width: 24 }} />
-        }
+          )
+          : <View style={{ width: 36 }} />}
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-
-        {/* SELETOR DE CATEGORIA */}
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 40 + insets.bottom }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <Text style={styles.label}>CATEGORIA</Text>
         <TouchableOpacity style={styles.catSelector} onPress={() => setShowCatModal(true)}>
           <View style={styles.catSelectorLeft}>
-            <MaterialIcons name={catAtual.icon as any} size={20} color={CORES.rosa} />
+            <View style={styles.catIcone}>
+              <MaterialIcons name={catAtual.icon as any} size={16} color={CORES_SYMBIUS.creme} />
+            </View>
             <Text style={styles.catSelectorText}>{catAtual.label}</Text>
           </View>
-          <Ionicons name="chevron-down" size={18} color={CORES.textoSecundario} />
+          <Ionicons name="chevron-down" size={18} color={CORES_SYMBIUS.textoSec} />
         </TouchableOpacity>
 
-        {/* CAPA */}
-        <Text style={[styles.label, { marginTop: 20 }]}>CAPA DO POST (16:9)</Text>
-        <TouchableOpacity style={styles.uploadArea} onPress={selecionarImagem}>
-          {capa
-            ? <Image source={{ uri: capa }} style={styles.preview} />
-            : <View style={styles.placeholder}>
-                <MaterialIcons name="add-a-photo" size={40} color={CORES.rosa} />
-                <Text style={styles.placeholderText}>Toque para adicionar capa</Text>
-              </View>
-          }
+        <Text style={[styles.label, { marginTop: 18 }]}>CAPA DO POST (16:9)</Text>
+        <TouchableOpacity style={styles.uploadArea} onPress={selecionarImagem} activeOpacity={0.85} disabled={carregandoCapa}>
+          {carregandoCapa
+            ? <ActivityIndicator color={CORES_SYMBIUS.verdeEscuro} />
+            : capa
+              ? <Image source={{ uri: capa }} style={styles.preview} />
+              : (
+                <View style={styles.placeholder}>
+                  <MaterialIcons name="add-a-photo" size={34} color={CORES_SYMBIUS.verdeEscuro} />
+                  <Text style={styles.placeholderText}>Toque para adicionar a capa</Text>
+                </View>
+              )}
         </TouchableOpacity>
+        {!!capa && !carregandoCapa && (
+          <TouchableOpacity onPress={selecionarImagem} style={styles.trocarCapa}>
+            <Ionicons name="swap-horizontal" size={14} color={CORES_SYMBIUS.verdeEscuro} />
+            <Text style={styles.trocarCapaTxt}>Trocar capa</Text>
+          </TouchableOpacity>
+        )}
 
-        {/* TÍTULO */}
         <Text style={styles.label}>TÍTULO *</Text>
         <TextInput
           style={styles.input}
           value={titulo}
           onChangeText={setTitulo}
           placeholder="Ex: Inscrições abertas para OBMEP"
-          placeholderTextColor={CORES.textoSecundario}
+          placeholderTextColor={CORES_SYMBIUS.textoTerciario}
         />
 
-        {/* SUBTÍTULO */}
         <Text style={styles.label}>SUBTÍTULO</Text>
         <TextInput
           style={styles.input}
           value={subtitulo}
           onChangeText={setSubtitulo}
           placeholder="Resumo rápido do post..."
-          placeholderTextColor={CORES.textoSecundario}
+          placeholderTextColor={CORES_SYMBIUS.textoTerciario}
         />
 
-        {/* AUTOR + TAGS */}
         <View style={styles.row}>
-          <View style={{ flex: 1, marginRight: 10 }}>
+          <View style={{ flex: 1 }}>
             <Text style={styles.label}>AUTOR / SETOR</Text>
             <TextInput
               style={styles.input}
               value={autor}
               onChangeText={setAutor}
               placeholder="Ex: Direção"
-              placeholderTextColor={CORES.textoSecundario}
+              placeholderTextColor={CORES_SYMBIUS.textoTerciario}
             />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.label}>TAGS (vírgula)</Text>
+            <Text style={styles.label}>TAGS (VÍRGULA)</Text>
             <TextInput
               style={styles.input}
               value={tagsInput}
               onChangeText={setTagsInput}
               placeholder="Ex: Exatas, Avisos"
-              placeholderTextColor={CORES.textoSecundario}
+              placeholderTextColor={CORES_SYMBIUS.textoTerciario}
             />
           </View>
         </View>
 
-        {/* CONTEÚDO */}
         <Text style={styles.label}>CONTEÚDO COMPLETO *</Text>
         <TextInput
           style={[styles.input, styles.textArea]}
           value={conteudo}
           onChangeText={setConteudo}
           multiline
-          numberOfLines={8}
           placeholder="Escreva o texto completo do post aqui..."
-          placeholderTextColor={CORES.textoSecundario}
+          placeholderTextColor={CORES_SYMBIUS.textoTerciario}
           textAlignVertical="top"
         />
 
-        {/* BOTÃO SALVAR */}
         <TouchableOpacity
           style={[styles.btnSalvar, loading && { opacity: 0.7 }]}
           onPress={salvar}
           disabled={loading}
         >
           {loading
-            ? <ActivityIndicator color="#FFF" />
-            : <Text style={styles.btnText}>{postId ? 'SALVAR ALTERAÇÕES' : 'PUBLICAR POST'}</Text>
-          }
+            ? <ActivityIndicator color={CORES_SYMBIUS.creme} />
+            : <Text style={styles.btnText}>{postId ? 'Salvar alterações' : 'Publicar post'}</Text>}
         </TouchableOpacity>
-
-        <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* MODAL SELETOR DE CATEGORIA */}
-      <Modal visible={showCatModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
+      <Modal visible={showCatModal} transparent animationType="slide" onRequestClose={() => setShowCatModal(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowCatModal(false)}>
+          <View style={[styles.modalSheet, { paddingBottom: 24 + insets.bottom }]}>
             <View style={styles.modalHandle} />
-            <Text style={styles.modalTitulo}>Selecione a Categoria</Text>
-            {CATEGORIAS_OPCOES.map(cat => (
-              <TouchableOpacity
-                key={cat.value}
-                style={styles.catOpcao}
-                onPress={() => { setCategoria(cat.value); setShowCatModal(false); }}
-              >
-                <MaterialIcons name={cat.icon as any} size={20} color={CORES.rosa} />
-                <Text style={styles.catOpcaoText}>{cat.label}</Text>
-                {categoria === cat.value && (
-                  <Ionicons name="checkmark-circle" size={20} color={CORES.rosa} style={{ marginLeft: 'auto' as any }} />
-                )}
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity style={styles.btnFechar} onPress={() => setShowCatModal(false)}>
-              <Text style={styles.btnFecharText}>Fechar</Text>
-            </TouchableOpacity>
+            <Text style={styles.modalTitulo}>Selecione a categoria</Text>
+            {CATEGORIAS_OPCOES.map(cat => {
+              const ativa = categoria === cat.value;
+              return (
+                <TouchableOpacity
+                  key={cat.value}
+                  style={styles.catOpcao}
+                  onPress={() => { setCategoria(cat.value); setShowCatModal(false); }}
+                >
+                  <View style={[styles.catIcone, !ativa && { backgroundColor: CORES_SYMBIUS.fundoSuave }]}>
+                    <MaterialIcons name={cat.icon as any} size={16} color={ativa ? CORES_SYMBIUS.creme : CORES_SYMBIUS.verdeEscuro} />
+                  </View>
+                  <Text style={[styles.catOpcaoText, ativa && { fontFamily: F.bold }]}>{cat.label}</Text>
+                  {ativa && <Ionicons name="checkmark-circle" size={20} color={CORES_SYMBIUS.verdeEscuro} style={{ marginLeft: 'auto' }} />}
+                </TouchableOpacity>
+              );
+            })}
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
-
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container:       { flex: 1, backgroundColor: CORES.branco },
-  header:          { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
-  backBtn:         { padding: 4 },
-  headerTitle:     { fontSize: 15, fontWeight: '900', color: CORES.azulEscuro, letterSpacing: 1 },
-  scrollContent:   { padding: 24 },
-  row:             { flexDirection: 'row' },
-  label:           { fontSize: 11, fontWeight: '800', color: CORES.textoSecundario, letterSpacing: 0.8, marginBottom: 8, marginTop: 4 },
-  input:           { backgroundColor: CORES.fundo, borderRadius: 14, padding: 16, fontSize: 14, color: CORES.azulEscuro, borderWidth: 1, borderColor: CORES.cinzaClaro, marginBottom: 18 },
-  textArea:        { height: 160 },
+  container:     { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: CORES_SYMBIUS.borda,
+    backgroundColor: CORES_SYMBIUS.fundo,
+  },
+  headerBtn: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: CORES_SYMBIUS.fundoSuave,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  headerEyebrow: { fontSize: 10, fontFamily: F.bold, color: CORES_SYMBIUS.textoSec, letterSpacing: 0.6 },
+  headerTitle:   { fontSize: 16, fontFamily: F.black, color: CORES_SYMBIUS.texto },
+  scrollContent: { padding: 20 },
+  row:           { flexDirection: 'row', gap: 10 },
+  label:         { fontSize: 10.5, fontFamily: F.bold, color: CORES_SYMBIUS.textoSec, letterSpacing: 0.6, marginBottom: 8, marginTop: 4 },
+  input: {
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13,
+    fontSize: 14, fontFamily: F.regular, color: CORES_SYMBIUS.texto,
+    borderWidth: 1, borderColor: CORES_SYMBIUS.borda, marginBottom: 16,
+  },
+  textArea:      { height: 170 },
 
-  catSelector:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: CORES.fundo, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: CORES.cinzaClaro, marginBottom: 4 },
+  catSelector: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
+    borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
+  },
   catSelectorLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  catSelectorText: { fontSize: 15, fontWeight: '700', color: CORES.azulEscuro },
+  catIcone: {
+    width: 30, height: 30, borderRadius: 10, backgroundColor: CORES_SYMBIUS.verdeEscuro,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  catSelectorText: { fontSize: 15, fontFamily: F.bold, color: CORES_SYMBIUS.texto },
 
-  uploadArea:      { width: '100%', height: 190, backgroundColor: CORES.fundo, borderRadius: 18, overflow: 'hidden', marginBottom: 20, borderWidth: 2, borderColor: CORES.cinzaClaro, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center' },
+  uploadArea: {
+    width: '100%', aspectRatio: 16 / 9, backgroundColor: CORES_SYMBIUS.fundoSuave, borderRadius: 18,
+    overflow: 'hidden', marginBottom: 8, borderWidth: 1.5, borderColor: CORES_SYMBIUS.borda2, borderStyle: 'dashed',
+    justifyContent: 'center', alignItems: 'center',
+  },
   preview:         { width: '100%', height: '100%' },
-  placeholder:     { alignItems: 'center', gap: 10 },
-  placeholderText: { color: CORES.rosa, fontWeight: '700', fontSize: 13 },
+  placeholder:     { alignItems: 'center', gap: 8 },
+  placeholderText: { color: CORES_SYMBIUS.verdeEscuro, fontFamily: F.semibold, fontSize: 13 },
+  trocarCapa:      { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-end', marginBottom: 12 },
+  trocarCapaTxt:   { color: CORES_SYMBIUS.verdeEscuro, fontFamily: F.bold, fontSize: 12 },
 
-  btnSalvar:       { backgroundColor: CORES.rosa, padding: 18, borderRadius: 16, alignItems: 'center', marginTop: 8, elevation: 4, shadowColor: CORES.rosa, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6 },
-  btnText:         { color: '#FFF', fontWeight: '900', fontSize: 15, letterSpacing: 1 },
+  btnSalvar: {
+    backgroundColor: CORES_SYMBIUS.verdeEscuro, paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 6,
+    elevation: 3, shadowColor: CORES_SYMBIUS.verdeEscuro, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 8,
+  },
+  btnText: { color: CORES_SYMBIUS.creme, fontFamily: F.bold, fontSize: 15, letterSpacing: 0.3 },
 
-  modalOverlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  modalSheet:      { backgroundColor: CORES.branco, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 36 },
-  modalHandle:     { width: 40, height: 4, backgroundColor: CORES.cinzaClaro, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  modalTitulo:     { fontSize: 17, fontWeight: '900', color: CORES.azulEscuro, marginBottom: 16 },
-  catOpcao:        { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
-  catOpcaoText:    { fontSize: 15, fontWeight: '700', color: CORES.azulEscuro },
-  btnFechar:       { marginTop: 16, backgroundColor: CORES.fundo, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  btnFecharText:   { fontWeight: '800', color: CORES.textoSecundario, fontSize: 14 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  modalSheet:   { backgroundColor: CORES_SYMBIUS.fundoCard, borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 22 },
+  modalHandle:  { width: 40, height: 4, backgroundColor: CORES_SYMBIUS.borda2, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  modalTitulo:  { fontSize: 17, fontFamily: F.black, color: CORES_SYMBIUS.texto, marginBottom: 8 },
+  catOpcao:     { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: CORES_SYMBIUS.borda },
+  catOpcaoText: { fontSize: 15, fontFamily: F.semibold, color: CORES_SYMBIUS.texto },
 });

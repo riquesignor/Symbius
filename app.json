@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "JUMO",
+    "name": "Symbius",
     "slug": "JUMO",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -22,10 +22,14 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.riquesignor.JUMO"
+      "package": "com.riquesignor.JUMO",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "updates": {
+      "enabled": false
     },
     "extra": {
       "eas": {
@@ -33,7 +37,18 @@
       }
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging",
+      "expo-build-properties",
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O Symbius precisa acessar suas fotos para você enviar imagens no chat e trocar sua foto de perfil.",
+          "cameraPermission": "O Symbius precisa acessar a câmera para você tirar fotos e enviar no chat ou no perfil."
+        }
+      ]
     ]
   }
 }

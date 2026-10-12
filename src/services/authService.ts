@@ -5,8 +5,10 @@ import {
   signOut 
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { removerTokenFcm } from './pushNotificationsService';
 
-export const cadastrarNoJumo = async (
+export const cadastrarNoSymbius = async (
   email: string, 
   senha: string, 
   nome: string, 
@@ -29,14 +31,21 @@ export const cadastrarNoJumo = async (
       // mesmo quando a senha for redefinida manualmente no banco.
       senha: senha,
       ra: ra.toUpperCase().trim() || null,
-      tipo: perfilTipo, 
+      tipo: perfilTipo,
       turma: turmaFormatada,
       status: 0,
       ensinar: eAluno ? [] : null,
       melhorar: eAluno ? [] : null,
       ajudas_realizadas: eAluno ? 0 : null,
-      foto: null, 
+      foto: null,
       bio: "",
+      // ✅ GAMIFICAÇÃO — Inicializa XP, Moedas e tracker diário
+      xp_total: 0,
+      moedas_saldo: 0,
+      matches_bonificados_hoje: 0,
+      ultimo_reset_diario: new Date(),
+      ultimo_acesso: new Date(),
+      perfil_publico_xp: false, // Privado por padrão
     };
 
     await setDoc(doc(db, "usuarios", user.uid), dadosUsuario);
@@ -53,4 +62,13 @@ export const cadastrarNoJumo = async (
     }
     throw error;
   }
+};
+
+// Logout completo: sem remover o token FCM o aparelho continuaria recebendo
+// push da conta que saiu; sem o signOut o Firebase Auth (persistido) manteria
+// a sessão e o NotificacaoProvider continuaria ouvindo a conta antiga.
+export const sairDaConta = async (uid?: string | null) => {
+  if (uid) await removerTokenFcm(uid);
+  await AsyncStorage.removeItem('uid');
+  await signOut(auth).catch(() => {});
 };

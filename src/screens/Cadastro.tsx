@@ -1,32 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  StyleSheet, Text, View, TextInput, TouchableOpacity, 
-  ScrollView, SafeAreaView, KeyboardAvoidingView, 
-  Platform, Modal, FlatList, ActivityIndicator
+import {
+  StyleSheet, Text, View, TextInput, TouchableOpacity,
+  ScrollView, KeyboardAvoidingView,
+  Platform, Modal, FlatList, ActivityIndicator, StatusBar,
 } from 'react-native';
-import { cadastrarNoJumo } from '../services/authService'; 
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { auth, db } from '../config/firebaseConfig';
+import { createUserWithEmailAndPassword, sendEmailVerification, signOut } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
+import { CORES_SYMBIUS } from './Boasvindas';
+import { F } from '../constants/theme';
 
-// Paleta JUMO
-const CORES = {
-  azulEscuro:      '#1A1A2E',
-  rosa:            '#E91E63',
-  amarelo:         '#FFC107',
-  fundo:           '#EFEFEF',
-  cardCinza:       '#F5F5F5',
-  inputBranco:     '#FFFFFF',
-  borda:           '#E0E0E0',
-  textoSecundario: '#BBBFC4',
-  sucesso:         '#10B981',
-};
+type Papel = 'aprender' | 'ensinar';
 
-export default function Cadastro({ navigation }: any) {
+const OPCOES_PAPEL: { valor: Papel; titulo: string; sub: string; icone: any }[] = [
+  { valor: 'aprender', titulo: 'Aluno',  sub: 'Quero aprender', icone: 'book-outline' },
+  { valor: 'ensinar',  titulo: 'Mentor', sub: 'Quero ensinar',  icone: 'school-outline' },
+];
+
+export default function Cadastro({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
+  // Tag de comunidade (selo no perfil + filtro do ranking). Não é tipo de conta:
+  // `tipo` continua sendo 'Aluno'/'Administrador', detectado pelo e-mail.
+  const [papel, setPapel] = useState<Papel>(route?.params?.papel === 'ensinar' ? 'ensinar' : 'aprender');
   const [nome,          setNome]          = useState('');
   const [email,         setEmail]         = useState('');
   const [senha,         setSenha]         = useState('');
   const [confirmaSenha, setConfirmaSenha] = useState('');
+  const [verSenha,      setVerSenha]      = useState(false);
+  const [verConfirma,   setVerConfirma]   = useState(false);
   const [serie,         setSerie]         = useState('');
   const [indicacao,     setIndicacao]     = useState('');
   const [ra,            setRa]            = useState('');
@@ -46,10 +49,9 @@ export default function Cadastro({ navigation }: any) {
     'INFO A', 'INFO B', 'INFO C',
     'NUTRI A', 'NUTRI B',
     'DESIGN A', 'DESIGN B',
-    'ADM A', 'ADM B'
+    'ADM A', 'ADM B',
   ];
 
-  // ✅ Toast some sozinho
   useEffect(() => {
     if (toastMsg !== '') {
       const t = setTimeout(() => setToastMsg(''), 3000);
@@ -57,7 +59,6 @@ export default function Cadastro({ navigation }: any) {
     }
   }, [toastMsg]);
 
-  // ✅ Detecção de perfil pelo email
   useEffect(() => {
     const emailLower = email.trim().toLowerCase();
     if (emailLower.length > 5) {
@@ -81,26 +82,11 @@ export default function Cadastro({ navigation }: any) {
   }, [email]);
 
   const handleSignUp = async () => {
-    if (!perfilTipo) {
-      setToastMsg('E-mail institucional inválido.');
-      return;
-    }
-    if (!nome || !email || !senha || !confirmaSenha) {
-      setToastMsg('Preencha todos os campos obrigatórios.');
-      return;
-    }
-    if (perfilTipo === 'Aluno' && (!serie || !indicacao)) {
-      setToastMsg('Selecione série e turma.');
-      return;
-    }
-    if (senha.length < 6) {
-      setToastMsg('A senha precisa ter pelo menos 6 caracteres.');
-      return;
-    }
-    if (senha !== confirmaSenha) {
-      setToastMsg('As senhas não coincidem.');
-      return;
-    }
+    if (!perfilTipo) { setToastMsg('E-mail institucional inválido.'); return; }
+    if (!nome || !email || !senha || !confirmaSenha) { setToastMsg('Preencha todos os campos obrigatórios.'); return; }
+    if (perfilTipo === 'Aluno' && (!serie || !indicacao)) { setToastMsg('Selecione série e turma.'); return; }
+    if (senha.length < 6) { setToastMsg('A senha precisa ter pelo menos 6 caracteres.'); return; }
+    if (senha !== confirmaSenha) { setToastMsg('As senhas não coincidem.'); return; }
 
     setLoading(true);
 
@@ -114,7 +100,37 @@ export default function Cadastro({ navigation }: any) {
     }
 
     try {
-      await cadastrarNoJumo(email, senha, nome, ra, turmaFormatada, perfilTipo);
+      const emailNormalizado = email.trim().toLowerCase();
+      const userCredential = await createUserWithEmailAndPassword(auth, emailNormalizado, senha);
+      const user = userCredential.user;
+      await sendEmailVerification(user);
+
+      const identificador = perfilTipo === 'Aluno' ? (ra || emailNormalizado) : emailNormalizado;
+
+      await setDoc(doc(db, 'usuarios', user.uid), {
+        uid: user.uid,
+        nome_completo: nome.trim(),
+        email_escolar: emailNormalizado,
+        ra: ra || 'N/A',
+        identificador,
+        turma: turmaFormatada,
+        tipo: perfilTipo,
+        status: 0, // 0 = aguardando verificação de email
+        data_criacao: new Date().toISOString(),
+        posso_ensinar: [],
+        quer_aprender: [],
+        papel_comunidade: papel,
+        foto_url: '',
+        bio: '',
+        medalhas_visiveis: [],
+        ajudas: 0,
+        statusOnline: false,
+        visibilidade: true,
+      });
+
+      // createUser já deixa a pessoa logada; o acesso de verdade é pelo Login.
+      await signOut(auth);
+
       setLoading(false);
       setPopupOk(true);
       setTimeout(() => {
@@ -123,150 +139,168 @@ export default function Cadastro({ navigation }: any) {
       }, 1800);
     } catch (error: any) {
       setLoading(false);
-      setToastMsg(error?.message || 'Erro ao cadastrar. Tente novamente.');
+      console.error('Erro ao cadastrar:', error);
+      if (error.code === 'auth/email-already-in-use') setToastMsg('Este e-mail já está registrado.');
+      else if (error.code === 'auth/weak-password') setToastMsg('Senha fraca. Use pelo menos 6 caracteres.');
+      else if (error.code === 'auth/invalid-email') setToastMsg('E-mail inválido.');
+      else setToastMsg('Erro ao cadastrar. Tente novamente.');
     }
   };
 
+  const campoSenha = (valor: string, setValor: (v: string) => void, visivel: boolean, setVisivel: (v: boolean) => void) => (
+    <View style={styles.senhaWrap}>
+      <TextInput
+        style={[styles.input, { paddingRight: 50 }]}
+        placeholder="Digite aqui..."
+        placeholderTextColor={CORES_SYMBIUS.textoTerciario}
+        value={valor}
+        onChangeText={setValor}
+        secureTextEntry={!visivel}
+        autoCapitalize="none"
+      />
+      <TouchableOpacity
+        style={styles.olhoBtn}
+        onPress={() => setVisivel(!visivel)}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        accessibilityLabel={visivel ? 'Ocultar senha' : 'Mostrar senha'}
+      >
+        <Ionicons name={visivel ? 'eye-off-outline' : 'eye-outline'} size={22} color={CORES_SYMBIUS.textoSec} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const desabilitaTurma = perfilTipo === 'Administrador';
+
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
+      <StatusBar barStyle={CORES_SYMBIUS.barStyle} />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
 
-        {/* TOAST */}
         {toastMsg !== '' && (
           <View style={styles.toast}>
             <Text style={styles.toastText}>{toastMsg}</Text>
           </View>
         )}
 
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
+          </TouchableOpacity>
+        </View>
+
         <ScrollView
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-
-          {/* LOGO */}
           <View style={styles.logoWrap}>
-            <View style={styles.logoDot} />
-            <Text style={styles.logoText}>
-              <Text style={styles.logoJum}>JUM</Text>
-              <Text style={styles.logoO}>O</Text>
-            </Text>
+            <Text style={styles.logoText}>Symbius</Text>
+            <Text style={styles.logoSlogan}>crie sua conta</Text>
           </View>
 
-          {/* CARD */}
           <View style={styles.card}>
+            {/* PAPEL */}
+            <Text style={styles.fieldLabel}>Como você quer participar?</Text>
+            <View style={styles.papelRow}>
+              {OPCOES_PAPEL.map(op => {
+                const ativo = papel === op.valor;
+                return (
+                  <TouchableOpacity
+                    key={op.valor}
+                    style={[styles.papelCard, ativo && styles.papelCardAtivo]}
+                    onPress={() => setPapel(op.valor)}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name={op.icone} size={20} color={ativo ? CORES_SYMBIUS.creme : CORES_SYMBIUS.verdeEscuro} />
+                    <Text style={[styles.papelTitulo, ativo && { color: CORES_SYMBIUS.creme }]}>{op.titulo}</Text>
+                    <Text style={[styles.papelSub, ativo && { color: CORES_SYMBIUS.creme, opacity: 0.8 }]}>{op.sub}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Text style={styles.papelNota}>Dá pra trocar depois no seu perfil.</Text>
 
-            {/* NOME */}
             <Text style={styles.fieldLabel}>Nome:</Text>
             <TextInput
               style={styles.input}
               placeholder="Digite aqui..."
-              placeholderTextColor={CORES.textoSecundario}
+              placeholderTextColor={CORES_SYMBIUS.textoTerciario}
               value={nome}
               onChangeText={setNome}
             />
 
-            {/* EMAIL */}
             <Text style={styles.fieldLabel}>Email:</Text>
             <TextInput
               style={styles.input}
               placeholder="Digite aqui..."
-              placeholderTextColor={CORES.textoSecundario}
+              placeholderTextColor={CORES_SYMBIUS.textoTerciario}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
               keyboardType="email-address"
             />
-
             {statusMsg !== '' && (
-              <Text style={[
-                styles.statusText,
-                { color: perfilTipo === '' ? CORES.rosa : CORES.sucesso }
-              ]}>
+              <Text style={[styles.statusText, { color: perfilTipo === '' ? '#C0392B' : CORES_SYMBIUS.sucesso }]}>
                 {statusMsg}
               </Text>
             )}
 
-            {/* SENHA */}
             <Text style={styles.fieldLabel}>Senha:</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Digite aqui..."
-              placeholderTextColor={CORES.textoSecundario}
-              value={senha}
-              onChangeText={setSenha}
-              secureTextEntry
-            />
+            {campoSenha(senha, setSenha, verSenha, setVerSenha)}
 
-            {/* CONFIRMAR SENHA */}
             <Text style={styles.fieldLabel}>Confirmar senha:</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Digite aqui..."
-              placeholderTextColor={CORES.textoSecundario}
-              value={confirmaSenha}
-              onChangeText={setConfirmaSenha}
-              secureTextEntry
-            />
+            {campoSenha(confirmaSenha, setConfirmaSenha, verConfirma, setVerConfirma)}
 
-            {/* SÉRIE */}
             <Text style={styles.fieldLabel}>Série:</Text>
             <TouchableOpacity
-              style={[styles.input, styles.selectInput, perfilTipo === 'Administrador' && { opacity: 0.5 }]}
+              style={[styles.input, styles.selectInput, desabilitaTurma && { opacity: 0.5 }]}
               onPress={() => setShowSerieModal(true)}
-              disabled={perfilTipo === 'Administrador'}
+              disabled={desabilitaTurma}
               activeOpacity={0.7}
             >
-              <Text style={[styles.selectText, !serie && { color: CORES.textoSecundario }]}>
-                {serie || 'Digite aqui...'}
+              <Text style={[styles.selectText, !serie && { color: CORES_SYMBIUS.textoTerciario }]}>
+                {serie || 'Selecione...'}
               </Text>
-              <Ionicons name="chevron-down" size={18} color={CORES.textoSecundario} />
+              <Ionicons name="chevron-down" size={18} color={CORES_SYMBIUS.textoSec} />
             </TouchableOpacity>
 
-            {/* TURMA */}
             <Text style={styles.fieldLabel}>Turma:</Text>
             <TouchableOpacity
-              style={[styles.input, styles.selectInput, perfilTipo === 'Administrador' && { opacity: 0.5 }]}
+              style={[styles.input, styles.selectInput, desabilitaTurma && { opacity: 0.5 }]}
               onPress={() => setShowIndicacaoModal(true)}
-              disabled={perfilTipo === 'Administrador'}
+              disabled={desabilitaTurma}
               activeOpacity={0.7}
             >
-              <Text style={[styles.selectText, !indicacao && { color: CORES.textoSecundario }]}>
-                {indicacao || 'Digite aqui...'}
+              <Text style={[styles.selectText, !indicacao && { color: CORES_SYMBIUS.textoTerciario }]}>
+                {indicacao || 'Selecione...'}
               </Text>
-              <Ionicons name="chevron-down" size={18} color={CORES.textoSecundario} />
+              <Ionicons name="chevron-down" size={18} color={CORES_SYMBIUS.textoSec} />
             </TouchableOpacity>
 
-            {/* BOTÃO */}
             <TouchableOpacity
               style={[styles.btnCriar, loading && { opacity: 0.6 }]}
               onPress={handleSignUp}
               disabled={loading}
             >
               {loading
-                ? <ActivityIndicator color={CORES.azulEscuro} />
-                : <Text style={styles.btnCriarText}>Criar Conta</Text>
-              }
+                ? <ActivityIndicator color={CORES_SYMBIUS.creme} />
+                : <Text style={styles.btnCriarText}>Criar Conta</Text>}
             </TouchableOpacity>
-
           </View>
 
-          {/* LINK LOGIN */}
           <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.loginLink}>
             <Text style={styles.loginText}>
-              Já tem uma conta? <Text style={{ color: CORES.rosa, fontWeight: '800' }}>Entrar</Text>
+              Já tem uma conta? <Text style={{ color: CORES_SYMBIUS.verdeEscuro, fontFamily: F.bold }}>Entrar</Text>
             </Text>
           </TouchableOpacity>
-
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* POPUP DE SUCESSO */}
       <Modal visible={popupOk} transparent animationType="fade">
         <View style={styles.popupOverlay}>
           <View style={styles.popupBox}>
             <View style={styles.popupIcon}>
-              <Ionicons name="checkmark" size={40} color="#FFF" />
+              <Ionicons name="checkmark" size={40} color={CORES_SYMBIUS.creme} />
             </View>
             <Text style={styles.popupTitle}>Conta criada!</Text>
             <Text style={styles.popupSub}>Verifique seu e-mail para confirmar.</Text>
@@ -274,7 +308,6 @@ export default function Cadastro({ navigation }: any) {
         </View>
       </Modal>
 
-      {/* MODAL SÉRIE */}
       <SelectionModal
         visible={showSerieModal}
         data={listaSeries}
@@ -282,8 +315,6 @@ export default function Cadastro({ navigation }: any) {
         onClose={() => setShowSerieModal(false)}
         title="Selecione sua Série"
       />
-
-      {/* MODAL TURMA */}
       <SelectionModal
         visible={showIndicacaoModal}
         data={listaIndicacoes}
@@ -291,12 +322,10 @@ export default function Cadastro({ navigation }: any) {
         onClose={() => setShowIndicacaoModal(false)}
         title="Selecione sua Turma"
       />
-
-    </SafeAreaView>
+    </View>
   );
 }
 
-// ─── Modal Reutilizável (FORA da função, então não tem o bug) ───
 const SelectionModal = ({ visible, data, onSelect, onClose, title }: any) => (
   <Modal visible={visible} transparent animationType="slide">
     <View style={styles.modalOverlay}>
@@ -310,7 +339,7 @@ const SelectionModal = ({ visible, data, onSelect, onClose, title }: any) => (
           renderItem={({ item }) => (
             <TouchableOpacity style={styles.modalItem} onPress={() => onSelect(item)}>
               <Text style={styles.modalItemText}>{item}</Text>
-              <Ionicons name="chevron-forward" size={18} color={CORES.textoSecundario} />
+              <Ionicons name="chevron-forward" size={18} color={CORES_SYMBIUS.textoSec} />
             </TouchableOpacity>
           )}
         />
@@ -323,83 +352,77 @@ const SelectionModal = ({ visible, data, onSelect, onClose, title }: any) => (
 );
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: CORES.fundo },
-  scroll:    { flexGrow: 1, alignItems: 'center', paddingHorizontal: 28, paddingTop: 30, paddingBottom: 40 },
+  container: { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
+  header:    { paddingHorizontal: 20, paddingBottom: 4 },
+  scroll:    { flexGrow: 1, alignItems: 'center', paddingHorizontal: 24, paddingTop: 4, paddingBottom: 40 },
 
-  // TOAST
   toast: {
-    position: 'absolute', top: 20, alignSelf: 'center',
-    backgroundColor: CORES.rosa, paddingVertical: 12, paddingHorizontal: 24,
+    position: 'absolute', top: 50, alignSelf: 'center',
+    backgroundColor: CORES_SYMBIUS.verdeEscuro, paddingVertical: 12, paddingHorizontal: 24,
     borderRadius: 24, zIndex: 999, elevation: 5,
   },
-  toastText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
+  toastText: { color: CORES_SYMBIUS.creme, fontFamily: F.bold, fontSize: 14 },
 
-  // LOGO
-  logoWrap:  { position: 'relative', marginBottom: 28, alignItems: 'center' },
-  logoDot:   { position: 'absolute', top: 2, left: 1, width: 9, height: 9, borderRadius: 5, backgroundColor: CORES.amarelo, zIndex: 10 },
-  logoText:  { fontSize: 44, fontWeight: '900', letterSpacing: -1 },
-  logoJum:   { color: CORES.azulEscuro },
-  logoO:     { color: CORES.rosa },
+  logoWrap:   { marginBottom: 24, alignItems: 'center' },
+  logoText:   { fontSize: 36, fontFamily: F.bold, letterSpacing: -0.5, color: CORES_SYMBIUS.verdeEscuro },
+  logoSlogan: { fontSize: 13, color: CORES_SYMBIUS.textoSec, fontFamily: F.semibold, marginTop: 2 },
 
-  // CARD
   card: {
     width: '100%',
-    backgroundColor: CORES.cardCinza,
-    borderRadius: 24,
+    backgroundColor: CORES_SYMBIUS.fundoSuave,
+    borderRadius: 28,
     padding: 24,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 20, shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
 
-  // CAMPOS
-  fieldLabel: { fontSize: 15, fontWeight: '700', color: CORES.azulEscuro, marginBottom: 6, marginTop: 4 },
+  papelRow:       { flexDirection: 'row', gap: 10, marginBottom: 6 },
+  papelCard: {
+    flex: 1, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 12,
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderWidth: 1.5, borderColor: CORES_SYMBIUS.borda2,
+    alignItems: 'center', gap: 2,
+  },
+  papelCardAtivo: { backgroundColor: CORES_SYMBIUS.verdeEscuro, borderColor: CORES_SYMBIUS.verdeEscuro },
+  papelTitulo:    { fontSize: 15, fontFamily: F.bold, color: CORES_SYMBIUS.texto, marginTop: 4 },
+  papelSub:       { fontSize: 11, fontFamily: F.medium, color: CORES_SYMBIUS.textoSec },
+  papelNota:      { fontSize: 11, fontFamily: F.medium, color: CORES_SYMBIUS.textoMuted, textAlign: 'center', marginBottom: 18 },
+
+  fieldLabel: { fontSize: 14, fontFamily: F.bold, color: CORES_SYMBIUS.texto, marginBottom: 8 },
   input: {
-    backgroundColor: CORES.inputBranco,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: CORES.borda,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: CORES.azulEscuro,
-    marginBottom: 14,
+    backgroundColor: CORES_SYMBIUS.fundoCard,
+    borderRadius: 16, borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
+    paddingHorizontal: 16, paddingVertical: 14,
+    fontSize: 15, fontFamily: F.regular, color: CORES_SYMBIUS.texto,
+    marginBottom: 16,
   },
+  senhaWrap:   { position: 'relative' },
+  olhoBtn:     { position: 'absolute', right: 14, top: 14 },
   selectInput: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  selectText:  { fontSize: 15, color: CORES.azulEscuro },
-  statusText:  { fontSize: 12, fontWeight: '700', marginTop: -10, marginBottom: 12, marginLeft: 4 },
+  selectText:  { fontSize: 15, fontFamily: F.regular, color: CORES_SYMBIUS.texto },
+  statusText:  { fontSize: 12, fontFamily: F.bold, marginTop: -10, marginBottom: 12, marginLeft: 4 },
 
-  // BOTÃO
   btnCriar: {
-    backgroundColor: CORES.fundo,
-    borderRadius: 14,
-    paddingVertical: 15,
-    alignItems: 'center',
-    marginTop: 10,
-    borderWidth: 1.5,
-    borderColor: '#D0D0D0',
+    backgroundColor: CORES_SYMBIUS.verdeEscuro, borderRadius: 18, paddingVertical: 16,
+    alignItems: 'center', marginTop: 8, elevation: 3,
+    shadowColor: CORES_SYMBIUS.verdeEscuro, shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
   },
-  btnCriarText: { color: CORES.azulEscuro, fontSize: 16, fontWeight: '700' },
+  btnCriarText: { color: CORES_SYMBIUS.creme, fontSize: 16, fontFamily: F.bold, letterSpacing: 0.5 },
 
   loginLink: { marginTop: 20, alignItems: 'center' },
-  loginText: { color: '#8D99AE', fontSize: 14, fontWeight: '500' },
+  loginText: { color: CORES_SYMBIUS.textoSec, fontSize: 14, fontFamily: F.medium },
 
-  // POPUP SUCESSO
-  popupOverlay: { flex: 1, backgroundColor: 'rgba(26,26,46,0.6)', justifyContent: 'center', alignItems: 'center' },
-  popupBox:     { backgroundColor: '#FFF', borderRadius: 24, padding: 30, alignItems: 'center', width: 260 },
-  popupIcon:    { width: 70, height: 70, borderRadius: 35, backgroundColor: CORES.sucesso, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  popupTitle:   { fontSize: 18, fontWeight: '900', color: CORES.azulEscuro, marginBottom: 6 },
-  popupSub:     { fontSize: 13, color: '#8D99AE', textAlign: 'center' },
+  popupOverlay: { flex: 1, backgroundColor: 'rgba(26,26,26,0.5)', justifyContent: 'center', alignItems: 'center' },
+  popupBox:     { backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 24, padding: 30, alignItems: 'center', width: 260 },
+  popupIcon:    { width: 70, height: 70, borderRadius: 35, backgroundColor: CORES_SYMBIUS.verdeEscuro, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  popupTitle:   { fontSize: 18, fontFamily: F.black, color: CORES_SYMBIUS.texto, marginBottom: 6 },
+  popupSub:     { fontSize: 13, fontFamily: F.regular, color: CORES_SYMBIUS.textoSec, textAlign: 'center' },
 
-  // MODAIS DE SELEÇÃO
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(26,26,46,0.5)', justifyContent: 'flex-end' },
-  modalSheet:   { backgroundColor: '#FFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24, maxHeight: '60%' },
-  modalHandle:  { width: 40, height: 4, backgroundColor: '#E0E0E0', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
-  modalTitle:   { fontSize: 18, fontWeight: '900', textAlign: 'center', color: CORES.azulEscuro, marginBottom: 12 },
-  modalItem:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
-  modalItemText:{ fontSize: 15, color: CORES.azulEscuro, fontWeight: '600' },
-  modalClose:   { marginTop: 16, paddingVertical: 14, backgroundColor: CORES.fundo, borderRadius: 14, alignItems: 'center' },
-  modalCloseText:{ fontWeight: '800', color: CORES.azulEscuro, fontSize: 15 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(26,26,26,0.5)', justifyContent: 'flex-end' },
+  modalSheet:   { backgroundColor: CORES_SYMBIUS.fundoCard, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24, maxHeight: '60%' },
+  modalHandle:  { width: 40, height: 4, backgroundColor: CORES_SYMBIUS.borda2, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  modalTitle:   { fontSize: 18, fontFamily: F.black, textAlign: 'center', color: CORES_SYMBIUS.texto, marginBottom: 12 },
+  modalItem:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: CORES_SYMBIUS.borda },
+  modalItemText:{ fontSize: 15, color: CORES_SYMBIUS.texto, fontFamily: F.semibold },
+  modalClose:   { marginTop: 16, paddingVertical: 14, backgroundColor: CORES_SYMBIUS.fundoSuave, borderRadius: 14, alignItems: 'center' },
+  modalCloseText:{ fontFamily: F.bold, color: CORES_SYMBIUS.texto, fontSize: 15 },
 });

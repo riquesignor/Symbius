@@ -1,4 +1,0 @@
-git stash ; git fetch origin ; git merge origin/João ; git stash pop ; npm install ; npx expo start -c
-git add .
-git commit -m "feat: atualizando minha branch com as melhorias"
-git push origin master

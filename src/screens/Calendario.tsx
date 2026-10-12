@@ -1,40 +1,59 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
-  SafeAreaView, StatusBar, Modal, TextInput,
+  StatusBar, Modal, TextInput,
   ActivityIndicator, Platform, FlatList,
-  useWindowDimensions, Animated
+  useWindowDimensions, Animated, Vibration
 } from 'react-native';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { db } from '../config/firebaseConfig';
 import {
   collection, query, where, getDocs, addDoc, updateDoc,
-  deleteDoc, doc, setDoc, getDoc, serverTimestamp
+  deleteDoc, doc, setDoc, getDoc, serverTimestamp, onSnapshot
 } from 'firebase/firestore';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { RefreshControl } from 'react-native';
+import * as Notifications from 'expo-notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import SymbiusTabBar from '../components/SymbiusTabBar';
+import { dispararPushSerie } from '../services/pushNotificationsService';
+
 
 
 // ── Fonte Poppins (igual Index) ──
-const F = {
-  regular:  'Poppins_400Regular',
-  medium:   'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold:     'Poppins_700Bold',
-  black:    'Poppins_800ExtraBold',
-};
+import { F } from '../constants/theme';
+import { CORES_SYMBIUS, CORES_SYMBIUS_DARK } from './Boasvindas';
 
-// ── Paleta alinhada com Index ──
+// ── Shadow de paleta Symbius (mesma técnica de Match/Perfil/Configuracoes):
+// a lógica desta tela usa CORES.xxx (import direto, fixo claro) e C.xxx
+// (via useAppSettings, muda com modoEscuro) — sombreamos os dois. ──
 const CORES = {
-  azulEscuro:      '#0B2046',
-  azulMedio:       '#1B3868',
-  rosa:            '#E51C6A',
-  amarelo:         '#FFC82C',
-  fundo:           '#F5F7FA',
-  branco:          '#FFFFFF',
-  cinzaClaro:      '#EAEFF4',
-  textoSec:        '#8D99AE',
-  preto:           '#1A1A2E',
+  azulEscuro: CORES_SYMBIUS.verdeEscuro,
+  branco:     CORES_SYMBIUS.fundoCard,
+  rosa:       '#C9667E',
+  textoSec:   CORES_SYMBIUS.textoSec,
+};
+const CORES_LOCAL_CLARO = {
+  azulEscuro: CORES_SYMBIUS.verdeEscuro,
+  branco:     CORES_SYMBIUS.fundoCard,
+  cinzaClaro: CORES_SYMBIUS.borda,
+  fundo:      CORES_SYMBIUS.fundo,
+  preto:      CORES_SYMBIUS.texto,
+  textoSec:   CORES_SYMBIUS.textoSec,
+  amarelo:    CORES_SYMBIUS.laranja,
+  rosa:       CORES_SYMBIUS.laranjaTexto,
+};
+const CORES_LOCAL_ESCURO = {
+  azulEscuro: CORES_SYMBIUS.verdeMedio,
+  branco:     CORES_SYMBIUS_DARK.fundoCard,
+  cinzaClaro: CORES_SYMBIUS_DARK.fundoSuave,
+  fundo:      CORES_SYMBIUS_DARK.fundo,
+  preto:      CORES_SYMBIUS_DARK.texto,
+  textoSec:   CORES_SYMBIUS_DARK.textoSec,
+  amarelo:    CORES_SYMBIUS.laranja,
+  rosa:       CORES_SYMBIUS.laranja,
 };
 
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -67,7 +86,6 @@ const TIPO_COLLECTION: Record<string, { sub: string; prefix: string }> = {
   Evento:  { sub: 'eventos',  prefix: 'evt' },
 };
 
-// Path completo: eventos_admin/tipos/{sub}/{id}
 const PARENT_DOC = 'tipos';
 
 // ── Utils ──
@@ -123,19 +141,27 @@ const FadeInView = ({ children, delay = 0, style }: any) => {
 
 // ── Componente principal ───────────────────────────────
 export default function Calendario({ navigation, route }: any) {
+  const [refreshing, setRefreshing] = useState(false);
   const insets = useSafeAreaInsets();
   const { width: winW, height: winH } = useWindowDimensions();
   const CEL_SIZE = Math.floor((winW - 32) / 7);
 
-  // ✅ NOVO — Pega configs globais do contexto
-  const { cores: C, fonteScale, modoEscuro } = useAppSettings();
+  const { cores: _coresContexto, fonteScale, modoEscuro: _modoEscuroReal } = useAppSettings();
+  // Paleta Symbius ainda não tem modo escuro definitivo (pendente) — fixado
+  // em claro por ora, independente do toggle real de Modo Escuro.
+  const modoEscuro = false;
+  const C = CORES_LOCAL_CLARO;
 
-  // ✅ NOVO — Helper de fonte escalada (deixa o JSX mais limpo)
   const fs = (size: number) => size * fonteScale;
 
   const uid     = route?.params?.uid;
 
   const [userRA, setUserRA] = useState<string | null>(null);
+  // tipo/turma vêm do perfil no Firestore: a barra inferior navega só com
+  // { uid }, e sem isso o admin perdia o botão de criar evento e o aluno
+  // não via nenhum evento da série.
+  const [tipo,  setTipo]  = useState<string | undefined>(route?.params?.tipo);
+  const [turma, setTurma] = useState<string | undefined>(route?.params?.turma);
 
 // Fetch do RA do usuário ao montar
 useEffect(() => {
@@ -145,9 +171,10 @@ useEffect(() => {
     const snap = await getDoc(doc(db, 'usuarios', uid));
     if (snap.exists()) {
       const dados = snap.data();
-      // ✅ Limpa RA inválido (admin com "N/A", barras, etc)
       const raLimpo = dados.ra?.replace(/[\/\\]/g, '');
       const raValido = raLimpo && raLimpo !== 'N/A' && raLimpo.length > 0;
+      setTipo(dados.tipo);
+      setTurma(dados.turma);
       setUserRA(raValido ? raLimpo : uid);
     }
   } catch (e) { console.error('Erro buscar RA:', e); }
@@ -155,8 +182,6 @@ useEffect(() => {
   buscarRA();
 }, [uid]);
 
-  const tipo    = route?.params?.tipo;
-  const turma   = route?.params?.turma;
   const isAdmin = tipo?.toLowerCase() === 'administrador';
   const serie   = extrairSerie(turma || '');
 
@@ -179,12 +204,10 @@ useEffect(() => {
   const [eventoDetalhe,   setEventoDetalhe]   = useState<any>(null);
   const [diaSelecionado,  setDiaSelecionado]  = useState('');
 
-  // ✅ Modal de confirmação customizado (substitui Alert.alert)
   const [confirm, setConfirm] = useState<{
     titulo: string; msg: string; btn: string; onOk: () => void
   } | null>(null);
 
-  // ✅ Toast de feedback
   const [toast, setToast] = useState('');
   useEffect(() => {
     if (!toast) return;
@@ -199,7 +222,6 @@ useEffect(() => {
   const [lembreTitulo, setLembreTitulo] = useState('');
   const [lembreDesc,   setLembreDesc]   = useState('');
   const [salvandoLemb, setSalvandoLemb] = useState(false);
-  // ✅ Edição de lembrete pessoal
   const [lembEditandoId, setLembEditandoId] = useState<string | null>(null);
 
   // ── Form admin ──
@@ -211,7 +233,6 @@ useEffect(() => {
   const [salvandoAdm,  setSalvandoAdm]  = useState(false);
   const [modalTipoEvt, setModalTipoEvt] = useState(false);
   const [modalDataEvt, setModalDataEvt] = useState(false);
-  // ✅ Edição de evento admin
   const [admEditandoId, setAdmEditandoId] = useState<string | null>(null);
 
   // Seletor de data
@@ -256,7 +277,6 @@ useEffect(() => {
       const config = TIPO_COLLECTION[tipo];
       let snap;
       
-      // Path: eventos_admin/tipos/{eventos|avisos|provas|feriados}
       const subRef = collection(db, 'eventos_admin', PARENT_DOC, config.sub);
 
       if (isAdmin) {
@@ -271,7 +291,7 @@ useEffect(() => {
       snap.forEach(d => {
         const ev: any = { 
           id: d.id, 
-          _sub: config.sub,  // ← guarda de qual subcollection veio
+          _sub: config.sub,
           ...d.data() 
         };
         todos.push(ev);
@@ -286,14 +306,23 @@ useEffect(() => {
   } catch (e) { console.error('Erro eventos admin:', e); }
 };
 
-  // ✅ Filtro: mês selecionado + tipo
+  
   const eventosFiltrados = useMemo(() => {
     const doMes = adminTodos.filter(ev => {
       const [a, m] = ev.data.split('-').map(Number);
       return a === ano && m === mes + 1;
     });
-    if (filtroTipo === 'todos') return doMes;
-    return doMes.filter(ev => ev.tipo === filtroTipo);
+    const filtrados = filtroTipo === 'todos' ? doMes : doMes.filter(ev => ev.tipo === filtroTipo);
+
+    // Prioridade: próximos (>= hoje) primeiro em ordem crescente; vencidos (<hoje) por último em ordem decrescente
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const hojeStr = hoje.toISOString().split('T')[0]; // 'YYYY-MM-DD'
+
+    const proximos = filtrados.filter(ev => ev.data >= hojeStr).sort((a, b) => a.data.localeCompare(b.data));
+    const vencidos = filtrados.filter(ev => ev.data <  hojeStr).sort((a, b) => b.data.localeCompare(a.data));
+
+    return [...proximos, ...vencidos];
   }, [adminTodos, mes, ano, filtroTipo]);
 
   // ── Lembrete: salvar OU atualizar ──
@@ -315,7 +344,6 @@ useEffect(() => {
       descricao: capitalizarPrimeira(lembreDesc.trim()),
     };
     if (lembEditandoId) {
-      // ✅ Edição
       await updateDoc(doc(db, 'lembretes', userRA, 'lembretes', lembEditandoId), dados);
       setLembretes(prev => {
         const nova = new Map(prev);
@@ -357,7 +385,6 @@ useEffect(() => {
     setLembreTitulo(''); setLembreDesc('');
   };
 
-  // ✅ Excluir com modal customizado
   const pedirConfirmacaoExcluirLembrete = (id: string) => {
   setConfirm({
     titulo: 'Excluir lembrete?',
@@ -420,7 +447,6 @@ useEffect(() => {
       series:    adminSeries,
     };
 
-    // ✅ Pega a collection correta baseada no tipo
     const config = TIPO_COLLECTION[adminTipo];
     if (!config) {
     setToast('Tipo inválido');
@@ -440,7 +466,6 @@ useEffect(() => {
       await carregarEventosAdmin();
       setToast('Evento atualizado');
     } else {
-      // ✅ PRIMEIRO garante que o doc pai 'tipos' existe
       await setDoc(doc(db, 'eventos_admin', PARENT_DOC), 
         { _placeholder: true }, 
         { merge: true }
@@ -460,6 +485,13 @@ useEffect(() => {
         return nova;
       });
       setToast('Evento publicado');
+      const [, mEv, dEv] = adminData.split('-').map(Number);
+      dispararPushSerie({
+        series: adminSeries,
+        titulo: `Novo ${adminTipo.toLowerCase()} na agenda`,
+        corpo: `${dados.titulo} · ${dEv} de ${MESES[mEv - 1]}`,
+        dados: { tipo: 'evento_admin', eventoId: novoId, tipoEvento: adminTipo },
+      });
     }
 
     setModalAdminForm(false);
@@ -511,6 +543,17 @@ useEffect(() => {
 
   const noMesAtual = mes === hoje.getMonth() && ano === hoje.getFullYear();
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([carregarLembretes(), carregarEventosAdmin()]);
+      } catch (error) {
+      console.error('Erro ao recarregar:', error);
+      } finally {
+      setRefreshing(false);
+    }
+  };
+  
   const renderCelula = (dia: number | null, idx: number) => {
     if (!dia) return (
       <View
@@ -520,12 +563,14 @@ useEffect(() => {
           {
             width: CEL_SIZE,
             height: CEL_SIZE * 0.95,
-            backgroundColor: modoEscuro ? C.fundo : '#FBFBFD',
+            backgroundColor: modoEscuro ? C.cinzaClaro : C.branco,
             borderColor: C.cinzaClaro,
           }
         ]}
       />
     );
+
+    
 
     const dataStr   = formatarDataStr(ano, mes + 1, dia);
     const eHoje     = dia === hoje.getDate() && noMesAtual;
@@ -546,8 +591,7 @@ useEffect(() => {
             backgroundColor: C.branco,
             borderColor: C.cinzaClaro,
           },
-          eFimSem && { backgroundColor: modoEscuro ? C.fundo : '#FAFAF8' },
-          (temLemb || temAdmin) && { backgroundColor: modoEscuro ? C.cinzaClaro : '#FAFFF9' },
+          
         ]}
         onPress={() => { setDiaSelecionado(dataStr); setModalDia(true); }}
         activeOpacity={0.7}
@@ -652,19 +696,23 @@ useEffect(() => {
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: C.fundo }]}>
+    <View style={[styles.container, { backgroundColor: C.fundo }]}>
       {/* StatusBar continua azul fixo (identidade visual do header) */}
       <StatusBar barStyle="light-content" backgroundColor={CORES.azulEscuro} />
 
       {/* TOAST — mantém azul escuro fixo (overlay) */}
       {toast !== '' && (
-        <View style={styles.toast}>
+        <View style={[styles.toast, { top: insets.top + 12 }]}>
           <Text style={[styles.toastText, { fontSize: fs(13) }]}>{toast}</Text>
         </View>
       )}
 
       {/* HEADER — mantém azul escuro fixo (identidade visual) */}
-      <View style={[styles.header, { paddingTop: insets.top }]}>
+      <View style={[
+        styles.header,
+        { paddingTop: insets.top },
+        !modoEscuro && { shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4 }
+      ]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.btnVoltar}>
           <Ionicons name="arrow-back" size={20} color={CORES.branco} />
         </TouchableOpacity>
@@ -683,8 +731,17 @@ useEffect(() => {
         )}
       </View>
 
-      <ScrollView
+    <ScrollView
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          tintColor={modoEscuro ? C.amarelo : CORES.azulEscuro}
+          title="Puxe para recarregar"
+          titleColor={C.textoSec}
+        />
+        }
         contentContainerStyle={{ paddingBottom: 40 }}
       >
         {/* NAV MÊS */}
@@ -759,6 +816,7 @@ useEffect(() => {
           </View>
 
           {/* CHIPS DE FILTRO */}
+          <View style={{ position: 'relative' }}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -767,8 +825,8 @@ useEffect(() => {
             <TouchableOpacity
               style={[
                 styles.chip,
-                { backgroundColor: C.fundo, borderColor: C.cinzaClaro },
-                filtroTipo === 'todos' && { backgroundColor: C.azulEscuro, borderColor: C.azulEscuro }
+                { backgroundColor: modoEscuro ? C.cinzaClaro : C.fundo, borderColor: C.cinzaClaro },
+                filtroTipo === 'todos' && { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro, borderColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
               ]}
               onPress={() => setFiltroTipo('todos')}
             >
@@ -788,7 +846,7 @@ useEffect(() => {
                   key={t}
                   style={[
                     styles.chip,
-                    { backgroundColor: C.fundo, borderColor: C.cinzaClaro },
+                    { backgroundColor: config.bg, borderColor: config.bg },
                     ativo && { backgroundColor: config.color, borderColor: config.color }
                   ]}
                   onPress={() => setFiltroTipo(t)}
@@ -810,10 +868,20 @@ useEffect(() => {
               );
             })}
           </ScrollView>
+          <LinearGradient
+            colors={[
+              'transparent',
+              modoEscuro ? 'rgba(17,24,39,0.95)' : 'rgba(255,255,255,0.95)',
+            ]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 36, pointerEvents: 'none' }}
+          />
+          </View>
 
           {/* LISTA */}
           {eventosFiltrados.length === 0 ? (
-            <View style={[styles.listaVazia, { paddingTop: insets.top }]}>
+            <View style={styles.listaVazia}>
               <Ionicons name="calendar-outline" size={32} color={C.cinzaClaro} />
               <Text style={[styles.listaVaziaText, { color: C.textoSec, fontSize: fs(12) }]}>
                 Nenhum evento{filtroTipo !== 'todos' ? ` do tipo ${filtroTipo}` : ''} em {MESES[mes]}.
@@ -854,7 +922,7 @@ useEffect(() => {
               return (
                 <ScrollView showsVerticalScrollIndicator={false}>
                   <View style={[styles.detHero, { backgroundColor: config.bg }]}>
-                    <View style={[styles.detHeroIcon, { backgroundColor: config.color }]}>
+                    <View style={[styles.detHero, { backgroundColor: modoEscuro ? C.cinzaClaro : config.bg }]}>
                       <Ionicons name={config.icon} size={26} color={CORES.branco} />
                     </View>
                     <Text style={[styles.detHeroTipo, { color: config.color, fontSize: fs(11) }]}>
@@ -923,7 +991,7 @@ useEffect(() => {
                   )}
 
                   <TouchableOpacity
-                    style={[styles.btnFecharModal, { backgroundColor: C.fundo }]}
+                  style={[styles.btnFecharModal, { backgroundColor: modoEscuro ? C.cinzaClaro : C.fundo }]}
                     onPress={() => setModalDetalhe(false)}
                   >
                     <Text style={[styles.btnFecharModalText, { color: C.textoSec, fontSize: fs(13) }]}>
@@ -1419,7 +1487,8 @@ useEffect(() => {
         </View>
       </Modal>
 
-    </SafeAreaView>
+      <SymbiusTabBar ativa="agenda" navigation={navigation} uid={uid} />
+    </View>
   );
 }
 
@@ -1458,7 +1527,7 @@ const styles = StyleSheet.create({
   numWrap:           { width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
   numDia:            { fontFamily: F.bold },
   dotsRow:           { flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginTop: 2 },
-  dot:               { width: 5, height: 5, borderRadius: 3 },
+  dot:               { width: 8, height: 8, borderRadius: 4 },
 
   // SEÇÃO EVENTOS
   secaoEventos:      { marginHorizontal: 16, marginTop: 18, borderRadius: 20, padding: 16, elevation: 3, shadowColor: CORES.azulEscuro, shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },

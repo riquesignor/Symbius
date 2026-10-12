@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "SEU_PROJECT_NUMBER",
+    "project_id": "seu-projeto-firebase",
+    "storage_bucket": "seu-projeto-firebase.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "SEU_APP_ID",
+        "android_client_info": {
+          "package_name": "com.seupacote.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "SUA_API_KEY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

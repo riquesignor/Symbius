@@ -5,7 +5,7 @@
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
-      "firebase/*": ["node_modules/firebase/*"]
+      "firebase/*": ["./node_modules/firebase/*"]
     }
   }
 }
