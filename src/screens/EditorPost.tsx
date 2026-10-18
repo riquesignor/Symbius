@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CORES_SYMBIUS } from '../constants/coresSymbius';
 import { F } from '../constants/theme';
 import { escolherImagemBase64 } from '../utils/midiaNativa';
+import { dispararPushTodos } from '../services/pushNotificationsService';
 
 const CATEGORIAS_OPCOES = [
   { label: 'Avisos',        value: 'avisos',        icon: 'campaign'     },
@@ -77,6 +78,12 @@ export default function EditorPost({ route, navigation }: any) {
           visualizacoes:   0,
           leitores:        [],
           data_publicacao: serverTimestamp(),
+        });
+        const cat = CATEGORIAS_OPCOES.find(c => c.value === categoria)?.label || 'Mural';
+        dispararPushTodos({
+          titulo: `📰 Novo post: ${cat}`,
+          corpo: postData.titulo,
+          dados: { tipo: 'novo_post', postId: idPost },
         });
         Alert.alert('Pronto!', 'Post publicado.', [{ text: 'OK', onPress: () => navigation.goBack() }]);
       }

@@ -273,6 +273,15 @@ export default function Index({ navigation, route }: any) {
     } catch (e) {}
   };
 
+  // Veio da notificação de post novo: abre o post assim que ele carregar.
+  const abrirPostId = route?.params?.abrirPostId;
+  useEffect(() => {
+    if (!abrirPostId || posts.length === 0) return;
+    const alvo = posts.find(p => p.id === abrirPostId);
+    if (alvo) visualizarPost(alvo);
+    navigation.setParams({ abrirPostId: undefined });
+  }, [abrirPostId, posts.length]);
+
   // Fecha o modal de "publicações antigas" antes de abrir o post em cima,
   // pra não ter dois Modal do RN abertos ao mesmo tempo.
   const abrirPostAntigo = (post: any) => {
@@ -702,7 +711,8 @@ export default function Index({ navigation, route }: any) {
                         style={styles.notifCard}
                         onPress={() => {
                           setModalNotif(false);
-                          navigation.navigate('Chat', { outroUid: item.outroUid, outroNome: item.outroNome });
+                          if (item.grupoId) navigation.navigate('GrupoChat', { grupoId: item.grupoId, uid });
+                          else navigation.navigate('Chat', { outroUid: item.outroUid, outroNome: item.outroNome });
                         }}
                       >
                         <View style={[styles.notifIconWrap, { backgroundColor: CORES_SYMBIUS.laranjaTexto + '18' }]}>

@@ -85,6 +85,7 @@
     notifEventos,  setNotifEventos,
     notifMatch,    setNotifMatch,
     notifMensagens, setNotifMensagens,
+    notifDiario,    setNotifDiario,
     somNotif,      setSomNotif,
     vibracao,      setVibracao,
     visibilidade,  setVisibilidade,
@@ -574,6 +575,14 @@
                 descricao="Solicitações e matches aceitos"
                 toggle={notifMatch && notifGeral}
                 onToggle={toggleNotifMatch}
+              />
+              <SettingRow
+                icon="leaf"
+                iconCor={CORES.verde}
+                label="Desafio diário"
+                descricao="Lembrete quando o XP do dia está liberado"
+                toggle={notifDiario && notifGeral}
+                onToggle={setNotifDiario}
               />
               <SettingRow
                 icon="musical-notes"

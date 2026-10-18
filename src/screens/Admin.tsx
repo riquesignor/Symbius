@@ -5,6 +5,7 @@ import {
   Modal, Animated, useWindowDimensions, Platform
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
+import { dispararPush } from '../services/pushNotificationsService';
 import {
   collection, query, orderBy, getDocs, updateDoc, doc
 } from 'firebase/firestore';
@@ -260,10 +261,28 @@ export default function Admin({ navigation, route }: any) {
     try { await carregar(); } catch (e) { console.error(e); } finally { setRefreshing(false); }
   };
 
+  // Avisa a pessoa quando a conta é suspensa ou volta a ficar ativa.
+  const avisarMudancaStatus = (uid: string, antes: number, depois: number) => {
+    if (antes === depois) return;
+    if (depois === 2) dispararPush({
+      destinatarioUid: uid,
+      titulo: '⛔ Conta desativada',
+      corpo: 'Sua conta no Symbius foi desativada pela coordenação.',
+      dados: { tipo: 'conta_suspensa' },
+    });
+    else if (antes === 2 && depois === 1) dispararPush({
+      destinatarioUid: uid,
+      titulo: '✅ Conta reativada',
+      corpo: 'Sua conta no Symbius foi reativada. Bem-vindo de volta!',
+      dados: { tipo: 'conta_reativada' },
+    });
+  };
+
   const salvarUsuario = async (uid: string) => {
     setSalvando(prev => ({ ...prev, [uid]: true }));
     try {
       await updateDoc(doc(db, 'usuarios', uid), { tipo: editTipo[uid], status: editStatus[uid] });
+      avisarMudancaStatus(uid, (usuarios.find((u: any) => u.uid === uid) as any)?.status, editStatus[uid]);
       setUsuarios(prev => prev.map((u: any) => u.uid === uid ? { ...u, tipo: editTipo[uid], status: editStatus[uid] } : u));
       setToast('Usuário atualizado');
     } catch { setToast('Falha ao salvar'); }
@@ -285,6 +304,7 @@ export default function Admin({ navigation, route }: any) {
     setSalvandoCartao(true);
     try {
       await updateDoc(doc(db, 'usuarios', usuarioBuscado.uid), { tipo: cartaoTipo, status: cartaoStatus });
+      avisarMudancaStatus(usuarioBuscado.uid, usuarioBuscado.status, cartaoStatus);
       setUsuarios(prev => prev.map((u: any) => u.uid === usuarioBuscado.uid ? { ...u, tipo: cartaoTipo, status: cartaoStatus } : u));
       setToast(`${usuarioBuscado.nome_completo.split(' ')[0]} atualizado`);
     } catch { setToast('Falha ao salvar'); }

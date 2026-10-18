@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
-  Platform, Vibration, AppState,
+  Platform, Vibration, AppState, Alert,
   Animated, TouchableOpacity, Image, Text, View, StyleSheet, Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,7 +14,8 @@ import { db, auth } from '../config/firebaseConfig';
 import { useAppSettings } from './AppSettingsContext';
 import { CORES_SYMBIUS } from '../constants/coresSymbius';
 import { F } from '../constants/theme';
-import { navegarGlobal } from '../navegacao';
+import { navegarGlobal, navegacaoRef } from '../navegacao';
+import { sairDaConta } from '../services/authService';
 import {
   configurarPushParaUsuario,
   registrarListenerForeground,
@@ -40,6 +41,18 @@ Notifications.setNotificationHandler({
   }),
 });
 
+// Push que chega com o app aberto vira banner só pros tipos sem listener próprio
+// do Firestore abaixo (mensagens, solicitações e eventos já têm o deles).
+const TIPOS_BANNER_PUSH = [
+  'resumo_curtida', 'resumo_comentario', 'match_aceito', 'grupo_adicionado',
+  'novo_post', 'checkin', 'conta_reativada', 'admin_nova_conta', 'admin_resumo',
+];
+const ICONE_POR_TIPO: Record<string, keyof typeof Ionicons.glyphMap> = {
+  match_aceito: 'heart', resumo_curtida: 'thumbs-up', resumo_comentario: 'chatbubble-ellipses',
+  grupo_adicionado: 'people', novo_post: 'newspaper', checkin: 'leaf',
+  conta_reativada: 'checkmark-circle', admin_nova_conta: 'person-add', admin_resumo: 'clipboard',
+};
+
 const extrairSerie = (turma: string): string | null => {
   const match = (turma || '').match(/^(\d+)/);
   return match ? `${match[1]}º` : null;
@@ -59,6 +72,7 @@ export interface ChatNotif {
   corpo: string;
   outroUid: string;
   outroNome: string;
+  grupoId?: string;
   quando: Date;
 }
 
@@ -98,6 +112,13 @@ export const rotaDoPush = (data: any, uid: string | null): { rota: string; param
     case 'lembrete':          return { rota: 'Calendario', params: { uid } };
     case 'resumo_curtida':
     case 'resumo_comentario': return { rota: 'Resumos', params: { uid, resumoId: data.resumoId } };
+    case 'mensagem_grupo':
+    case 'grupo_adicionado':  return { rota: 'GrupoChat', params: { uid, grupoId: data.grupoId } };
+    case 'novo_post':         return { rota: 'Index', params: { uid, abrirPostId: data.postId } };
+    case 'checkin':
+    case 'conta_reativada':   return { rota: 'Index', params: { uid } };
+    case 'admin_nova_conta':
+    case 'admin_resumo':      return { rota: 'Admin', params: { uid } };
     default:                  return null;
   }
 };
@@ -198,14 +219,14 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
   useEffect(() => {
     return registrarListenerForeground((m) => {
       const data: any = m.data || {};
-      if (!['resumo_curtida', 'resumo_comentario', 'match_aceito'].includes(data.tipo)) return;
+      if (!TIPOS_BANNER_PUSH.includes(data.tipo)) return;
       if (data.tipo === 'match_aceito' && !prefsRef.current.notifMatch) return;
       const destino = rotaDoPush(data, uidRef.current);
       if (!destino) return;
       mostrarBannerRef.current({
         titulo: m.notification?.title || 'Symbius',
         corpo: m.notification?.body || '',
-        icone: data.tipo === 'match_aceito' ? 'heart' : data.tipo === 'resumo_curtida' ? 'thumbs-up' : 'chatbubble-ellipses',
+        icone: ICONE_POR_TIPO[data.tipo] || 'notifications',
         rota: destino.rota,
         params: destino.params,
       });
@@ -232,6 +253,13 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
     setDoc(firestoreDoc(db, 'usuarios', uidAtual), { online: true }, { merge: true }).catch(() => {});
     return onSnapshot(firestoreDoc(db, 'usuarios', uidAtual), (snap) => {
       const d = snap.data() || {};
+      if (d.status === 2) {
+        sairDaConta(uidAtual).finally(() => {
+          if (navegacaoRef.isReady()) navegacaoRef.reset({ index: 0, routes: [{ name: 'Login' }] });
+          Alert.alert('Conta desativada', 'Sua conta foi desativada pela coordenação. Em caso de dúvida, procure a secretaria.');
+        });
+        return;
+      }
       setSerie(extrairSerie(d.turma || ''));
       silenciadosRef.current = Array.isArray(d.silenciados) ? d.silenciados : [];
     }, () => {});
@@ -252,25 +280,31 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
         const remetente = conversa.quemEnviou;
         if (!remetente || remetente === uidAtual) return;
         if (conversaAtivaRef.current === conversaId) return;
-        if (silenciadosRef.current.includes(remetente)) return;
+        const ehGrupo = !!conversa.isGrupo;
+        if (silenciadosRef.current.includes(ehGrupo ? conversaId : remetente)) return;
 
         const chave = `${conversaId}_${conversa.data_postagem?.seconds ?? ''}`;
         if (ultimas[conversaId] === chave) return;
         ultimas[conversaId] = chave;
 
-        const nome = conversa.dadosMembros?.[remetente]?.nome || 'Nova mensagem';
-        const foto = conversa.dadosMembros?.[remetente]?.foto || null;
+        const nomeRemetente = conversa.dadosMembros?.[remetente]?.nome || 'Nova mensagem';
+        const nome = ehGrupo ? (conversa.nome || 'Grupo') : nomeRemetente;
+        const foto = ehGrupo ? null : (conversa.dadosMembros?.[remetente]?.foto || null);
         const corpo = String(conversa.ultimaMensagem || '').substring(0, 120);
 
         setNotificacoesChat(prev => [{
           id: `${conversaId}_${Date.now()}`, nome, foto, corpo,
-          outroUid: remetente, outroNome: nome, quando: new Date(),
+          outroUid: remetente, outroNome: nomeRemetente,
+          grupoId: ehGrupo ? conversaId : undefined,
+          quando: new Date(),
         }, ...prev].slice(0, 20));
 
         if (!prefsRef.current.notifMensagens) return;
         mostrarBannerRef.current({
           titulo: nome, corpo, foto,
-          rota: 'Chat', params: { outroUid: remetente, outroNome: nome },
+          icone: ehGrupo ? 'people' : undefined,
+          rota: ehGrupo ? 'GrupoChat' : 'Chat',
+          params: ehGrupo ? { grupoId: conversaId, uid: uidAtual } : { outroUid: remetente, outroNome: nomeRemetente },
         });
       });
     }, (err) => console.log('Erro listener conversas:', err.message));

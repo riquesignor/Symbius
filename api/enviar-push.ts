@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { dbAdmin } from './_lib/firebaseAdmin';
-import { liberarCors, uidDoToken, permitePush, enviarParaTokens } from './_lib/push';
+import { liberarCors, uidDoToken, permitePush, enviarParaTokens, TIPOS_SO_ADMIN, ehAdmin } from './_lib/push';
 
 // POST /api/enviar-push
 // Headers: Authorization: Bearer <firebase-id-token-do-remetente>
@@ -19,10 +19,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (destinatarioUid === remetenteUid) return res.status(200).json({ enviado: false, motivo: 'Destinatário é o próprio remetente' });
 
   try {
+    if (TIPOS_SO_ADMIN.has(dados.tipo)) {
+      const remetente = (await dbAdmin.collection('usuarios').doc(remetenteUid).get()).data();
+      if (!ehAdmin(remetente)) return res.status(403).json({ erro: 'Apenas administradores' });
+    }
+    // Mensagem de grupo: os dois precisam ser membros, senão qualquer um
+    // mandaria push "em nome" de um grupo do qual não participa.
+    if (dados.grupoId) {
+      const grupo = (await dbAdmin.collection('conversas').doc(String(dados.grupoId)).get()).data();
+      const membros: string[] = grupo?.membros || [];
+      if (!grupo?.isGrupo || !membros.includes(remetenteUid) || !membros.includes(destinatarioUid)) {
+        return res.status(403).json({ erro: 'Não é membro do grupo' });
+      }
+    }
+
     const snap = await dbAdmin.collection('usuarios').doc(destinatarioUid).get();
     const usuario = snap.data();
     if (!usuario?.fcmToken) return res.status(200).json({ enviado: false, motivo: 'Destinatário sem token FCM' });
-    if (!permitePush(usuario, dados.tipo, remetenteUid)) return res.status(200).json({ enviado: false, motivo: 'Bloqueado pelas preferências do destinatário' });
+    if (!permitePush(usuario, dados.tipo, dados.grupoId ? String(dados.grupoId) : remetenteUid)) return res.status(200).json({ enviado: false, motivo: 'Bloqueado pelas preferências do destinatário' });
 
     // O remetente vem do token verificado, não do corpo — evita alguém se
     // passar por outra pessoa no toque da notificação.

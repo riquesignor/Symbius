@@ -10,6 +10,7 @@ import { auth, db } from '../config/firebaseConfig';
 import { createUserWithEmailAndPassword, sendEmailVerification, signOut } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { CORES_SYMBIUS } from './Boasvindas';
+import { notificarAdmins } from '../services/pushNotificationsService';
 import { F } from '../constants/theme';
 
 type Papel = 'aprender' | 'ensinar';
@@ -127,6 +128,9 @@ export default function Cadastro({ navigation, route }: any) {
         statusOnline: false,
         visibilidade: true,
       });
+
+      // Ainda logado aqui (createUser loga sozinho), então dá pra chamar o backend.
+      await notificarAdmins('nova_conta');
 
       // createUser já deixa a pessoa logada; o acesso de verdade é pelo Login.
       await signOut(auth);

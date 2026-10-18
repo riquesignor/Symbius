@@ -22,6 +22,7 @@ interface AppSettingsContextType {
   notifEventos: boolean;
   notifMatch: boolean;
   notifMensagens: boolean;
+  notifDiario: boolean;
   somNotif: string;
   vibracao: boolean;
   setNotifGeral: (v: boolean) => void;
@@ -29,6 +30,7 @@ interface AppSettingsContextType {
   setNotifEventos: (v: boolean) => void;
   setNotifMatch: (v: boolean) => void;
   setNotifMensagens: (v: boolean) => void;
+  setNotifDiario: (v: boolean) => void;
   setSomNotif: (v: string) => void;
   setVibracao: (v: boolean) => void;
 
@@ -61,6 +63,7 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [notifEventos, setNotifEventosState] = useState(true);
   const [notifMatch, setNotifMatchState] = useState(true);
   const [notifMensagens, setNotifMensagensState] = useState(true);
+  const [notifDiario, setNotifDiarioState] = useState(true);
   const [somNotif, setSomNotifState] = useState('Normal');
   const [vibracao, setVibracaoState] = useState(true);
   const [visibilidade, setVisibilidadeState] = useState('Público');
@@ -100,7 +103,7 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       const configs = await AsyncStorage.multiGet([
         'cfg_modoEscuro', 'cfg_tamanhoFonte', 'cfg_notifGeral',
-        'cfg_notifAvisos', 'cfg_notifEventos', 'cfg_notifMatch', 'cfg_notifMensagens',
+        'cfg_notifAvisos', 'cfg_notifEventos', 'cfg_notifMatch', 'cfg_notifMensagens', 'cfg_notifDiario',
         'cfg_somNotif', 'cfg_vibracao', 'cfg_serieFiltro',
       ]);
       const map: Record<string, string | null> = {};
@@ -113,6 +116,7 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (map.cfg_notifEventos  !== null) setNotifEventosState(map.cfg_notifEventos !== '0');
       if (map.cfg_notifMatch    !== null) setNotifMatchState(map.cfg_notifMatch !== '0');
       if (map.cfg_notifMensagens !== null) setNotifMensagensState(map.cfg_notifMensagens !== '0');
+      if (map.cfg_notifDiario   !== null) setNotifDiarioState(map.cfg_notifDiario !== '0');
       if (map.cfg_somNotif      !== null) setSomNotifState(map.cfg_somNotif || 'Normal');
       if (map.cfg_vibracao      !== null) setVibracaoState(map.cfg_vibracao !== '0');
       if (map.cfg_serieFiltro   !== null) setSerieFiltroState(map.cfg_serieFiltro || 'Não definir');
@@ -127,6 +131,7 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
           eventos:   map.cfg_notifEventos   !== '0',
           match:     map.cfg_notifMatch     !== '0',
           mensagens: map.cfg_notifMensagens !== '0',
+          diario:    map.cfg_notifDiario    !== '0',
         });
         // Marca online assim que o Firebase confirmar que está acessível
         // (aqui Auth já está pronto pois recarregarDoFirebase fez um getDoc com sucesso)
@@ -212,6 +217,11 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
     salvarLocal('cfg_notifMatch', v);
     salvarPrefNotif('match', v);
   };
+  const setNotifDiario = (v: boolean) => {
+    setNotifDiarioState(v);
+    salvarLocal('cfg_notifDiario', v);
+    salvarPrefNotif('diario', v);
+  };
   const setNotifMensagens = (v: boolean) => {
     setNotifMensagensState(v);
     salvarLocal('cfg_notifMensagens', v);
@@ -241,8 +251,8 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const value: AppSettingsContextType = {
     modoEscuro, tamanhoFonte,
     setModoEscuro, setTamanhoFonte,
-    notifGeral, notifAvisos, notifEventos, notifMatch, notifMensagens, somNotif, vibracao,
-    setNotifGeral, setNotifAvisos, setNotifEventos, setNotifMatch, setNotifMensagens, setSomNotif, setVibracao,
+    notifGeral, notifAvisos, notifEventos, notifMatch, notifMensagens, notifDiario, somNotif, vibracao,
+    setNotifGeral, setNotifAvisos, setNotifEventos, setNotifMatch, setNotifMensagens, setNotifDiario, setSomNotif, setVibracao,
     visibilidade, statusOnline, serieFiltro,
     setVisibilidade, setStatusOnline, setSerieFiltro,
     cores, fonteScale, carregando,

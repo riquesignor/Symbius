@@ -36,14 +36,31 @@ const PREF_POR_TIPO: Record<string, string> = {
   lembrete: 'eventos',
   resumo_curtida: 'geral',
   resumo_comentario: 'geral',
+  mensagem_grupo: 'mensagens',
+  grupo_adicionado: 'match',
+  novo_post: 'avisos',
+  checkin: 'diario',
 };
 
-export const permitePush = (usuario: any, tipo: string, remetenteUid?: string): boolean => {
+// Avisos sobre a própria conta chegam sempre, independente das preferências.
+const TIPOS_OBRIGATORIOS = new Set(['conta_suspensa', 'conta_reativada']);
+
+// Só um administrador pode disparar esses tipos (senão qualquer usuário
+// logado poderia mandar "sua conta foi suspensa" pra outra pessoa).
+export const TIPOS_SO_ADMIN = new Set(['conta_suspensa', 'conta_reativada']);
+
+export const ehAdmin = (u: any) => String(u?.tipo || '').toLowerCase() === 'administrador';
+export const ehStaff = (u: any) => ehAdmin(u) || String(u?.tipo || '').toLowerCase() === 'gremista';
+
+// `silenciavel` é quem pode estar na lista de silenciados: o remetente numa
+// conversa 1:1 ou o id do grupo numa conversa em grupo.
+export const permitePush = (usuario: any, tipo: string, silenciavel?: string): boolean => {
+  if (TIPOS_OBRIGATORIOS.has(tipo)) return true;
   const prefs = usuario?.notif_prefs || {};
   if (prefs.geral === false) return false;
   const campo = PREF_POR_TIPO[tipo];
   if (campo && prefs[campo] === false) return false;
-  if (tipo === 'mensagem' && remetenteUid && (usuario?.silenciados || []).includes(remetenteUid)) return false;
+  if (silenciavel && (usuario?.silenciados || []).includes(silenciavel)) return false;
   return true;
 };
 

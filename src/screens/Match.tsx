@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity,
   Image, StatusBar, Dimensions, Platform,
-  ActivityIndicator, FlatList, Vibration, Animated, PanResponder,
+  ActivityIndicator, FlatList, Vibration, Animated, PanResponder, Switch, Modal, TextInput,
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
 import {
@@ -15,6 +15,7 @@ import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { dispararPush } from '../services/pushNotificationsService';
+import { Grupo, criarGrupo, MAX_MEMBROS_GRUPO } from '../services/gruposService';
 
 // ── Fonte Poppins ──
 import { F } from '../constants/theme';
@@ -37,6 +38,14 @@ const getImageUri = (foto: any) => {
   }
   return padrao;
 };
+
+// O Perfil salva as matérias em posso_ensinar / quer_aprender. O Match lia só
+// `ensinar` (campo antigo), então qualquer conta criada depois nunca aparecia
+// no Descobrir. Lê os dois pra não perder quem ainda tem o campo antigo.
+const materiasQueEnsina = (u: any): string[] =>
+  [...new Set<string>([...(u?.posso_ensinar || []), ...(u?.ensinar || [])])];
+const materiasQueAprende = (u: any): string[] =>
+  [...new Set<string>([...(u?.quer_aprender || []), ...(u?.melhorar || [])])];
 
 const formatarHora = (data: any): string => {
   if (!data) return '';
@@ -159,6 +168,13 @@ export default function Match({ navigation, route }: any) {
   const [enviandoPara,   setEnviandoPara]   = useState<string | null>(null);
   const [popupInfo,      setPopupInfo]      = useState(false);
   const [popupMateria,   setPopupMateria]   = useState(false);
+  const [salvandoVisivel, setSalvandoVisivel] = useState(false);
+  const [grupos,         setGrupos]         = useState<Grupo[]>([]);
+  const [modalGrupo,     setModalGrupo]     = useState(false);
+  const [grupoNome,      setGrupoNome]      = useState('');
+  const [grupoMateria,   setGrupoMateria]   = useState('');
+  const [grupoMembros,   setGrupoMembros]   = useState<string[]>([]);
+  const [criandoGrupo,   setCriandoGrupo]   = useState(false);
 
   const meuUid = route?.params?.uid;
 
@@ -213,10 +229,59 @@ export default function Match({ navigation, route }: any) {
   // ── Dados do usuário logado ──
   useEffect(() => {
     if (!meuUid) return;
-    getDoc(doc(db, 'usuarios', meuUid)).then(snap => {
+    return onSnapshot(doc(db, 'usuarios', meuUid), snap => {
       if (snap.exists()) setMeusDados({ ...snap.data(), uid: meuUid });
     });
   }, [meuUid]);
+
+  // ── Grupos de estudo em que participo ──
+  useEffect(() => {
+    if (!meuUid) return;
+    const q = query(collection(db, 'conversas'), where('membros', 'array-contains', meuUid));
+    return onSnapshot(q, snap => {
+      const lista = snap.docs
+        .map(d => ({ id: d.id, ...(d.data() as any) }))
+        .filter((c: any) => c.isGrupo) as Grupo[];
+      lista.sort((a, b) => (b.data_postagem?.seconds ?? 0) - (a.data_postagem?.seconds ?? 0));
+      setGrupos(lista);
+    }, e => console.log('Erro grupos:', e.message));
+  }, [meuUid]);
+
+  // Visível por padrão: campo ausente conta como ligado.
+  const perfilVisivel = meusDados?.visivel_match !== false;
+  const alternarVisibilidade = async (valor: boolean) => {
+    if (!meuUid) return;
+    setSalvandoVisivel(true);
+    try {
+      await updateDoc(doc(db, 'usuarios', meuUid), { visivel_match: valor });
+    } catch (e) { console.log(e); }
+    finally { setSalvandoVisivel(false); }
+  };
+
+  const abrirCriarGrupo = () => {
+    setGrupoNome(''); setGrupoMateria(''); setGrupoMembros([]);
+    setModalGrupo(true);
+  };
+
+  const alternarMembroGrupo = (uid: string) => {
+    setGrupoMembros(prev => prev.includes(uid)
+      ? prev.filter(u => u !== uid)
+      : prev.length >= MAX_MEMBROS_GRUPO - 1 ? prev : [...prev, uid]);
+  };
+
+  const confirmarCriarGrupo = async () => {
+    if (!meuUid || !grupoNome.trim() || grupoMembros.length < 2 || criandoGrupo) return;
+    setCriandoGrupo(true);
+    try {
+      const id = await criarGrupo({ criadorUid: meuUid, nome: grupoNome, materia: grupoMateria, membrosUids: grupoMembros });
+      setModalGrupo(false);
+      navigation.navigate('GrupoChat', { grupoId: id, uid: meuUid });
+    } catch (e) {
+      console.log('Erro ao criar grupo:', e);
+    } finally {
+      setCriandoGrupo(false);
+    }
+  };
 
   // ── Relação com cada pessoa (solicitações enviadas + recebidas) ──
   useEffect(() => {
@@ -349,14 +414,15 @@ export default function Match({ navigation, route }: any) {
     const agora = Date.now();
     return candidatosBrutos.filter((u: any) => {
       if (u.id === meuUid || u.status !== 1) return false;
+      if (u.visivel_match === false) return false;
       const r = relacoes.get(u.id);
       if (r && (r.aceito || r.pendenteEnviada || r.pendenteRecebida)) return false;
       if (r?.recusadoEm && agora - r.recusadoEm < QUINZE_DIAS_MS) return false;
       if (pulados[u.id]) return false;
-      const materias = u.ensinar || [];
-      if (materiasFiltro.length > 0) return materiasFiltro.some(m => materias.includes(m));
-      return materias.length > 0;
-    });
+      if (materiasFiltro.length === 0) return true;
+      const materias = materiasQueEnsina(u);
+      return materiasFiltro.some(m => materias.includes(m));
+    }).sort((a: any, b: any) => materiasQueEnsina(b).length - materiasQueEnsina(a).length);
   }, [candidatosBrutos, relacoes, pulados, materiasFiltro, meuUid]);
 
   const criarConversaDoMatch = async (outroUid: string) => {
@@ -453,9 +519,9 @@ export default function Match({ navigation, route }: any) {
   const getMateriaDoMatch = (item: any): { materias: string[]; tipo: 'te ensina' | 'você ensina' } => {
     const outro = item.outro || {};
     if (item.deUid === meuUid) {
-      return { materias: outro.ensinar || [], tipo: 'te ensina' };
+      return { materias: materiasQueEnsina(outro), tipo: 'te ensina' };
     } else {
-      return { materias: meusDados?.ensinar || [], tipo: 'você ensina' };
+      return { materias: materiasQueEnsina(meusDados), tipo: 'você ensina' };
     }
   };
 
@@ -481,7 +547,9 @@ export default function Match({ navigation, route }: any) {
 
   // ── FEED DE CANDIDATOS (lista vertical, estilo feed) ──
   const renderCandidato = ({ item }: any) => {
-    const materias: string[] = item.ensinar || [];
+    const ensina = materiasQueEnsina(item);
+    const materias: string[] = ensina.length > 0 ? ensina : materiasQueAprende(item);
+    const rotuloMaterias = ensina.length > 0 ? 'PODE TE AJUDAR EM' : 'TAMBÉM QUER APRENDER';
     const enviando = enviandoPara === item.id;
     return (
       <View style={styles.feedCard}>
@@ -504,7 +572,7 @@ export default function Match({ navigation, route }: any) {
 
         {!!item.bio && <Text style={styles.feedBio} numberOfLines={3}>{item.bio}</Text>}
 
-        <Text style={styles.feedRotulo}>PODE TE AJUDAR EM</Text>
+        <Text style={styles.feedRotulo}>{materias.length > 0 ? rotuloMaterias : 'AINDA NÃO ESCOLHEU MATÉRIAS'}</Text>
         <View style={styles.feedMaterias}>
           {materias.slice(0, 6).map((m: string) => (
             <View key={m} style={[styles.feedMateria, materiasFiltro.includes(m) && styles.feedMateriaDestaque]}>
@@ -552,7 +620,28 @@ export default function Match({ navigation, route }: any) {
         contentContainerStyle={{ padding: 16, paddingBottom: 24, flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-        ListHeaderComponent={solicitacoes.length > 0 ? (
+        ListHeaderComponent={<>
+          <View style={[styles.cardVisivel, !perfilVisivel && styles.cardVisivelOff]}>
+            <Ionicons name={perfilVisivel ? 'eye' : 'eye-off'} size={20} color={perfilVisivel ? CORES_SYMBIUS.verdeEscuro : CORES_SYMBIUS.laranjaTexto} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardVisivelTitulo}>{perfilVisivel ? 'Seu perfil aparece no match' : 'Seu perfil está oculto'}</Text>
+              <Text style={styles.cardVisivelSub}>
+                {perfilVisivel
+                  ? (materiasQueEnsina(meusDados).length === 0
+                    ? 'Marque no Perfil o que você pode ensinar pra aparecer nos filtros.'
+                    : 'Outras pessoas podem te encontrar e mandar solicitação.')
+                  : 'Ninguém te encontra no Descobrir enquanto estiver desligado.'}
+              </Text>
+            </View>
+            <Switch
+              value={perfilVisivel}
+              onValueChange={alternarVisibilidade}
+              disabled={salvandoVisivel || !meusDados}
+              trackColor={{ false: CORES_SYMBIUS.borda2, true: CORES_SYMBIUS.verdeMedio }}
+              thumbColor={perfilVisivel ? CORES_SYMBIUS.verdeEscuro : '#f4f3f4'}
+            />
+          </View>
+          {solicitacoes.length > 0 ? (
           <TouchableOpacity style={styles.avisoSolic} onPress={() => setAbaAtiva('solicitacoes')} activeOpacity={0.85}>
             <View style={styles.avisoSolicIcone}>
               <Ionicons name="mail-unread" size={18} color={CORES_SYMBIUS.creme} />
@@ -566,7 +655,8 @@ export default function Match({ navigation, route }: any) {
             <Ionicons name="chevron-forward" size={18} color={CORES_SYMBIUS.creme} />
           </TouchableOpacity>
         ) : null}
-        ListHeaderComponentStyle={{ marginBottom: 12 }}
+        </>}
+        ListHeaderComponentStyle={{ marginBottom: 12, gap: 10 }}
         ListEmptyComponent={(
           <View style={[styles.centro, { paddingTop: 40 }]}>
             <Text style={{ fontSize: 56 }}>🦉</Text>
@@ -785,7 +875,7 @@ export default function Match({ navigation, route }: any) {
 
       {/* ABA MATCHES */}
       {abaAtiva === 'matches' && (
-        matchesOrdenados.length === 0
+        matchesOrdenados.length === 0 && grupos.length === 0
           ? <View style={styles.centro}>
               <Ionicons name="heart-outline" size={56} color={CORES.cinzaClaro} />
               <Text style={styles.txtVazio}>Nenhum match ainda.</Text>
@@ -798,9 +888,107 @@ export default function Match({ navigation, route }: any) {
               keyExtractor={i => i.id}
               renderItem={renderMatch}
               contentContainerStyle={{ padding: 16 }}
+              ListHeaderComponent={
+                <View style={{ marginBottom: 6 }}>
+                  <TouchableOpacity
+                    style={[styles.btnCriarGrupo, matches.length < 2 && { opacity: 0.55 }]}
+                    onPress={abrirCriarGrupo}
+                    disabled={matches.length < 2}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="people" size={18} color={CORES_SYMBIUS.creme} />
+                    <Text style={styles.btnCriarGrupoTxt}>Criar grupo de estudo</Text>
+                  </TouchableOpacity>
+                  {matches.length < 2 && (
+                    <Text style={styles.dicaGrupo}>Você precisa de pelo menos 2 matches para montar um grupo.</Text>
+                  )}
+
+                  {grupos.length > 0 && <Text style={styles.secaoLista}>GRUPOS</Text>}
+                  {grupos.map(g => {
+                    const naoLida = g.quemEnviou && g.quemEnviou !== meuUid;
+                    return (
+                      <TouchableOpacity
+                        key={g.id}
+                        style={[styles.solCard, { backgroundColor: C.branco }]}
+                        onPress={() => navigation.navigate('GrupoChat', { grupoId: g.id, uid: meuUid })}
+                        activeOpacity={0.8}
+                      >
+                        <View style={[styles.solAvatar, styles.grupoAvatar]}>
+                          <Ionicons name="people" size={22} color={CORES_SYMBIUS.creme} />
+                        </View>
+                        <View style={styles.solInfo}>
+                          <Text style={[styles.solNome, { color: C.azulEscuro, fontFamily: F.bold }]} numberOfLines={1}>{g.nome}</Text>
+                          <Text style={[styles.ultimaMsg, { color: naoLida ? C.azulEscuro : C.textoSec, fontFamily: naoLida ? F.semibold : F.regular }]} numberOfLines={1}>
+                            {g.ultimaMensagem || `${g.membros.length} participantes`}
+                          </Text>
+                        </View>
+                        <Text style={[styles.msgTimestamp, { color: C.textoSec, fontFamily: F.medium }]}>{g.membros.length} 👤</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                  {matchesOrdenados.length > 0 && <Text style={styles.secaoLista}>MATCHES</Text>}
+                </View>
+              }
             />
       )}
       </Animated.View>
+
+      <Modal visible={modalGrupo} transparent animationType="slide" onRequestClose={() => setModalGrupo(false)}>
+        <View style={styles.grupoOverlay}>
+          <View style={[styles.grupoSheet, { paddingBottom: 20 + insets.bottom }]}>
+            <View style={styles.grupoHandle} />
+            <Text style={styles.grupoTitulo}>Novo grupo de estudo</Text>
+            <TextInput
+              style={styles.grupoInput}
+              placeholder="Nome do grupo (ex: Revisão de Química)"
+              placeholderTextColor={CORES_SYMBIUS.textoTerciario}
+              value={grupoNome}
+              onChangeText={setGrupoNome}
+              maxLength={40}
+            />
+            <TextInput
+              style={styles.grupoInput}
+              placeholder="Matéria (opcional)"
+              placeholderTextColor={CORES_SYMBIUS.textoTerciario}
+              value={grupoMateria}
+              onChangeText={setGrupoMateria}
+              maxLength={30}
+            />
+            <Text style={styles.secaoLista}>
+              QUEM VAI PARTICIPAR ({grupoMembros.length}/{MAX_MEMBROS_GRUPO - 1})
+            </Text>
+            <ScrollView style={{ maxHeight: 260 }}>
+              {matchesOrdenados.map(m => {
+                const uid = m.outro?.uid;
+                if (!uid) return null;
+                const marcado = grupoMembros.includes(uid);
+                return (
+                  <TouchableOpacity key={uid} style={styles.grupoOpcao} onPress={() => alternarMembroGrupo(uid)}>
+                    <Image source={{ uri: getImageUri(m.outro?.foto) }} style={styles.grupoOpcaoFoto} />
+                    <Text style={styles.grupoOpcaoNome} numberOfLines={1}>{m.outro?.nome_completo || 'Usuário'}</Text>
+                    <Ionicons name={marcado ? 'checkbox' : 'square-outline'} size={22} color={marcado ? CORES_SYMBIUS.verdeEscuro : CORES_SYMBIUS.textoTerciario} />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.grupoBotoes}>
+              <TouchableOpacity style={[styles.grupoBtn, { backgroundColor: CORES_SYMBIUS.fundoSuave }]} onPress={() => setModalGrupo(false)}>
+                <Text style={[styles.grupoBtnTxt, { color: CORES_SYMBIUS.texto }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.grupoBtn, { backgroundColor: CORES_SYMBIUS.verdeEscuro }, (!grupoNome.trim() || grupoMembros.length < 2 || criandoGrupo) && { opacity: 0.5 }]}
+                onPress={confirmarCriarGrupo}
+                disabled={!grupoNome.trim() || grupoMembros.length < 2 || criandoGrupo}
+              >
+                {criandoGrupo
+                  ? <ActivityIndicator color={CORES_SYMBIUS.creme} />
+                  : <Text style={styles.grupoBtnTxt}>Criar grupo</Text>}
+              </TouchableOpacity>
+            </View>
+            {grupoMembros.length < 2 && <Text style={[styles.dicaGrupo, { textAlign: 'center' }]}>Escolha pelo menos 2 pessoas.</Text>}
+          </View>
+        </View>
+      </Modal>
 
       {/* POPUP INFO */}
       {popupInfo && (
@@ -900,6 +1088,36 @@ export default function Match({ navigation, route }: any) {
 }
 
 const styles = StyleSheet.create({
+  cardVisivel: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16,
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
+  },
+  cardVisivelOff: { backgroundColor: CORES_SYMBIUS.fundoLaranjaClaro, borderColor: CORES_SYMBIUS.laranja + '55' },
+  cardVisivelTitulo: { fontSize: 13.5, fontFamily: F.bold, color: CORES_SYMBIUS.texto },
+  cardVisivelSub: { fontSize: 11.5, fontFamily: F.regular, color: CORES_SYMBIUS.textoSec, marginTop: 2, lineHeight: 16 },
+  btnCriarGrupo: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: CORES_SYMBIUS.verdeEscuro, borderRadius: 14, paddingVertical: 12,
+  },
+  btnCriarGrupoTxt: { fontSize: 14, fontFamily: F.bold, color: CORES_SYMBIUS.creme },
+  dicaGrupo: { fontSize: 11.5, fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 6 },
+  secaoLista: { fontSize: 10.5, fontFamily: F.bold, letterSpacing: 0.6, color: CORES_SYMBIUS.textoSec, marginTop: 14, marginBottom: 8 },
+  grupoAvatar: { backgroundColor: CORES_SYMBIUS.verdeEscuro, justifyContent: 'center', alignItems: 'center' },
+  grupoOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  grupoSheet: { backgroundColor: CORES_SYMBIUS.fundoCard, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 12 },
+  grupoHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: CORES_SYMBIUS.borda2, alignSelf: 'center', marginBottom: 12 },
+  grupoTitulo: { fontSize: 18, fontFamily: F.black, color: CORES_SYMBIUS.texto, marginBottom: 12 },
+  grupoInput: {
+    backgroundColor: CORES_SYMBIUS.fundo, borderRadius: 12, borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
+    paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, fontFamily: F.regular, color: CORES_SYMBIUS.texto, marginBottom: 10,
+  },
+  grupoOpcao: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
+  grupoOpcaoFoto: { width: 36, height: 36, borderRadius: 18, backgroundColor: CORES_SYMBIUS.fundoSuave },
+  grupoOpcaoNome: { flex: 1, fontSize: 14, fontFamily: F.semibold, color: CORES_SYMBIUS.texto },
+  grupoBotoes: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  grupoBtn: { flex: 1, borderRadius: 14, paddingVertical: 13, alignItems: 'center' },
+  grupoBtnTxt: { fontSize: 14, fontFamily: F.bold, color: CORES_SYMBIUS.creme },
+
   feedCard: {
     backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 20, padding: 16,
     borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
