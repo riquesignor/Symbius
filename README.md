@@ -98,3 +98,4 @@ Projeto desenvolvido em dupla como Trabalho de Conclusão de Curso:
 
 - [Henrique](https://github.com/riquesignor)
 - [João](https://github.com/jpx-nextage)
+- [Heloísa](https://github.com/HeloisaDoria09)
