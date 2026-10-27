@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import SymbiusTabBar from '../components/SymbiusTabBar';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
   Animated, Platform,
@@ -40,7 +41,7 @@ const SECOES = [
     cor: '#E51C6A',
     itens: [
       {
-        pergunta: 'O que são as publicações do Symbius?',
+        pergunta: 'O que são as publicações do Simbio?',
         resposta:
           'As publicações são avisos, destaques, oportunidades, eventos de olimpíadas e passeios publicados pela gestão da escola. Fique por dentro de tudo que acontece no colégio.',
       },
@@ -197,7 +198,7 @@ function ItemFAQ({ item, C, fs }: { item: { pergunta: string; resposta: string }
 }
 
 // ── Tela principal ──
-export default function Ajuda({ navigation }: any) {
+export default function Ajuda({ navigation, route }: any) {
   const insets  = useSafeAreaInsets();
   const { fonteScale } = useAppSettings();
   // Paleta Symbius fixa (claro) — mesma técnica de shadow usada em
@@ -222,7 +223,7 @@ export default function Ajuda({ navigation }: any) {
           accessibilityRole="button"
           accessibilityLabel="Voltar"
         >
-          <Ionicons name="arrow-back" size={24} color={C.azulEscuro} />
+          <Ionicons name="arrow-back" size={22} color={C.azulEscuro} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: C.azulEscuro, fontSize: fs(17) }]}>
           Ajuda
@@ -245,7 +246,7 @@ export default function Ajuda({ navigation }: any) {
               Central de Ajuda
             </Text>
             <Text style={[styles.heroSub, { color: C.textoSec, fontSize: fs(13) }]}>
-              Encontre respostas para as perguntas mais frequentes sobre o Symbius.
+              Encontre respostas para as perguntas mais frequentes sobre o Simbio.
             </Text>
           </View>
 
@@ -298,6 +299,7 @@ export default function Ajuda({ navigation }: any) {
 
         </Animated.View>
       </ScrollView>
+      <SymbiusTabBar ativa="nenhuma" navigation={navigation} uid={route?.params?.uid ?? null} />
     </View>
   );
 }

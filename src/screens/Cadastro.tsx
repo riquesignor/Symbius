@@ -198,7 +198,7 @@ export default function Cadastro({ navigation, route }: any) {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.logoWrap}>
-            <Text style={styles.logoText}>Symbius</Text>
+            <Text style={styles.logoText}>Simbio</Text>
             <Text style={styles.logoSlogan}>crie sua conta</Text>
           </View>
 

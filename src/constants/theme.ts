@@ -1,11 +1,25 @@
 // ─── Famílias de fonte ────────────────────────────────────────────────
-export const F = {
+// TESTE de fonte: com USAR_JAKARTA = true o app inteiro usa Plus Jakarta Sans.
+// Para voltar à Poppins, basta trocar para false (o App.tsx carrega as duas).
+export const USAR_JAKARTA = true;
+
+const POPPINS = {
   regular:  'Poppins_400Regular',
   medium:   'Poppins_500Medium',
   semibold: 'Poppins_600SemiBold',
   bold:     'Poppins_700Bold',
   black:    'Poppins_800ExtraBold',
 } as const;
+
+const JAKARTA = {
+  regular:  'PlusJakartaSans_400Regular',
+  medium:   'PlusJakartaSans_500Medium',
+  semibold: 'PlusJakartaSans_600SemiBold',
+  bold:     'PlusJakartaSans_700Bold',
+  black:    'PlusJakartaSans_800ExtraBold',
+} as const;
+
+export const F: { [K in keyof typeof POPPINS]: string } = USAR_JAKARTA ? JAKARTA : POPPINS;
 
 // ─── Paleta — modo claro ──────────────────────────────────────────────
 export const CORES = {
@@ -41,7 +55,7 @@ export const CORES_DARK = {
   rosa:        '#3F8A5C',
   amarelo:     '#E8A33D',
 
-  fundo:       '#0F1F16',
+  fundo:       '#0D1F13',
   branco:      '#16281C',
   cinzaClaro:  '#26402F',
   cinzaInput:  '#1F3527',

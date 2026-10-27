@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from 'react';
+import SymbiusTabBar from '../components/SymbiusTabBar';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
   Linking, Animated, Platform, Alert,
@@ -39,7 +40,7 @@ const CONTATOS = [
     descricao: 'Ouvidoria e atendimento geral',
     icone: 'mail-outline' as const,
     tipo: 'email',
-    url: 'mailto:ouvidoria@anchieta.br?subject=Contato%20via%20App%20Symbius',
+    url: 'mailto:ouvidoria@anchieta.br?subject=Contato%20via%20App%20Simbio',
     cor: '#E51C6A',
   },
   {
@@ -150,7 +151,7 @@ function ContatoCard({
 }
 
 // ── Tela principal ──
-export default function Contato({ navigation }: any) {
+export default function Contato({ navigation, route }: any) {
   const insets  = useSafeAreaInsets();
   const { fonteScale } = useAppSettings();
   // Paleta Symbius fixa (claro) — mesma técnica de shadow usada em
@@ -182,7 +183,7 @@ export default function Contato({ navigation }: any) {
           accessibilityRole="button"
           accessibilityLabel="Voltar"
         >
-          <Ionicons name="arrow-back" size={24} color={C.azulEscuro} />
+          <Ionicons name="arrow-back" size={22} color={C.azulEscuro} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: C.azulEscuro, fontSize: fs(17) }]}>
           Contato
@@ -233,6 +234,7 @@ export default function Contato({ navigation }: any) {
 
         </Animated.View>
       </ScrollView>
+      <SymbiusTabBar ativa="nenhuma" navigation={navigation} uid={route?.params?.uid ?? null} />
     </View>
   );
 }

@@ -31,7 +31,7 @@ export default function EscolhaPapel({ navigation }: any) {
       </View>
 
       <View style={styles.marcaWrap}>
-        <Text style={styles.marca}>Symbius</Text>
+        <Text style={styles.marca}>Simbio</Text>
       </View>
 
       <View style={styles.tituloWrap}>

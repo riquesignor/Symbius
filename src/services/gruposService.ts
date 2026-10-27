@@ -62,7 +62,7 @@ export const criarGrupo = async (params: {
 
   membros.filter(u => u !== params.criadorUid).forEach(uid => dispararPush({
     destinatarioUid: uid,
-    titulo: '👥 Novo grupo de estudo',
+    titulo: 'Novo grupo de estudo',
     corpo: `${criador} te adicionou em "${nome}"`,
     dados: { tipo: 'grupo_adicionado', grupoId: id, grupoNome: nome },
   }));

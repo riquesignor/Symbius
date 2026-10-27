@@ -79,10 +79,10 @@ const ANIMAL_RANGES: Record<Animal, { min: number; max: number; nome: string; ic
 };
 
 const SUBFASE_CONFIG: Record<Subfase, { nome: string; icone: string }> = {
-  filhote:  { nome: 'Filhote',  icone: '🐣' },
-  jovem:    { nome: 'Jovem',    icone: '🌱' },
-  adulto:   { nome: 'Adulto',   icone: '⭐' },
-  veterano: { nome: 'Veterano', icone: '👑' },
+  filhote:  { nome: 'Bronze',   icone: '🐣' },
+  jovem:    { nome: 'Prata',    icone: '🌱' },
+  adulto:   { nome: 'Ouro',     icone: '⭐' },
+  veterano: { nome: 'Diamante', icone: '👑' },
 };
 
 const SUBFASES_ORDER: Subfase[] = ['filhote', 'jovem', 'adulto', 'veterano'];
@@ -168,10 +168,10 @@ export const calcularFaseCoruja = (xp: number) => {
 
 // ─ Legado: mantido pra não quebrar imports no Perfil.tsx ─
 export const NIVEIS_CORUJA = {
-  filhote:  { min: 0,   max: 74,  label: 'Coruja Filhote',  icone: '🦉' },
-  jovem:    { min: 75,  max: 149, label: 'Coruja Jovem',    icone: '🦉' },
-  adulto:   { min: 150, max: 224, label: 'Coruja Adulto',   icone: '🦉' },
-  veterano: { min: 225, max: 300, label: 'Coruja Veterano', icone: '🦉' },
+  filhote:  { min: 0,   max: 74,  label: 'Coruja Bronze',  icone: '🦉' },
+  jovem:    { min: 75,  max: 149, label: 'Coruja Prata',    icone: '🦉' },
+  adulto:   { min: 150, max: 224, label: 'Coruja Ouro',   icone: '🦉' },
+  veterano: { min: 225, max: 300, label: 'Coruja Diamante', icone: '🦉' },
 };
 
 // ─ Validação: pode ganhar XP por match hoje? ─
@@ -203,7 +203,7 @@ export const formatarNumero = (num: number): string => {
 
 // ─ Mensagem de ganho de XP ─
 export const mensagemGanhoXp = (xp: number, moedas: number): string => {
-  return `+${xp} XP, +${moedas} Sementes 🌱`;
+  return `+${xp} XP, +${moedas} Sementes`;
 };
 
 // ─ Verifica se o usuário já alcançou pelo menos um certo animal ─

@@ -272,11 +272,11 @@ const PerfilModal = ({ visible, onClose, outroUid, outroNome, outraFoto, CC, meu
             {/* Seção Favoritos */}
             {favoritos.length > 0 && (
               <View style={psty.secao}>
-                <Text style={[psty.secaoTitulo, { color: CC.textoSec }]}>⭐ MENSAGENS FAVORITAS</Text>
+                <Text style={[psty.secaoTitulo, { color: CC.textoSec }]}>MENSAGENS FAVORITAS</Text>
                 {favoritos.map((fav: any, i: number) => (
                   <View key={i} style={[psty.favItem, { backgroundColor: CC.bolhaOther, borderColor: CC.menuBorder }]}>
                     <Text style={[psty.favTexto, { color: "#E0E0E0" }]} numberOfLines={3}>
-                      {fav.tipo === "imagem" ? "📷 Imagem" : fav.mensagem}
+                      {fav.tipo === "imagem" ? "Imagem" : fav.mensagem}
                     </Text>
                     <Text style={[psty.favHora, { color: CC.textoSec }]}>
                       {fav.nome_remetente} · {fav.hora || ""}
@@ -412,7 +412,7 @@ const EncaminharModal = ({ visible, onClose, meuUid, meuNome, minhaFoto, mensage
           {/* Preview da mensagem */}
           <View style={[esty.preview, { backgroundColor: CC.bolhaOther }]}>
             <Text style={esty.previewTxt} numberOfLines={2}>
-              {mensagem?.tipo === "imagem" ? "📷 Imagem" : mensagem?.mensagem || ""}
+              {mensagem?.tipo === "imagem" ? "Imagem" : mensagem?.mensagem || ""}
             </Text>
           </View>
 
@@ -1137,7 +1137,7 @@ export default function Chat({ route, navigation }: any) {
                       <TouchableOpacity onPress={() => setFullVideoMsg(item)} activeOpacity={0.85}>
                         <View style={[styles.videoThumb, { width: imgMax }]}>
                           <Ionicons name="play-circle" size={52} color="rgba(255,255,255,0.9)" />
-                          <Text style={styles.videoLabel}>🎥 Toque para assistir</Text>
+                          <Text style={styles.videoLabel}>Toque para assistir</Text>
                         </View>
                       </TouchableOpacity>
                       <View style={styles.rodape}>
@@ -1197,11 +1197,11 @@ export default function Chat({ route, navigation }: any) {
           <View style={styles.citandoInfo}>
             {citando ? <>
               <Text style={[styles.citandoNome, { color: CC.citandoNome }]}>{citando.nome_remetente}</Text>
-              <Text style={[styles.citandoTexto, { color: CC.citandoTexto }]} numberOfLines={1}>{citando.tipo==="imagem"?"📷 Imagem":citando.mensagem}</Text>
-            </> : <Text style={[styles.citandoNome, { color: CC.citandoNome }]}>✏️ Editando mensagem</Text>}
+              <Text style={[styles.citandoTexto, { color: CC.citandoTexto }]} numberOfLines={1}>{citando.tipo==="imagem"?"Imagem":citando.mensagem}</Text>
+            </> : <Text style={[styles.citandoNome, { color: CC.citandoNome }]}>Editando mensagem</Text>}
           </View>
           <TouchableOpacity onPress={() => { setCitando(null); setEditandoId(null); setInputText(""); clearTyping(); }}>
-            <Text style={[styles.citandoFechar, { color: CC.citandoFechar }]}>✕</Text>
+            <Ionicons name="close" size={20} color={CC.citandoFechar} style={{ paddingLeft: 10 }} />
           </TouchableOpacity>
         </View>
       )}
@@ -1279,12 +1279,12 @@ export default function Chat({ route, navigation }: any) {
               <Text style={styles.menuItemIcon}>↪️</Text><Text style={[styles.menuItemText, { color: CC.menuText }]}>Encaminhar</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.menuItem, { borderBottomColor: CC.menuBorder }]} onPress={() => toggleFavorito(menuMsg)}>
-              <Text style={styles.menuItemIcon}>{favoritos.some((f:any)=>f.id===(menuMsg.docId||menuMsg.id))?"⭐":"☆"}</Text>
+              <Ionicons name={favoritos.some((f:any)=>f.id===(menuMsg.docId||menuMsg.id))?"star":"star-outline"} size={20} color={CC.menuText} style={{ marginRight: 12 }} />
               <Text style={[styles.menuItemText, { color: CC.menuText }]}>{favoritos.some((f:any)=>f.id===(menuMsg.docId||menuMsg.id))?"Desfavoritar":"Favoritar"}</Text>
             </TouchableOpacity>
             {menuMsg.remetenteUid===uidAtual && menuMsg.tipo==="texto" && (
               <TouchableOpacity style={[styles.menuItem, { borderBottomColor: CC.menuBorder }]} onPress={() => iniciarEdicao(menuMsg)}>
-                <Text style={styles.menuItemIcon}>✏️</Text><Text style={[styles.menuItemText, { color: CC.menuText }]}>Editar</Text>
+                <Ionicons name="create-outline" size={20} color={CC.menuText} style={{ marginRight: 12 }} /><Text style={[styles.menuItemText, { color: CC.menuText }]}>Editar</Text>
               </TouchableOpacity>
             )}
             {menuMsg.remetenteUid===uidAtual && (
@@ -1292,7 +1292,7 @@ export default function Chat({ route, navigation }: any) {
                 if (Platform.OS==="web") { if (window.confirm("Apagar mensagem?")) apagarMensagem(menuMsg); }
                 else Alert.alert("Apagar", "Tem certeza?", [{ text:"Cancelar",style:"cancel" },{ text:"Apagar",style:"destructive",onPress:()=>apagarMensagem(menuMsg) }]);
               }}>
-                <Text style={styles.menuItemIcon}>🗑️</Text><Text style={[styles.menuItemText, { color: "#ff4d6d" }]}>Apagar</Text>
+                <Ionicons name="trash-outline" size={20} color="#ff4d6d" style={{ marginRight: 12 }} /><Text style={[styles.menuItemText, { color: "#ff4d6d" }]}>Apagar</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={[styles.menuItem, { borderBottomWidth:0, marginTop:4 }]} onPress={() => setMenuMsg(null)}>
@@ -1307,7 +1307,7 @@ export default function Chat({ route, navigation }: any) {
         <View style={styles.overlayFull}>
           <View style={[styles.previewCard, { backgroundColor: CC.previewBg }]}>
             <Text style={[styles.previewTitle, { color: CC.previewTitle }]}>
-              {previewTipo === 'imagem' ? 'Pré-visualização' : previewTipo === 'video' ? '🎥 Vídeo' : '📄 Documento'}
+              {previewTipo === 'imagem' ? 'Pré-visualização' : previewTipo === 'video' ? 'Vídeo' : 'Documento'}
             </Text>
 
             {/* Imagem */}
@@ -1467,7 +1467,7 @@ export default function Chat({ route, navigation }: any) {
               <View style={[avaliacaoStyles.card, { backgroundColor: CC.menuBg }]}>
                 {avaliacaoEtapa === 'pergunta' ? (
                   <>
-                    <Text style={{ fontSize: 40, marginBottom: 8 }}>🤔</Text>
+                    <Ionicons name="help-circle-outline" size={44} color={CC.menuTitle} style={{ marginBottom: 8 }} />
                     <Text style={[avaliacaoStyles.titulo, { color: CC.menuTitle, fontFamily: F.black }]}>
                       Você conseguiu tirar sua dúvida com {outroNome}?
                     </Text>
@@ -1496,7 +1496,7 @@ export default function Chat({ route, navigation }: any) {
                   </>
                 ) : (
                   <>
-                    <Text style={{ fontSize: 40, marginBottom: 8 }}>{entendeuDuvida ? "🤝" : "😕"}</Text>
+                    <Ionicons name={entendeuDuvida ? "happy-outline" : "sad-outline"} size={44} color={CC.menuTitle} style={{ marginBottom: 8 }} />
                     <Text style={[avaliacaoStyles.titulo, { color: CC.menuTitle, fontFamily: F.black }]}>
                       Avalie {outroNome}
                     </Text>
@@ -1570,7 +1570,7 @@ export default function Chat({ route, navigation }: any) {
               opacity: xpToastOpacity,
               transform: [{ translateY: xpToastSlide }] },
           ]}>
-            <Text style={{ fontSize: 28 }}>{xpToast.neutro ? "📨" : "🌱"}</Text>
+            <Ionicons name={xpToast.neutro ? "mail-outline" : "leaf"} size={28} color={CORES_SYMBIUS.verdeEscuro} />
             <View>
               <Text style={[avaliacaoStyles.toastTitulo, { color: modoEscuro ? CORES_SYMBIUS.texto : CORES_SYMBIUS.texto, fontFamily: F.bold }]}>
                 {xpToast.neutro ? "Feedback enviado!" : "Match finalizado!"}

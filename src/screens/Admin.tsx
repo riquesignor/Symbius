@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import SymbiusTabBar from '../components/SymbiusTabBar';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
   SafeAreaView, StatusBar, TextInput, ActivityIndicator,
@@ -266,14 +267,14 @@ export default function Admin({ navigation, route }: any) {
     if (antes === depois) return;
     if (depois === 2) dispararPush({
       destinatarioUid: uid,
-      titulo: '⛔ Conta desativada',
-      corpo: 'Sua conta no Symbius foi desativada pela coordenação.',
+      titulo: 'Conta desativada',
+      corpo: 'Sua conta no Simbio foi desativada pela coordenação.',
       dados: { tipo: 'conta_suspensa' },
     });
     else if (antes === 2 && depois === 1) dispararPush({
       destinatarioUid: uid,
-      titulo: '✅ Conta reativada',
-      corpo: 'Sua conta no Symbius foi reativada. Bem-vindo de volta!',
+      titulo: 'Conta reativada',
+      corpo: 'Sua conta no Simbio foi reativada. Bem-vindo de volta!',
       dados: { tipo: 'conta_reativada' },
     });
   };
@@ -364,7 +365,7 @@ export default function Admin({ navigation, route }: any) {
           onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Index', params: { uid } }] })}
           style={styles.btnVoltar}
         >
-          <Ionicons name="arrow-back" size={20} color={CORES.branco} />
+          <Ionicons name="arrow-back" size={22} color={CORES.branco} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <View style={styles.headerEyebrowRow}>
@@ -939,6 +940,7 @@ export default function Admin({ navigation, route }: any) {
           </View>
         </View>
       </Modal>
+      <SymbiusTabBar ativa="nenhuma" navigation={navigation} uid={uid ?? null} />
     </SafeAreaView>
   );
 }

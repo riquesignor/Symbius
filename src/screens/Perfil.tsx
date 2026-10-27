@@ -13,7 +13,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Polygon, Circle, Line, Text as SvgText, G } from 'react-native-svg';
 import { useAppSettings } from '../contexts/AppSettingsContext';
-import { calcularFaseCoruja, calcularProgressoXp } from '../utils/gamification';
+import AnimalImagem from '../components/AnimalImagem';
+import { calcularNivel, calcularFaseCoruja, calcularProgressoXp } from '../utils/gamification';
 
 import { F } from '../constants/theme';
 import { TEMA_SYMBIUS as CORES, CORES_SYMBIUS } from '../constants/temaSymbius';
@@ -463,6 +464,15 @@ export default function Perfil({ navigation, route }: any) {
 
      
       <View style={[heroStyles.topHeader, { paddingTop: insets.top + 10 }]}>
+        <TouchableOpacity
+          onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Index', { uid }))}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={{ width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-start' }}
+          accessibilityRole="button"
+          accessibilityLabel="Voltar"
+        >
+          <Ionicons name="arrow-back" size={22} color={C.azulEscuro} />
+        </TouchableOpacity>
         <Text
           style={[heroStyles.topHeaderTitulo, heroStyles.topHeaderTituloCentro, { top: insets.top + 10, fontSize: fs(15) }]}
           pointerEvents="none"
@@ -475,21 +485,22 @@ export default function Perfil({ navigation, route }: any) {
             style={[styles.btnMenu, { backgroundColor: C.branco }]}
             onPress={() => navigation.navigate('Loja', { uid })}
           >
-            <Text style={{ fontSize: 15 }}>🛍️</Text>
+            <Ionicons name="bag-outline" size={18} color={CORES_SYMBIUS.verdeEscuro} />
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.btnMenu, { backgroundColor: C.branco }]}
             onPress={() => navigation.navigate('Leaderboard', { uid })}
           >
-            <FontAwesome5 name="trophy" size={15} color={CORES_SYMBIUS.laranja} />
+            <FontAwesome5 name="trophy" size={15} color={CORES_SYMBIUS.verdeEscuro} />
           </TouchableOpacity>
         </View>
       </View>
 
       <ScrollView
+        style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 50, paddingTop: 6 }}
+        contentContainerStyle={{ paddingBottom: 32, paddingTop: 6 }}
       >
         
         <FadeInView delay={0}>
@@ -510,7 +521,7 @@ export default function Perfil({ navigation, route }: any) {
                 </View>
               )}
               <View style={heroStyles.avatarBadge}>
-                <Text style={{ fontSize: 16 }}>{calcularFaseCoruja(usuario.xp_total || 0).icone}</Text>
+                <AnimalImagem animal={calcularNivel(usuario.xp_total || 0).animal} size={24} />
               </View>
               <View style={heroStyles.fotoEditBtn}>
                 <Ionicons name="camera" size={11} color={CORES_SYMBIUS.creme} />
@@ -538,7 +549,7 @@ export default function Perfil({ navigation, route }: any) {
               activeOpacity={0.8}
               onPress={() => navigation.navigate('Leaderboard', { uid })}
             >
-              <Text style={{ fontSize: 14 }}>{calcularFaseCoruja(usuario.xp_total || 0).icone}</Text>
+              <AnimalImagem animal={calcularNivel(usuario.xp_total || 0).animal} size={22} />
               <Text style={[heroStyles.levelPillTxt, { fontSize: fs(12.5) }]}>
                 {calcularFaseCoruja(usuario.xp_total || 0).label}
               </Text>
@@ -581,25 +592,21 @@ export default function Perfil({ navigation, route }: any) {
                 (nenhum contador novo/fake). */}
             <View style={heroStyles.conquistasRow}>
               <View style={heroStyles.conquistaItem}>
-                <View style={heroStyles.conquistaCirculo}><Text style={{ fontSize: 20 }}>🤝</Text></View>
+                <View style={heroStyles.conquistaCirculo}><Ionicons name="people" size={24} color={CORES_SYMBIUS.verdeEscuro} /></View>
                 <Text style={[heroStyles.conquistaNum, { fontSize: fs(13) }]}>{usuario.matches_bonificados_hoje || 0}</Text>
                 <Text style={[heroStyles.conquistaLabel, { fontSize: fs(10) }]}>Matches hoje</Text>
               </View>
               <View style={heroStyles.conquistaItem}>
-                <View style={heroStyles.conquistaCirculo}><Text style={{ fontSize: 20 }}>🏅</Text></View>
+                <View style={heroStyles.conquistaCirculo}><Ionicons name="ribbon" size={24} color={CORES_SYMBIUS.verdeEscuro} /></View>
                 <Text style={[heroStyles.conquistaNum, { fontSize: fs(13) }]}>{medalhas.length}</Text>
                 <Text style={[heroStyles.conquistaLabel, { fontSize: fs(10) }]}>Medalhas</Text>
               </View>
               <View style={heroStyles.conquistaItem}>
-                <View style={heroStyles.conquistaCirculo}><Text style={{ fontSize: 20 }}>🌱</Text></View>
+                <View style={heroStyles.conquistaCirculo}><Ionicons name="leaf" size={24} color={CORES_SYMBIUS.verdeEscuro} /></View>
                 <Text style={[heroStyles.conquistaNum, { fontSize: fs(13) }]}>{usuario.moedas_saldo || 0}</Text>
                 <Text style={[heroStyles.conquistaLabel, { fontSize: fs(10) }]}>Sementes</Text>
               </View>
             </View>
-
-            <TouchableOpacity style={heroStyles.btnEditarPerfil} activeOpacity={0.85} onPress={abrirEdicaoBio}>
-              <Text style={[heroStyles.btnEditarPerfilTxt, { fontSize: fs(14) }]}>Editar perfil</Text>
-            </TouchableOpacity>
           </View>
         </FadeInView>
 
@@ -649,9 +656,7 @@ export default function Perfil({ navigation, route }: any) {
               <View style={[styles.xpCard, { backgroundColor: C.branco }]}>
                 <View style={styles.xpCardTop}>
                   <View style={styles.corujhBox}>
-                    <Text style={[styles.corujaEmoji, { fontSize: fs(48) }]}>
-                      {calcularFaseCoruja(usuario.xp_total || 0).icone}
-                    </Text>
+                    <AnimalImagem animal={calcularNivel(usuario.xp_total || 0).animal} size={72} />
                     <Text style={[styles.corujaLabel, { color: C.azulEscuro, fontSize: fs(12) }]}>
                       {calcularFaseCoruja(usuario.xp_total || 0).label}
                     </Text>
@@ -691,7 +696,7 @@ export default function Perfil({ navigation, route }: any) {
                 <View style={[styles.xpCardDivisor, { backgroundColor: C.cinzaClaro }]} />
                 <View style={styles.xpCardBottom}>
                   <View style={styles.moedaItem}>
-                    <Text style={{ fontSize: fs(24) }}>🌱</Text>
+                    <Ionicons name="leaf" size={26} color={CORES_SYMBIUS.verdeEscuro} />
                     <View>
                       <Text style={[styles.moedaLabel, { color: C.textoSec, fontSize: fs(11) }]}>
                         Sementes
@@ -703,7 +708,7 @@ export default function Perfil({ navigation, route }: any) {
                   </View>
 
                   <View style={styles.moedaItem}>
-                    <Text style={{ fontSize: fs(24) }}>📍</Text>
+                    <Ionicons name="people" size={26} color={CORES_SYMBIUS.verdeEscuro} />
                     <View>
                       <Text style={[styles.moedaLabel, { color: C.textoSec, fontSize: fs(11) }]}>
                         Matches Hoje
@@ -716,7 +721,7 @@ export default function Perfil({ navigation, route }: any) {
 
                   {usuario.avaliacao_contagem > 0 && (
                     <View style={styles.moedaItem}>
-                      <Text style={{ fontSize: fs(24) }}>⭐</Text>
+                      <Ionicons name="star" size={26} color={CORES_SYMBIUS.verdeEscuro} />
                       <View>
                         <Text style={[styles.moedaLabel, { color: C.textoSec, fontSize: fs(11) }]}>
                           Reputação
@@ -1191,7 +1196,7 @@ export default function Perfil({ navigation, route }: any) {
 //  STYLESHEET
 // ════════════════════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, overflow: 'hidden' },
   fotoOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   fotoSheet:   { backgroundColor: CORES_SYMBIUS.fundoCard, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 12 },
   fotoHandle:  { width: 40, height: 4, borderRadius: 2, backgroundColor: CORES_SYMBIUS.borda2, alignSelf: 'center', marginBottom: 12 },
@@ -1253,7 +1258,7 @@ const styles = StyleSheet.create({
   // ESPECIALIDADES
   especCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 22, padding: 12, gap: 4, elevation: 1, shadowColor: CORES.azulEscuro, shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
   especRadarBox: { width: 150, justifyContent: 'center', alignItems: 'center' },
-  radarLegenda:  { textAlign: 'center', marginTop: 4, fontFamily: 'Poppins_400Regular', opacity: 0.75 },
+  radarLegenda:  { textAlign: 'center', marginTop: 4, fontFamily: F.regular, opacity: 0.75 },
   especListaBox: { flex: 1, gap: 8, paddingLeft: 4 },
   materiaPill: { paddingHorizontal: 16, paddingVertical: 14, borderRadius: 18, flexDirection: 'row', alignItems: 'center', gap: 8 },
   materiaDot: { width: 6, height: 6, borderRadius: 3 },

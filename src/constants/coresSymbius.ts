@@ -35,6 +35,13 @@ const CLARO = {
   splashTexto:    '#F4F1E8',
   splashTextoSec: '#B9C9B4',
 
+  // cards de destaque verde-mata (ranking, etc.)
+  heroiFundo:    '#16301F',
+  heroiElevado:  '#24472E',
+  heroiTexto:    '#F0EAD8',
+  heroiTextoSec: '#8FD4A0',
+  folha:         '#52A86A',
+
   barStyle: 'dark-content' as 'dark-content' | 'light-content',
 };
 
@@ -42,7 +49,7 @@ const CLARO = {
 // primário fica mais claro que no modo claro porque também é usado como cor
 // de texto (logo, links) e precisa de contraste sobre o fundo escuro.
 const ESCURO: typeof CLARO = {
-  fundo:             '#0F1F16',
+  fundo:             '#0D1F13', // floresta
   fundoCard:         '#16281C',
   fundoSuave:        '#1F3527',
   fundoLaranjaClaro: '#3A2B1C',
@@ -71,6 +78,12 @@ const ESCURO: typeof CLARO = {
   splashDecor2:   '#2E5B3F',
   splashTexto:    '#F4F1E8',
   splashTextoSec: '#B9C9B4',
+
+  heroiFundo:    '#1A3A22',
+  heroiElevado:  '#264D31',
+  heroiTexto:    '#F0EAD8',
+  heroiTextoSec: '#8FD4A0',
+  folha:         '#52A86A',
 
   barStyle: 'light-content',
 };

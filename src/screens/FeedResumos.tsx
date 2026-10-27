@@ -172,7 +172,7 @@ export default function FeedResumos({ navigation, route }: any) {
     if (resultado === 'adicionou' && reacao === 'curtir' && item.autorUid !== uid) {
       dispararPush({
         destinatarioUid: item.autorUid,
-        titulo: '👍 Curtiram seu resumo',
+        titulo: 'Curtiram seu resumo',
         corpo: `${meuNome} curtiu "${item.titulo}"`,
         dados: { tipo: 'resumo_curtida', resumoId: item.id },
       });
@@ -192,7 +192,7 @@ export default function FeedResumos({ navigation, route }: any) {
     if (alvo.autorUid !== uid) {
       dispararPush({
         destinatarioUid: alvo.autorUid,
-        titulo: '💬 Novo comentário no seu resumo',
+        titulo: 'Novo comentário no seu resumo',
         corpo: `${meuNome}: ${texto.slice(0, 100)}`,
         dados: { tipo: 'resumo_comentario', resumoId: alvo.id },
       });
@@ -404,7 +404,7 @@ export default function FeedResumos({ navigation, route }: any) {
 
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Ionicons name="chevron-back" size={24} color={CORES_SYMBIUS.texto} />
+          <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
         <Text style={[styles.headerTitulo, { fontSize: fs(17) }]}>Feed de Resumos</Text>
         <TouchableOpacity onPress={abrirModalNovo} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -442,6 +442,7 @@ export default function FeedResumos({ navigation, route }: any) {
           data={resumos}
           keyExtractor={item => item.id}
           renderItem={renderItem}
+          style={{ flex: 1 }}
           contentContainerStyle={styles.lista}
           showsVerticalScrollIndicator={false}
         />
@@ -613,7 +614,7 @@ export default function FeedResumos({ navigation, route }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
+  container: { flex: 1, overflow: 'hidden', backgroundColor: CORES_SYMBIUS.fundo },
 
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

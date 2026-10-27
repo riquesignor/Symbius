@@ -9,7 +9,7 @@ import { F } from '../constants/theme';
 // (Início, Match, Feed, Perfil). Não usamos @react-navigation/bottom-tabs
 // de propósito — o app inteiro roda num único Stack Navigator, então essa
 // barra só chama navigation.navigate(...) entre as telas já registradas.
-export type SymbiusAba = 'inicio' | 'agenda' | 'match' | 'feed' | 'perfil';
+export type SymbiusAba = 'inicio' | 'agenda' | 'match' | 'feed' | 'perfil' | 'nenhuma';
 
 interface Props {
   ativa: SymbiusAba;
@@ -20,8 +20,8 @@ interface Props {
 const ITENS: { chave: SymbiusAba; label: string; icone: keyof typeof Ionicons.glyphMap; iconeAtivo: keyof typeof Ionicons.glyphMap; destino: string }[] = [
   { chave: 'inicio', label: 'Início', icone: 'home-outline', iconeAtivo: 'home', destino: 'Index' },
   { chave: 'agenda', label: 'Agenda', icone: 'calendar-outline', iconeAtivo: 'calendar', destino: 'Calendario' },
-  { chave: 'match',  label: 'Match',  icone: 'heart-outline', iconeAtivo: 'heart', destino: 'Match' },
-  { chave: 'feed',   label: 'Feed',   icone: 'newspaper-outline', iconeAtivo: 'newspaper', destino: 'Resumos' },
+  { chave: 'match',  label: 'Match',  icone: 'infinite-outline', iconeAtivo: 'infinite', destino: 'Match' },
+  { chave: 'feed',   label: 'Resumos',   icone: 'newspaper-outline', iconeAtivo: 'newspaper', destino: 'Resumos' },
   { chave: 'perfil', label: 'Perfil', icone: 'person-outline', iconeAtivo: 'person', destino: 'Perfil' },
 ];
 

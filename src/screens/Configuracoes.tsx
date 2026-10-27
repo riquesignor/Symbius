@@ -396,7 +396,7 @@
     };
 
     const enviarFeedback = () => {
-      abrirURL('mailto:contato@anchieta.br?subject=Feedback Symbius&body=Olá, gostaria de enviar um feedback sobre o app...');
+      abrirURL('mailto:contato@anchieta.br?subject=Feedback Simbio&body=Olá, gostaria de enviar um feedback sobre o app...');
     };
 
     // ════ ROW COMPONENT ════
@@ -488,7 +488,7 @@
         {/* HEADER */}
         <View style={[styles.header, { paddingTop: insets.top + 14, backgroundColor: CORES.azulEscuro }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.btnVoltar}>
-            <Ionicons name="arrow-back" size={20} color="#FFF" />
+            <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <View style={styles.headerEyebrowRow}>
@@ -708,10 +708,10 @@
           <FadeInView delay={600}>
             <View style={styles.rodape}>
               <Text style={[styles.rodapeSymbius, { color: C.azulEscuro }]}>
-                Symbi<Text style={{ color: C.rosa }}>us</Text>
+                Simbi<Text style={{ color: C.rosa }}>o</Text>
               </Text>
               <Text style={[styles.rodapeTxt, { color: C.textoSec }]}>
-                feito com 💛 pela Anchieta
+                feito pela Anchieta
               </Text>
             </View>
           </FadeInView>
@@ -974,7 +974,7 @@
                           <View style={{ flex: 1 }}>
                             <Text style={[styles.notifTitulo, { color: C.azulEscuro }]} numberOfLines={1}>{item.titulo}</Text>
                             <Text style={[styles.notifMeta, { color: C.textoSec }]}>
-                              {item.tipo === 'lembrete_vencido' ? '⚠️ Vencido' : '📅 Próximo'}
+                              {item.tipo === 'lembrete_vencido' ? 'Vencido' : 'Próximo'}
                             </Text>
                           </View>
                         </View>
@@ -993,6 +993,7 @@
             </View>
           </View>
         </Modal>
+        <SymbiusTabBar ativa="nenhuma" navigation={navigation} uid={uid ?? null} />
       </View>
     );
   }
@@ -1066,4 +1067,5 @@
     confirmTitulo:       { fontSize: 17, fontFamily: F.black, marginBottom: 6, textAlign: 'center' },
     confirmMsg:          { fontSize: 13, fontFamily: F.medium, textAlign: 'center', lineHeight: 19, marginBottom: 18 },
     confirmBtns:         { flexDirection: 'row', gap: 8, width: '100%' },
-  });
+  })
+import SymbiusTabBar from '../components/SymbiusTabBar';;

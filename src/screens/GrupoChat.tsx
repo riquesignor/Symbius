@@ -197,7 +197,7 @@ export default function GrupoChat({ navigation, route }: any) {
             renderItem={renderMensagem}
             contentContainerStyle={{ padding: 12, paddingBottom: 16, flexGrow: 1 }}
             onContentSizeChange={() => listaRef.current?.scrollToEnd({ animated: false })}
-            ListEmptyComponent={<Text style={[styles.vazio, { marginTop: 40 }]}>Mandem a primeira mensagem do grupo 👋</Text>}
+            ListEmptyComponent={<Text style={[styles.vazio, { marginTop: 40 }]}>Mandem a primeira mensagem do grupo</Text>}
           />
         )}
 

@@ -714,7 +714,7 @@ useEffect(() => {
         !modoEscuro && { shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4 }
       ]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.btnVoltar}>
-          <Ionicons name="arrow-back" size={20} color={CORES.branco} />
+          <Ionicons name="arrow-back" size={22} color={CORES.branco} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={[styles.headerEyebrow, { fontSize: fs(9) }]}>AGENDA ESCOLAR</Text>

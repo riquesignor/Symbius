@@ -224,7 +224,7 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
       const destino = rotaDoPush(data, uidRef.current);
       if (!destino) return;
       mostrarBannerRef.current({
-        titulo: m.notification?.title || 'Symbius',
+        titulo: m.notification?.title || 'Simbio',
         corpo: m.notification?.body || '',
         icone: ICONE_POR_TIPO[data.tipo] || 'notifications',
         rota: destino.rota,

@@ -54,7 +54,7 @@ export default function Login({ navigation }: any) {
 
       // 3. Verificar status da conta
       if (userData.status === 2) {
-        setMsgAviso('🚫 Conta desativada, entre em contato com a coordenação.');
+        setMsgAviso('Conta desativada, entre em contato com a coordenação.');
         await signOut(auth);
         return;
       }
@@ -96,11 +96,11 @@ export default function Login({ navigation }: any) {
     setLoadingReset(true);
     try {
       await sendPasswordResetEmail(auth, emailReset.trim());
-      setMsgAviso('✅ Email de redefinição enviado!');
+      setMsgAviso('Email de redefinição enviado!');
       setModalReset(false);
       setEmailReset('');
     } catch (error: any) {
-      setMsgAviso('❌ Email não encontrado.');
+      setMsgAviso('Email não encontrado.');
     } finally {
       setLoadingReset(false);
     }
@@ -120,7 +120,7 @@ export default function Login({ navigation }: any) {
 
           {/* LOGO */}
           <View style={styles.logoWrap}>
-            <Text style={styles.logoText}>Symbius</Text>
+            <Text style={styles.logoText}>Simbio</Text>
             <Text style={styles.logoSlogan}>aprenda junto</Text>
           </View>
 

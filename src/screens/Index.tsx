@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
-  StatusBar, TextInput, ActivityIndicator,
+  StatusBar, TextInput, ActivityIndicator, Switch,
   Image, FlatList, Dimensions, Modal,
 } from 'react-native';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
@@ -17,9 +17,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { calcularNivel, calcularProgressoXp } from '../utils/gamification';
 import { awardDailyCheckIn, CheckInResult, LevelUpInfo } from '../services/gamificationService';
 import { useNotificacao } from '../contexts/NotificacaoProvider';
+import { useAppSettings } from '../contexts/AppSettingsContext';
 import { F } from '../constants/theme';
 import { CORES_SYMBIUS } from './Boasvindas';
 import NivelUpSymbiusModal from '../components/NivelUpSymbiusModal';
+import AnimalImagem from '../components/AnimalImagem';
 import SymbiusTabBar from '../components/SymbiusTabBar';
 
 // ══════════════════════════════════════════════════════════════════════
@@ -33,6 +35,8 @@ import SymbiusTabBar from '../components/SymbiusTabBar';
 const { width } = Dimensions.get('window');
 const PAD_H = 20;
 const DESTAQUE_W = (width - PAD_H * 2 - 12) / 2;
+const CARD_GAP = 12;
+const CARD_CARROSSEL_W = Math.round(width * 0.62);
 const LARGURA_ANTIGO = (width - 44 - 12) / 2; // largura de card dentro do notifSheet (padding 22 de cada lado)
 
 const DIAS_VALIDADE_POST = 30;
@@ -93,10 +97,8 @@ export default function Index({ navigation, route }: any) {
   // ── Mural / posts (coleção `posts` do app original) ──
   const [posts, setPosts] = useState<any[]>([]);
   const [modoEdicao, setModoEdicao] = useState(false);
-  const [destaqueIdx, setDestaqueIdx] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedPost, setSelectedPost] = useState<any>(null);
-  const carrosselRef = useRef<FlatList>(null);
 
   // ── Publicações antigas (fora da janela de 30 dias do mural) ──
   const [modalAntigos, setModalAntigos] = useState(false);
@@ -108,6 +110,7 @@ export default function Index({ navigation, route }: any) {
   const [miniMenuAberto, setMiniMenuAberto] = useState(false);
 
   const { notificacoesChat, limparNotificacoesChat } = useNotificacao();
+  const { modoEscuro, setModoEscuro } = useAppSettings();
 
   const carregar = useCallback(async () => {
     try {
@@ -243,22 +246,6 @@ export default function Index({ navigation, route }: any) {
     });
   }, [postsValidos, busca]);
 
-  const slidesDestaque = useMemo(() => {
-    const pares: any[] = [];
-    for (let i = 0; i < postsValidos.length; i += 2) {
-      pares.push(postsValidos.slice(i, i + 2));
-    }
-    return pares;
-  }, [postsValidos]);
-
-  const irParaSlide = (idx: number) => {
-    const total = slidesDestaque.length;
-    if (total === 0) return;
-    const novo = ((idx % total) + total) % total;
-    setDestaqueIdx(novo);
-    carrosselRef.current?.scrollToIndex({ index: novo, animated: true });
-  };
-
   const visualizarPost = async (post: any) => {
     setSelectedPost(post);
     setModalVisible(true);
@@ -386,7 +373,14 @@ export default function Index({ navigation, route }: any) {
 
         {/* HEADER */}
         <View style={styles.topoMarca}>
-          <Text style={styles.marca}>Symbius</Text>
+          <TouchableOpacity
+            onLongPress={() => irPara('TesteNivelUp')}
+            delayLongPress={800}
+            activeOpacity={1}
+            accessible={false}
+          >
+            <Text style={styles.marca}>simbio</Text>
+          </TouchableOpacity>
           <View style={styles.headerIcones}>
             {temPermissaoDeStaff && (
               <TouchableOpacity
@@ -473,24 +467,16 @@ export default function Index({ navigation, route }: any) {
                 <MaterialIcons name="add" size={16} color={CORES_SYMBIUS.creme} />
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              style={styles.navDestBtn}
-              onPress={() => irParaSlide(destaqueIdx - 1)}
-              disabled={slidesDestaque.length <= 1}
-              hitSlop={HIT_SLOP_MD}
-              accessibilityLabel="Slide anterior"
-            >
-              <Ionicons name="chevron-back" size={14} color={CORES_SYMBIUS.textoSec} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.navDestBtn, styles.navDestBtnAtivo]}
-              onPress={() => irParaSlide(destaqueIdx + 1)}
-              disabled={slidesDestaque.length <= 1}
-              hitSlop={HIT_SLOP_MD}
-              accessibilityLabel="Próximo slide"
-            >
-              <Ionicons name="chevron-forward" size={14} color={CORES_SYMBIUS.creme} />
-            </TouchableOpacity>
+            {busca.trim().length === 0 && posts.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setModalAntigos(true)}
+                hitSlop={HIT_SLOP_MD}
+                accessibilityRole="button"
+                accessibilityLabel={`Ver tudo, ${posts.length} publicações`}
+              >
+                <Text style={styles.verTudo}>Ver tudo</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -503,41 +489,23 @@ export default function Index({ navigation, route }: any) {
               </View>
             ) : (
               postsFiltrados.map(post => (
-                <View key={post.id} style={{ marginBottom: 10 }}>{renderDestaqueCard(post)}</View>
+                <View key={post.id} style={{ marginBottom: 10 }}>{renderDestaqueCard(post, { largura: width - PAD_H * 2 })}</View>
               ))
             )}
           </View>
-        ) : slidesDestaque.length > 0 ? (
-          <>
-            <FlatList
-              ref={carrosselRef}
-              data={slidesDestaque}
-              keyExtractor={(_, i) => `slide-${i}`}
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              onMomentumScrollEnd={(e) => {
-                const idx = Math.round(e.nativeEvent.contentOffset.x / width);
-                setDestaqueIdx(idx);
-              }}
-              renderItem={({ item: par }) => (
-                <View style={[styles.slideWrap, { width }]}>
-                  {par.map((post: any) => renderDestaqueCard(post))}
-                  {par.length === 1 && <View style={{ width: DESTAQUE_W }} />}
-                </View>
-              )}
-            />
-            <View style={styles.indicadores}>
-              {slidesDestaque.map((_, i) => {
-                const ativo = i === destaqueIdx;
-                return (
-                  <TouchableOpacity key={i} onPress={() => irParaSlide(i)} hitSlop={HIT_SLOP_DOT}>
-                    <View style={[styles.indicador, ativo && styles.indicadorAtivo]} />
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </>
+        ) : postsValidos.length > 0 ? (
+          <FlatList
+            data={postsValidos}
+            keyExtractor={(p) => p.id}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={CARD_CARROSSEL_W + CARD_GAP}
+            decelerationRate="fast"
+            style={styles.carrossel}
+            contentContainerStyle={styles.carrosselConteudo}
+            ItemSeparatorComponent={() => <View style={{ width: CARD_GAP }} />}
+            renderItem={({ item }) => renderDestaqueCard(item, { largura: CARD_CARROSSEL_W })}
+          />
         ) : (
           <View style={styles.destEmpty}>
             <Ionicons name="newspaper-outline" size={30} color={CORES_SYMBIUS.borda2} />
@@ -554,37 +522,11 @@ export default function Index({ navigation, route }: any) {
           </View>
         )}
 
-        {busca.trim().length === 0 && postsAntigos.length > 0 && (
-          <TouchableOpacity
-            style={styles.btnVerAntigos}
-            onPress={() => setModalAntigos(true)}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel={`Ver publicações antigas, ${postsAntigos.length} no total`}
-          >
-            <Ionicons name="time-outline" size={14} color={CORES_SYMBIUS.laranjaTexto} />
-            <Text style={styles.btnVerAntigosTxt}>Ver publicações antigas ({postsAntigos.length})</Text>
-            <Ionicons name="chevron-forward" size={14} color={CORES_SYMBIUS.laranjaTexto} />
-          </TouchableOpacity>
-        )}
-
-        {/* AÇÕES RÁPIDAS */}
-        <View style={styles.acoesGrid}>
-          {ACOES.map((a) => (
-            <TouchableOpacity key={a.chave} style={styles.acaoCard} activeOpacity={0.85} onPress={() => handleAcao(a.chave)}>
-              <View style={[styles.acaoIconeWrap, { backgroundColor: a.cor }]}>
-                <Ionicons name={a.icone} size={20} color={CORES_SYMBIUS.creme} />
-              </View>
-              <Text style={styles.acaoLabel}>{a.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
         {/* SEU PROGRESSO */}
         <Text style={styles.secaoTituloSimples}>Seu progresso</Text>
         <View style={styles.cardProgresso}>
           <View style={styles.progressoIconeWrap}>
-            <Text style={styles.progressoIcone}>{nivel.iconeAnimal}</Text>
+            <AnimalImagem animal={nivel.animal} size={44} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.progressoTitulo}>{nivel.nomeAnimal} · {nivel.nomeSubfase}</Text>
@@ -610,7 +552,7 @@ export default function Index({ navigation, route }: any) {
               <Text style={styles.desafioLabel}>Desafio do dia</Text>
               <Text style={styles.desafioTitulo}>
                 {checkIn?.ganhou
-                  ? `Feito! +${checkIn.xp} XP, +${checkIn.moedas} Sementes 🌱`
+                  ? `Feito! +${checkIn.xp} XP, +${checkIn.moedas} Sementes`
                   : 'Conecte-se com 1 novo match'}
               </Text>
             </View>
@@ -619,7 +561,7 @@ export default function Index({ navigation, route }: any) {
               : (
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={styles.desafioXp}>+10 XP</Text>
-                  <Text style={styles.desafioMoedas}>🌱 5 Sementes</Text>
+                  <Text style={styles.desafioMoedas}>5 Sementes</Text>
                 </View>
               )
             }
@@ -639,7 +581,7 @@ export default function Index({ navigation, route }: any) {
               ? <Image source={{ uri: selectedPost.capa }} style={StyleSheet.absoluteFill} />
               : (
                 <View style={[StyleSheet.absoluteFill, styles.modalCoverVazia]}>
-                  <Text style={styles.modalMarca}>Symbius</Text>
+                  <Text style={styles.modalMarca}>Simbio</Text>
                 </View>
               )
             }
@@ -776,21 +718,21 @@ export default function Index({ navigation, route }: any) {
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.secaoEyebrow}>MURAL</Text>
-                <Text style={styles.notifTitulo}>Publicações antigas</Text>
+                <Text style={styles.notifTitulo}>Todas as publicações</Text>
               </View>
               <TouchableOpacity onPress={() => setModalAntigos(false)} hitSlop={HIT_SLOP_SM}>
                 <Ionicons name="close" size={22} color={CORES_SYMBIUS.textoSec} />
               </TouchableOpacity>
             </View>
 
-            {postsAntigos.length === 0 ? (
+            {posts.length === 0 ? (
               <View style={{ alignItems: 'center', paddingVertical: 36 }}>
                 <Ionicons name="archive-outline" size={36} color={CORES_SYMBIUS.borda2} />
-                <Text style={styles.notifVaziaTxt}>Nenhuma publicação antiga</Text>
+                <Text style={styles.notifVaziaTxt}>Nenhuma publicação ainda</Text>
               </View>
             ) : (
               <FlatList
-                data={postsAntigos}
+                data={posts}
                 keyExtractor={(p) => p.id}
                 numColumns={2}
                 columnWrapperStyle={{ gap: 12 }}
@@ -810,6 +752,23 @@ export default function Index({ navigation, route }: any) {
       <Modal visible={miniMenuAberto} transparent animationType="fade" onRequestClose={() => setMiniMenuAberto(false)}>
         <TouchableOpacity style={[styles.menuOverlay, { paddingTop: insets.top + 44 }]} activeOpacity={1} onPress={() => setMiniMenuAberto(false)}>
           <View style={styles.menuPopup}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => { setMiniMenuAberto(false); setModoEscuro(!modoEscuro); }}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: modoEscuro }}
+              accessibilityLabel="Modo escuro"
+            >
+              <Ionicons name={modoEscuro ? 'moon' : 'moon-outline'} size={17} color={CORES_SYMBIUS.verdeEscuro} />
+              <Text style={[styles.menuItemText, { flex: 1 }]}>Modo escuro</Text>
+              <Switch
+                value={modoEscuro}
+                onValueChange={(v) => { setMiniMenuAberto(false); setModoEscuro(v); }}
+                trackColor={{ false: CORES_SYMBIUS.borda2, true: CORES_SYMBIUS.verdeEscuro }}
+                thumbColor={CORES_SYMBIUS.creme}
+              />
+            </TouchableOpacity>
+            <View style={styles.menuDivider} />
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => { setMiniMenuAberto(false); irPara('Ajuda'); }}
@@ -853,10 +812,10 @@ export default function Index({ navigation, route }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
   centro: { justifyContent: 'center', alignItems: 'center' },
-  scroll: { paddingHorizontal: PAD_H, paddingBottom: 24 },
+  scroll: { paddingHorizontal: PAD_H, paddingBottom: 40 },
 
   topoMarca: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  marca: { fontSize: 22, fontFamily: F.bold, color: CORES_SYMBIUS.verdeEscuro },
+  marca: { fontSize: 24, fontFamily: F.black, letterSpacing: -0.5, color: CORES_SYMBIUS.verdeEscuro },
   headerIcones: { flexDirection: 'row', alignItems: 'center' },
   btnEdit: {
     width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center',
@@ -868,13 +827,13 @@ const styles = StyleSheet.create({
     backgroundColor: CORES_SYMBIUS.laranjaTexto, borderWidth: 1.5, borderColor: CORES_SYMBIUS.fundo,
   },
 
-  saudacao: { fontSize: 21, fontFamily: F.black, color: CORES_SYMBIUS.texto, marginTop: 14 },
-  subSaudacao: { fontSize: 13.5, color: CORES_SYMBIUS.textoSec, fontFamily: F.medium, marginTop: 2 },
+  saudacao: { fontSize: 21, fontFamily: F.black, color: CORES_SYMBIUS.texto, marginTop: 24 },
+  subSaudacao: { fontSize: 13.5, color: CORES_SYMBIUS.textoSec, fontFamily: F.medium, marginTop: 6 },
 
   buscaWrap: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: CORES_SYMBIUS.fundoSuave, borderRadius: 14, paddingHorizontal: 14,
-    paddingVertical: 12, marginTop: 16,
+    paddingVertical: 13, marginTop: 24,
   },
   buscaInput: { flex: 1, color: CORES_SYMBIUS.texto, fontSize: 13, fontFamily: F.regular },
 
@@ -884,21 +843,19 @@ const styles = StyleSheet.create({
   },
   txtEdicao: { color: CORES_SYMBIUS.creme, fontSize: 11.5, fontFamily: F.bold, letterSpacing: 0.4 },
 
-  secaoHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 20, marginBottom: 10 },
+  secaoHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 36, marginBottom: 16 },
   secaoEyebrow: { fontSize: 10, fontFamily: F.bold, color: CORES_SYMBIUS.textoSec, letterSpacing: 0.6 },
   secaoTitulo: { fontSize: 16, fontFamily: F.black, color: CORES_SYMBIUS.texto, marginTop: 2 },
-  secaoTituloSimples: { fontSize: 13, fontFamily: F.bold, color: CORES_SYMBIUS.texto, marginTop: 20, marginBottom: 10 },
+  secaoTituloSimples: { fontSize: 15, fontFamily: F.bold, color: CORES_SYMBIUS.texto, marginTop: 36, marginBottom: 14 },
 
   navDestRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   btnNovoPost: {
     width: 28, height: 28, borderRadius: 14, backgroundColor: CORES_SYMBIUS.laranjaTexto,
     justifyContent: 'center', alignItems: 'center',
   },
-  navDestBtn: {
-    width: 26, height: 26, borderRadius: 13, backgroundColor: CORES_SYMBIUS.fundoSuave,
-    borderWidth: 1, borderColor: CORES_SYMBIUS.borda2, justifyContent: 'center', alignItems: 'center',
-  },
-  navDestBtnAtivo: { backgroundColor: CORES_SYMBIUS.verdeEscuro, borderColor: CORES_SYMBIUS.verdeEscuro },
+  verTudo: { fontSize: 13, fontFamily: F.semibold, color: CORES_SYMBIUS.textoSec },
+  carrossel: { marginHorizontal: -PAD_H },
+  carrosselConteudo: { paddingHorizontal: PAD_H },
 
   slideWrap: { flexDirection: 'row', gap: 12, paddingRight: 12 },
   destCard: { height: 150, borderRadius: 16, overflow: 'hidden', justifyContent: 'space-between', padding: 10 },
@@ -926,10 +883,6 @@ const styles = StyleSheet.create({
   },
   btnPrimeiroPostText: { color: CORES_SYMBIUS.creme, fontSize: 12, fontFamily: F.bold },
 
-  indicadores: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 10 },
-  indicador: { width: 6, height: 6, borderRadius: 3, backgroundColor: CORES_SYMBIUS.borda2 },
-  indicadorAtivo: { width: 18, backgroundColor: CORES_SYMBIUS.verdeEscuro },
-
   acoesGrid: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginTop: 20 },
   acaoCard: { flex: 1, alignItems: 'center', gap: 6 },
   acaoIconeWrap: {
@@ -945,9 +898,8 @@ const styles = StyleSheet.create({
   },
   progressoIconeWrap: {
     width: 44, height: 44, borderRadius: 22, backgroundColor: CORES_SYMBIUS.fundoSuave,
-    justifyContent: 'center', alignItems: 'center',
+    justifyContent: 'center', alignItems: 'center', overflow: 'hidden',
   },
-  progressoIcone: { fontSize: 22 },
   progressoTitulo: { color: CORES_SYMBIUS.texto, fontSize: 14, fontFamily: F.bold },
   progressoSub: { color: CORES_SYMBIUS.textoMuted, fontSize: 11, fontFamily: F.medium, marginTop: 4, marginBottom: 6 },
   progressoMoedas: { color: CORES_SYMBIUS.laranja, fontSize: 12, fontFamily: F.bold },
@@ -957,7 +909,7 @@ const styles = StyleSheet.create({
   cardDesafio: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: CORES_SYMBIUS.verdeEscuro, borderRadius: 16, padding: 16,
-    marginTop: 8,
+    marginTop: 16,
   },
   desafioLabel: { color: CORES_SYMBIUS.creme, fontSize: 13, fontFamily: F.bold },
   desafioTitulo: { color: '#C7D4C2', fontSize: 12, fontFamily: F.medium, marginTop: 2 },
@@ -999,12 +951,6 @@ const styles = StyleSheet.create({
     backgroundColor: CORES_SYMBIUS.fundoCard, borderTopLeftRadius: 26, borderTopRightRadius: 26,
     padding: 22, paddingBottom: 36, maxHeight: '80%',
   },
-  btnVerAntigos: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: CORES_SYMBIUS.fundoLaranjaClaro, borderRadius: 12,
-    paddingVertical: 10, marginTop: 2, marginBottom: 4,
-  },
-  btnVerAntigosTxt: { color: CORES_SYMBIUS.laranjaTexto, fontSize: 12.5, fontFamily: F.bold },
   notifHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16, backgroundColor: CORES_SYMBIUS.borda2 },
   notifTitulo: { fontSize: 17, fontFamily: F.black, color: CORES_SYMBIUS.texto },
   notifLimparTxt: { fontSize: 13, fontFamily: F.bold, color: CORES_SYMBIUS.laranjaTexto },

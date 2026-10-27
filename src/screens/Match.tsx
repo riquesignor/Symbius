@@ -10,6 +10,7 @@ import {
   addDoc, updateDoc, setDoc, serverTimestamp, onSnapshot
 } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
+import AnimalImagem from '../components/AnimalImagem';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -436,7 +437,7 @@ export default function Match({ navigation, route }: any) {
     const outroData: any = outroSnap.exists() ? outroSnap.data() : {};
     await setDoc(doc(db, 'conversas', conversaId), {
       membros: [meuUid, outroUid],
-      ultimaMensagem: '🤝 Vocês fizeram match!',
+      ultimaMensagem: 'Vocês fizeram match!',
       data_postagem: serverTimestamp(),
       quemEnviou: outroUid, visto: false, isMatch: true,
       dadosMembros: {
@@ -460,7 +461,7 @@ export default function Match({ navigation, route }: any) {
       await criarConversaDoMatch(deUid);
       dispararPush({
         destinatarioUid: deUid,
-        titulo: '🤝 Deu match!',
+        titulo: 'Deu match!',
         corpo: `${meusDados?.nome_completo || 'Alguém'} aceitou estudar com você. Bora conversar?`,
         dados: { tipo: 'match_aceito', deUid: meuUid },
       });
@@ -485,7 +486,7 @@ export default function Match({ navigation, route }: any) {
       });
       dispararPush({
         destinatarioUid: paraUid,
-        titulo: '🎓 Nova solicitação de match',
+        titulo: 'Nova solicitação de match',
         corpo: `${meusDados?.nome_completo || 'Alguém'} quer estudar com você!`,
         dados: { tipo: 'solicitacao_match', deUid: meuUid },
       });
@@ -659,7 +660,7 @@ export default function Match({ navigation, route }: any) {
         ListHeaderComponentStyle={{ marginBottom: 12, gap: 10 }}
         ListEmptyComponent={(
           <View style={[styles.centro, { paddingTop: 40 }]}>
-            <Text style={{ fontSize: 56 }}>🦉</Text>
+            <AnimalImagem animal="coruja" size={96} />
             <Text style={styles.txtVazio}>Ninguém novo por aqui!</Text>
             <Text style={[styles.txtVazio, { fontSize: 13, marginTop: 4 }]}>
               Tente mudar o filtro ou volte mais tarde.
@@ -726,7 +727,7 @@ export default function Match({ navigation, route }: any) {
       : (item.outro?.nome_completo?.split(' ')[0] + ': ' || '');
     const labelMsg   = ultimaMsg
       ? `${prefixo}${ultimaMsg}`
-      : 'Diga olá! 👋';
+      : 'Diga olá!';
 
     // Texto da direita: "online agora" se online, senão último acesso, senão hora da msg
     const labelDireita = estaOnline
@@ -785,9 +786,9 @@ export default function Match({ navigation, route }: any) {
       />
 
       {/* NAVBAR */}
-      <View style={[styles.navbar, { paddingTop: insets.top, backgroundColor: CORES_SYMBIUS.fundo, borderBottomColor: CORES_SYMBIUS.borda }]}>
+      <View style={[styles.navbar, { paddingTop: insets.top, minHeight: 60 + insets.top, backgroundColor: CORES_SYMBIUS.fundo, borderBottomColor: CORES_SYMBIUS.borda }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={C.azulEscuro} />
+          <Ionicons name="arrow-back" size={22} color={C.azulEscuro} />
         </TouchableOpacity>
         <View style={styles.logoWrap}>
           <Text style={[styles.logo, { color: C.azulEscuro, fontFamily: F.black }]}>Match de Estudos</Text>
@@ -804,14 +805,18 @@ export default function Match({ navigation, route }: any) {
           <TouchableOpacity
             key={aba}
             style={[styles.tab, abaAtiva === aba && styles.tabAtiva]}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: abaAtiva === aba }}
             onPress={() => setAbaAtiva(aba)}
           >
-            <Ionicons
-              name={aba === 'descobrir' ? 'search' : aba === 'solicitacoes' ? 'mail' : 'people'}
-              size={15}
-              color={abaAtiva === aba ? CORES.branco : C.textoSec}
-            />
-            <Text style={[styles.tabTxt, { color: abaAtiva === aba ? CORES.branco : C.textoSec, fontFamily: F.bold }, abaAtiva === aba && styles.tabTxtAtiva]}>
+            {abaAtiva === aba && (
+              <Ionicons
+                name={aba === 'descobrir' ? 'search' : aba === 'solicitacoes' ? 'mail' : 'people'}
+                size={15}
+                color={CORES.branco}
+              />
+            )}
+            <Text numberOfLines={1} style={[styles.tabTxt, { color: abaAtiva === aba ? CORES.branco : C.textoSec, fontFamily: F.bold }, abaAtiva === aba && styles.tabTxtAtiva]}>
               {aba === 'descobrir' ? 'Descobrir' : aba === 'solicitacoes' ? 'Solicitações' : 'Matches'}
             </Text>
             {aba === 'solicitacoes' && solicitacoes.length > 0 && (
@@ -922,7 +927,7 @@ export default function Match({ navigation, route }: any) {
                             {g.ultimaMensagem || `${g.membros.length} participantes`}
                           </Text>
                         </View>
-                        <Text style={[styles.msgTimestamp, { color: C.textoSec, fontFamily: F.medium }]}>{g.membros.length} 👤</Text>
+                        <Text style={[styles.msgTimestamp, { color: C.textoSec, fontFamily: F.medium }]}>{g.membros.length} membros</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -1154,15 +1159,15 @@ const styles = StyleSheet.create({
   avisoSolicSub:    { fontSize: 11.5, fontFamily: F.medium, color: 'rgba(244,241,232,0.85)', marginTop: 1 },
 
   container:          { flex: 1, backgroundColor: CORES.fundo },
-  navbar:             { minHeight: 64, backgroundColor: CORES.branco, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
+  navbar:             { minHeight: 60, paddingBottom: 8, backgroundColor: CORES.branco, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
   logoWrap:           { position: 'relative', flexDirection: 'row', alignItems: 'center' },
   dotAmarelo:         { position: 'absolute', top: 2, left: -4, width: 7, height: 7, borderRadius: 4, backgroundColor: CORES.amarelo, zIndex: 1 },
   logo:               { fontSize: 17, fontFamily: F.black, color: CORES.azulEscuro, letterSpacing: -0.3 },
-  tabs:               { flexDirection: 'row', backgroundColor: CORES.branco, paddingHorizontal: 16, paddingBottom: 12, paddingTop: 8, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
+  tabs:               { flexDirection: 'row', backgroundColor: CORES.branco, paddingHorizontal: 16, paddingBottom: 14, paddingTop: 10, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
   tabsTrack:          { flex: 1, flexDirection: 'row', gap: 4, backgroundColor: CORES.fundo, padding: 4, borderRadius: 14 },
-  tab:                { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 6, paddingVertical: 9, borderRadius: 10 },
-  tabAtiva:           { backgroundColor: CORES.azulEscuro },
-  tabTxt:             { fontSize: 12, fontFamily: F.bold, color: CORES.textoSec },
+  tab:                { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8, minHeight: 44, borderRadius: 12 },
+  tabAtiva:           { backgroundColor: CORES.azulEscuro, flexGrow: 1.35 },
+  tabTxt:             { fontSize: 13, fontFamily: F.bold, color: CORES.textoSec },
   tabTxtAtiva:        { color: CORES.branco },
   badge:              { backgroundColor: CORES.rosa, width: 18, height: 18, borderRadius: 9, justifyContent: 'center', alignItems: 'center', marginLeft: 2 },
   badgeTxt:           { color: CORES.branco, fontSize: 10, fontFamily: F.black },

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import SymbiusTabBar from '../components/SymbiusTabBar';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
   SafeAreaView, StatusBar, ActivityIndicator, Alert, PanResponder, Animated, Dimensions,
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
 import { doc, getDoc } from 'firebase/firestore';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { atingiuAnimal } from '../utils/gamification';
@@ -114,11 +115,11 @@ export default function Loja({ navigation, route }: any) {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top || 12 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Ionicons name="chevron-back" size={24} color={CORES_SYMBIUS.texto} />
+          <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
         <Text style={[styles.headerTitulo, { fontSize: fs(17) }]}>Loja de Cosméticos</Text>
         <View style={styles.saldoPill}>
-          <Text style={{ fontSize: fs(13) }}>🌱</Text>
+          <Ionicons name="leaf" size={15} color={CORES_SYMBIUS.laranja} />
           <Text style={[styles.saldoTxt, { fontSize: fs(13) }]}>{moedas}</Text>
         </View>
       </View>
@@ -155,20 +156,20 @@ export default function Loja({ navigation, route }: any) {
             return (
               <View key={item.id} style={[styles.card, equipado && styles.cardEquipado]}>
                 <View style={[styles.iconeWrap, item.categoria === 'moldura' && { borderWidth: 3, borderColor: item.cor }]}>
-                  <Text style={{ fontSize: fs(30) }}>{item.emoji}</Text>
+                  <MaterialCommunityIcons name={item.icone as any} size={34} color={item.cor || CORES_SYMBIUS.verdeEscuro} />
                 </View>
 
                 <Text style={[styles.itemNome, { fontSize: fs(13.5) }]} numberOfLines={1}>
-                  {item.nome}{item.prestigio ? ' ✨' : ''}
+                  {item.nome}
                 </Text>
 
                 {bloqueado ? (
                   <Text style={[styles.itemBloqueado, { fontSize: fs(10.5) }]} numberOfLines={2}>
-                    🔒 Requer {item.animalMinimo ? item.animalMinimo.charAt(0).toUpperCase() + item.animalMinimo.slice(1) : ''}
+                    Requer {item.animalMinimo ? item.animalMinimo.charAt(0).toUpperCase() + item.animalMinimo.slice(1) : ''}
                   </Text>
                 ) : (
                   <Text style={[styles.itemPreco, { fontSize: fs(12) }]}>
-                    🌱 {item.preco} Sementes
+                    {item.preco} Sementes
                   </Text>
                 )}
 
@@ -204,6 +205,7 @@ export default function Loja({ navigation, route }: any) {
         </ScrollView>
       )}
       </Animated.View>
+      <SymbiusTabBar ativa="nenhuma" navigation={navigation} uid={uid} />
     </SafeAreaView>
   );
 }
