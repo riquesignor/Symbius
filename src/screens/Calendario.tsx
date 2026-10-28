@@ -1,3 +1,4 @@
+import { voltar } from '../navegacao';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
@@ -631,6 +632,32 @@ useEffect(() => {
   const evsAdmDia: any[] = eventosAdmin.get(diaSelecionado) || [];
   const lembDia:   any[] = lembretes.get(diaSelecionado)    || [];
 
+  const diasNoMes = (a: number, m: number) => new Date(a, m, 0).getDate();
+  // Troca ano/mês mantendo o dia válido (31 de jan -> fev vira 28/29) e virando
+  // o ano quando passa de dezembro/janeiro.
+  const ajustarSelecao = (a: number, m: number, d: number) => {
+    while (m > 12) { m -= 12; a += 1; }
+    while (m < 1)  { m += 12; a -= 1; }
+    setSelAno(a); setSelMes(m); setSelDia(Math.min(d, diasNoMes(a, m)));
+  };
+
+  const resetFormAdmin = () => {
+    setModalAdminForm(false);
+    setAdminTitulo(''); setAdminDesc(''); setAdminData('');
+    setAdminTipo(''); setAdminSeries([]); setAdmEditandoId(null);
+  };
+  // Tocar fora do quadro fecha; se já tem coisa preenchida, confirma antes.
+  const fecharFormAdmin = () => {
+    const sujo = !admEditandoId && (adminTitulo.trim() || adminDesc.trim() || adminData || adminTipo || adminSeries.length > 0);
+    if (!sujo) { resetFormAdmin(); return; }
+    setConfirm({
+      titulo: 'Descartar este evento?',
+      msg:    'O que você preencheu será perdido.',
+      btn:    'Descartar',
+      onOk:   resetFormAdmin,
+    });
+  };
+
   const confirmarData = () => {
     setAdminData(formatarDataStr(selAno, selMes, selDia));
     setModalDataEvt(false);
@@ -713,7 +740,7 @@ useEffect(() => {
         { paddingTop: insets.top },
         !modoEscuro && { shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4 }
       ]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.btnVoltar}>
+        <TouchableOpacity onPress={() => voltar(navigation)} style={styles.btnVoltar}>
           <Ionicons name="arrow-back" size={22} color={CORES.branco} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
@@ -907,9 +934,9 @@ useEffect(() => {
       {/* ════════════════════════════════════════════════
           MODAL DETALHE
       ════════════════════════════════════════════════ */}
-      <Modal visible={modalDetalhe} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+      <Modal visible={modalDetalhe} transparent animationType="slide" onRequestClose={() => setModalDetalhe(false)}>
+        <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => setModalDetalhe(false)}>
+          <View onStartShouldSetResponder={() => true} style={[styles.modalSheet, { backgroundColor: C.branco }]}>
             <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
 
             {eventoDetalhe && (() => {
@@ -1002,15 +1029,15 @@ useEffect(() => {
               );
             })()}
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
 
       {/* ════════════════════════════════════════════════
           MODAL DIA
       ════════════════════════════════════════════════ */}
-      <Modal visible={modalDia} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+      <Modal visible={modalDia} transparent animationType="slide" onRequestClose={() => { setModalDia(false); cancelarEdicaoLembrete(); }}>
+        <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => { setModalDia(false); cancelarEdicaoLembrete(); }}>
+          <View onStartShouldSetResponder={() => true} style={[styles.modalSheet, { backgroundColor: C.branco }]}>
             <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
 
             <View style={[styles.diaHeader, { borderBottomColor: C.cinzaClaro }]}>
@@ -1180,17 +1207,17 @@ useEffect(() => {
               <Text style={[styles.btnFecharModalText, { color: C.textoSec, fontSize: fs(13) }]}>Fechar</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
 
 
       {/* ════════════════════════════════════════════════
           MODAL ADMIN FORM (cria E edita)
       ════════════════════════════════════════════════ */}
-      <Modal visible={modalAdminForm} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+      <Modal visible={modalAdminForm} transparent animationType="slide" onRequestClose={fecharFormAdmin}>
+        <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={fecharFormAdmin}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end' }}>
-            <View style={[
+            <View onStartShouldSetResponder={() => true} style={[
               styles.modalSheet,
               { paddingBottom: Platform.OS === 'ios' ? 40 : 28, backgroundColor: C.branco }
             ]}>
@@ -1321,13 +1348,13 @@ useEffect(() => {
               </View>
             </View>
           </ScrollView>
-        </View>
+        </TouchableOpacity>
       </Modal>
 
       {/* MODAL TIPO EVT */}
-      <Modal visible={modalTipoEvt} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+      <Modal visible={modalTipoEvt} transparent animationType="slide" onRequestClose={() => setModalTipoEvt(false)}>
+        <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => setModalTipoEvt(false)}>
+          <View onStartShouldSetResponder={() => true} style={[styles.modalSheet, { backgroundColor: C.branco }]}>
             <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
             <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>Tipo de Evento</Text>
             {TIPOS_EVENTO.map(t => (
@@ -1342,26 +1369,26 @@ useEffect(() => {
               </TouchableOpacity>
             ))}
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
 
       {/* MODAL DATA EVT */}
-      <Modal visible={modalDataEvt} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+      <Modal visible={modalDataEvt} transparent animationType="slide" onRequestClose={() => setModalDataEvt(false)}>
+        <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => setModalDataEvt(false)}>
+          <View onStartShouldSetResponder={() => true} style={[styles.modalSheet, { backgroundColor: C.branco }]}>
             <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
             <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>Selecionar Data</Text>
 
             <View style={styles.dataPickerRow}>
               <TouchableOpacity
-                onPress={() => setSelAno(a => a - 1)}
+                onPress={() => ajustarSelecao(selAno - 1, selMes, selDia)}
                 style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
               >
                 <Ionicons name="chevron-back" size={14} color={C.azulEscuro} />
               </TouchableOpacity>
               <Text style={[styles.dataPickerValor, { color: C.azulEscuro, fontSize: fs(15) }]}>{selAno}</Text>
               <TouchableOpacity
-                onPress={() => setSelAno(a => a + 1)}
+                onPress={() => ajustarSelecao(selAno + 1, selMes, selDia)}
                 style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
               >
                 <Ionicons name="chevron-forward" size={14} color={C.azulEscuro} />
@@ -1370,7 +1397,7 @@ useEffect(() => {
 
             <View style={styles.dataPickerRow}>
               <TouchableOpacity
-                onPress={() => setSelMes(m => m === 1 ? 12 : m - 1)}
+                onPress={() => ajustarSelecao(selAno, selMes - 1, selDia)}
                 style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
               >
                 <Ionicons name="chevron-back" size={14} color={C.azulEscuro} />
@@ -1379,14 +1406,14 @@ useEffect(() => {
                 {MESES[selMes - 1]}
               </Text>
               <TouchableOpacity
-                onPress={() => setSelMes(m => m === 12 ? 1 : m + 1)}
+                onPress={() => ajustarSelecao(selAno, selMes + 1, selDia)}
                 style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
               >
                 <Ionicons name="chevron-forward" size={14} color={C.azulEscuro} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 12 }}>
+            <View style={styles.diasGrade}>
               {Array.from({ length: totalDiasSelMes }, (_, i) => i + 1).map(d => {
                 const ativo = selDia === d;
                 return (
@@ -1409,7 +1436,7 @@ useEffect(() => {
                   </TouchableOpacity>
                 );
               })}
-            </ScrollView>
+            </View>
 
             <TouchableOpacity
               style={[styles.formBtn, { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro, marginTop: 8 }]}
@@ -1423,13 +1450,13 @@ useEffect(() => {
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
 
       {/* MODAL LEGENDA */}
-      <Modal visible={modalLegenda} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+      <Modal visible={modalLegenda} transparent animationType="fade" onRequestClose={() => setModalLegenda(false)}>
+        <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => setModalLegenda(false)}>
+          <View onStartShouldSetResponder={() => true} style={[styles.modalSheet, { backgroundColor: C.branco }]}>
             <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
             <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>Legenda</Text>
             {[
@@ -1451,7 +1478,7 @@ useEffect(() => {
               <Text style={[styles.btnFecharModalText, { color: C.textoSec, fontSize: fs(13) }]}>Fechar</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
 
       {/* MODAL DE CONFIRMAÇÃO */}
@@ -1625,6 +1652,7 @@ const styles = StyleSheet.create({
   // SELETOR DATA
   dataPickerRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   dataPickerValor:   { fontFamily: F.black, flex: 1, textAlign: 'center' },
+  diasGrade:         { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', paddingVertical: 12 },
   diaPickerBtn:      { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   diaPickerText:     { fontFamily: F.bold },
 

@@ -1,3 +1,4 @@
+import { voltar } from '../navegacao';
 import React, { useState } from 'react';
 import {
   StyleSheet, View, Text, TextInput, TouchableOpacity,
@@ -69,7 +70,7 @@ export default function EditorPost({ route, navigation }: any) {
 
       if (postId) {
         await updateDoc(doc(db, 'posts', postId), postData);
-        Alert.alert('Pronto!', 'Post atualizado.', [{ text: 'OK', onPress: () => navigation.goBack() }]);
+        Alert.alert('Pronto!', 'Post atualizado.', [{ text: 'OK', onPress: () => voltar(navigation) }]);
       } else {
         // ID legível (slug do título + sufixo curto) facilita achar o post no Firestore.
         const idPost = gerarIdLegivel(postData.titulo);
@@ -85,7 +86,7 @@ export default function EditorPost({ route, navigation }: any) {
           corpo: postData.titulo,
           dados: { tipo: 'novo_post', postId: idPost },
         });
-        Alert.alert('Pronto!', 'Post publicado.', [{ text: 'OK', onPress: () => navigation.goBack() }]);
+        Alert.alert('Pronto!', 'Post publicado.', [{ text: 'OK', onPress: () => voltar(navigation) }]);
       }
     } catch (e: any) {
       console.error(e);
@@ -115,7 +116,7 @@ export default function EditorPost({ route, navigation }: any) {
               return;
             }
             setLoading(false);
-            navigation.goBack();
+            voltar(navigation);
           },
         },
       ],
@@ -127,7 +128,7 @@ export default function EditorPost({ route, navigation }: any) {
       <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
 
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity onPress={() => voltar(navigation)} style={styles.headerBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
         <View style={{ alignItems: 'center' }}>

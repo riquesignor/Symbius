@@ -247,6 +247,20 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
     return () => handler.remove();
   }, []);
 
+  // ════ BATIMENTO: sem isso, fechar o app à força deixava a pessoa "online" pra sempre ════
+  useEffect(() => {
+    if (!uidAtual) return;
+    const ref = firestoreDoc(db, 'usuarios', uidAtual);
+    const bater = () => {
+      if (AppState.currentState !== 'active') return;
+      setDoc(ref, { online: true, online_ping: serverTimestamp() }, { merge: true }).catch(() => {});
+    };
+    bater();
+    const id = setInterval(bater, 60000);
+    const sub = AppState.addEventListener('change', (st) => { if (st === 'active') bater(); });
+    return () => { clearInterval(id); sub.remove(); };
+  }, [uidAtual]);
+
   // ════ DADOS DO USUÁRIO (série + conversas silenciadas) ════
   useEffect(() => {
     if (!uidAtual) { setSerie(null); silenciadosRef.current = []; return; }

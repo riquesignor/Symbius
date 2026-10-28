@@ -6,7 +6,7 @@ import { permitePush, enviarParaTokens, Destino, ehAdmin } from './_lib/push';
 //  • eventos do admin (eventos_admin/tipos/{provas|feriados|avisos|eventos}), pra série de cada um
 //  • lembretes pessoais (lembretes/{RA ou uid}/lembretes/{id}), pro dono
 const SUBS: Record<string, string> = { provas: 'Prova', feriados: 'Feriado', avisos: 'Aviso', eventos: 'Evento' };
-const ANTECEDENCIAS = [3, 1];
+const ANTECEDENCIAS = [3, 1, 0];
 
 const dataBrasilia = (somaDias: number) => {
   const agora = new Date(Date.now() + somaDias * 86400000);
@@ -18,7 +18,7 @@ const extrairSerie = (turma: string): string | null => {
   return m ? `${m[1]}º` : null;
 };
 
-const textoAntecedencia = (dias: number) => (dias === 1 ? 'É amanhã' : `Faltam ${dias} dias`);
+const textoAntecedencia = (dias: number) => (dias === 0 ? 'É hoje' : dias === 1 ? 'É amanhã' : `Faltam ${dias} dias`);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const segredo = process.env.CRON_SECRET;
@@ -61,6 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           `${textoAntecedencia(dias)}: ${tipoEvento.toLowerCase()}`,
           ev.titulo || 'Evento na agenda',
           { tipo: 'evento_admin', eventoId: evDoc.id, tipoEvento },
+          { tag: `agenda_${evDoc.id}` },
         );
         enviados += r.enviados;
       }
@@ -81,6 +82,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         `${textoAntecedencia(dias)}: seu lembrete`,
         l.titulo,
         { tipo: 'lembrete', lembreteId: lDoc.id },
+        { tag: `lembrete_${lDoc.id}` },
       );
       enviados += r.enviados;
     }

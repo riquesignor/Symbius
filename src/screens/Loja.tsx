@@ -1,3 +1,4 @@
+import { voltar } from '../navegacao';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import SymbiusTabBar from '../components/SymbiusTabBar';
 import {
@@ -114,7 +115,7 @@ export default function Loja({ navigation, route }: any) {
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top || 12 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <TouchableOpacity onPress={() => voltar(navigation)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
         <Text style={[styles.headerTitulo, { fontSize: fs(17) }]}>Loja de Cosméticos</Text>

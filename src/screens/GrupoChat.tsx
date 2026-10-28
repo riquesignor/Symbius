@@ -1,3 +1,4 @@
+import { voltar } from '../navegacao';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, Image, StyleSheet,
@@ -14,6 +15,7 @@ import { F } from '../constants/theme';
 import { useNotificacao } from '../contexts/NotificacaoProvider';
 import { Grupo, enviarMensagemGrupo, sairDoGrupo } from '../services/gruposService';
 import { escolherImagemBase64 } from '../utils/midiaNativa';
+import { conversaNaoLida, marcarComoLida, mensagemLidaPor, msDe } from '../utils/conversas';
 
 const fotoUri = (foto?: string | null) =>
   !foto ? null : foto.startsWith('http') || foto.startsWith('data:') ? foto : `data:image/jpeg;base64,${foto}`;
@@ -77,6 +79,31 @@ export default function GrupoChat({ navigation, route }: any) {
 
   const souMembro = !!grupo && !!meuUid && grupo.membros.includes(meuUid);
 
+  // Marca como lido ao abrir e a cada mensagem nova com o grupo aberto.
+  const ultimaMarcada = useRef(0);
+  useEffect(() => {
+    if (!grupo || !meuUid || !souMembro) return;
+    if (!conversaNaoLida(grupo, meuUid)) return;
+    if (msDe(grupo.data_postagem, Date.now()) <= ultimaMarcada.current) return;
+    ultimaMarcada.current = Date.now();
+    marcarComoLida(grupo.id, meuUid);
+  }, [grupo?.data_postagem, grupo?.quemEnviou, meuUid, souMembro]);
+
+  // ✓ enviada · ✓✓ azul quando TODOS os outros participantes já leram.
+  const renderTicks = (item: any) => {
+    if (!grupo || !meuUid) return null;
+    const outros = grupo.membros.filter(m => m !== meuUid);
+    const lida = outros.length > 0 && outros.every(m => mensagemLidaPor(grupo, m, item.data_postagem));
+    return (
+      <Ionicons
+        name={lida ? 'checkmark-done' : 'checkmark'}
+        size={15}
+        color={lida ? '#53BDEB' : 'rgba(244,241,232,0.7)'}
+        style={{ marginLeft: 4 }}
+      />
+    );
+  };
+
   const enviar = async (conteudo: { tipo: 'texto' | 'imagem'; mensagem: string }) => {
     if (!grupo || !meuUid || !souMembro) return;
     setEnviando(true);
@@ -116,7 +143,7 @@ export default function GrupoChat({ navigation, route }: any) {
     const sair = async () => {
       setInfoAberta(false);
       await sairDoGrupo(grupo, meuUid, eu.nome);
-      navigation.goBack();
+      voltar(navigation);
     };
     if (Platform.OS === 'web') { if (window.confirm('Sair do grupo?')) sair(); return; }
     Alert.alert('Sair do grupo?', 'Você deixa de receber as mensagens deste grupo.', [
@@ -130,7 +157,7 @@ export default function GrupoChat({ navigation, route }: any) {
       <View style={[styles.container, styles.centro]}>
         <Ionicons name="people-outline" size={48} color={CORES_SYMBIUS.textoTerciario} />
         <Text style={styles.vazio}>Este grupo não existe mais.</Text>
-        <TouchableOpacity onPress={() => navigation.goBack()}><Text style={styles.link}>Voltar</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => voltar(navigation)}><Text style={styles.link}>Voltar</Text></TouchableOpacity>
       </View>
     );
   }
@@ -158,7 +185,10 @@ export default function GrupoChat({ navigation, route }: any) {
               </TouchableOpacity>
             )
             : <Text style={[styles.texto, minha && { color: CORES_SYMBIUS.creme }]}>{item.mensagem}</Text>}
-          <Text style={[styles.hora, minha && { color: 'rgba(244,241,232,0.7)' }]}>{hora(item.data_postagem)}</Text>
+          <View style={styles.horaLinha}>
+            <Text style={[styles.hora, minha && { color: 'rgba(244,241,232,0.7)' }]}>{hora(item.data_postagem)}</Text>
+            {minha && renderTicks(item)}
+          </View>
         </View>
       </View>
     );
@@ -170,7 +200,7 @@ export default function GrupoChat({ navigation, route }: any) {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundoCard} />
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity onPress={() => voltar(navigation)} style={styles.headerBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.headerCentro} onPress={() => setInfoAberta(true)} activeOpacity={0.7}>
@@ -293,6 +323,7 @@ const styles = StyleSheet.create({
   nome: { fontSize: 11.5, fontFamily: F.bold, marginBottom: 2 },
   texto: { fontSize: 14.5, fontFamily: F.regular, color: CORES_SYMBIUS.texto, lineHeight: 20 },
   imagem: { width: 220, height: 220, borderRadius: 10 },
+  horaLinha: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', marginTop: 3 },
   hora: { fontSize: 10, fontFamily: F.medium, color: CORES_SYMBIUS.textoMuted, alignSelf: 'flex-end', marginTop: 3 },
 
   inputArea: {

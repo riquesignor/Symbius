@@ -1,3 +1,4 @@
+import { voltar } from '../navegacao';
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,7 +44,7 @@ export default function TesteNivelUp({ navigation }: any) {
   return (
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
       <View style={styles.topo}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.btnVoltar} accessibilityLabel="Voltar">
+        <TouchableOpacity onPress={() => voltar(navigation)} style={styles.btnVoltar} accessibilityLabel="Voltar">
           <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
         <Text style={styles.titulo}>Simular subida de nível</Text>

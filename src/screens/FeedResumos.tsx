@@ -1,3 +1,4 @@
+import { voltar } from '../navegacao';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, FlatList,
@@ -5,7 +6,8 @@ import {
   KeyboardAvoidingView, Platform, Image, Alert, PanResponder, Animated, Dimensions,
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { confirmar } from '../utils/confirmar';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -16,7 +18,7 @@ import { F } from '../constants/theme';
 import {
   Resumo, buscarResumos, criarResumo, reagirResumo, Reacao,
   editarResumo, apagarResumo, alternarPrivacidadeResumo,
-  Comentario, ouvirComentarios, comentarResumo, apagarComentario, AnexoResumo,
+  Comentario, ouvirComentarios, comentarResumo, apagarComentario, editarComentario, AnexoResumo,
 } from '../services/resumosService';
 import { dispararPush } from '../services/pushNotificationsService';
 import { escolherDocumentoBase64, abrirArquivoBase64 } from '../utils/midiaNativa';
@@ -99,6 +101,26 @@ export default function FeedResumos({ navigation, route }: any) {
   const [resumoEditando, setResumoEditando] = useState<Resumo | null>(null);
   const [menuResumo, setMenuResumo] = useState<Resumo | null>(null);
   const [anexo, setAnexo] = useState<AnexoResumo | null>(null);
+  const [meuTipo, setMeuTipo] = useState('');
+  const [comentarioEditando, setComentarioEditando] = useState<Comentario | null>(null);
+
+  // O nome e a foto ficavam gravados dentro de cada comentário/resumo na hora em
+  // que eram criados, então nunca mudavam. Agora vêm do perfil atual, ao vivo.
+  const [perfis, setPerfis] = useState<Record<string, { nome?: string; foto?: string | null }>>({});
+  const perfisAssinados = useRef<Set<string>>(new Set());
+  const cancelarPerfis = useRef<(() => void)[]>([]);
+  const garantirPerfis = (uids: string[]) => {
+    uids.filter(Boolean).forEach(u => {
+      if (perfisAssinados.current.has(u)) return;
+      perfisAssinados.current.add(u);
+      cancelarPerfis.current.push(onSnapshot(doc(db, 'usuarios', u), snap => {
+        if (!snap.exists()) return;
+        const d: any = snap.data();
+        setPerfis(p => ({ ...p, [u]: { nome: d.nome_completo, foto: d.foto || d.foto_url || null } }));
+      }, () => {}));
+    });
+  };
+  useEffect(() => () => cancelarPerfis.current.forEach(f => f()), []);
 
   // ── Comentários ──
   const [resumoComentarios, setResumoComentarios] = useState<Resumo | null>(null);
@@ -106,8 +128,10 @@ export default function FeedResumos({ navigation, route }: any) {
   const [textoComentario, setTextoComentario] = useState('');
   const [enviandoComentario, setEnviandoComentario] = useState(false);
 
+  useEffect(() => { garantirPerfis(comentarios.map(c => c.autorUid)); }, [comentarios]);
+
   useEffect(() => {
-    if (!resumoComentarios) { setComentarios([]); return; }
+    if (!resumoComentarios) { setComentarios([]); setComentarioEditando(null); setTextoComentario(''); return; }
     return ouvirComentarios(resumoComentarios.id, setComentarios);
   }, [resumoComentarios?.id]);
 
@@ -133,6 +157,7 @@ export default function FeedResumos({ navigation, route }: any) {
         const d = snap.data() as any;
         setMeuNome(d.nome_completo || 'Anônimo');
         setMinhaFoto(d.foto || d.foto_url || null);
+        setMeuTipo(String(d.tipo || '').toLowerCase());
       }
     } catch (e) { console.log('Erro ao carregar perfil do feed:', e); }
   }, [uid]);
@@ -146,6 +171,7 @@ export default function FeedResumos({ navigation, route }: any) {
 
   useEffect(() => { carregarPerfil(); }, [carregarPerfil]);
   useEffect(() => { carregarResumos(); }, [carregarResumos]);
+  useEffect(() => { garantirPerfis(resumos.map(r => r.autorUid)); }, [resumos]);
 
   const handleReagir = async (item: Resumo, reacao: Reacao) => {
     if (!uid || processandoCurtida) return;
@@ -184,6 +210,16 @@ export default function FeedResumos({ navigation, route }: any) {
     if (!uid || !alvo || !textoComentario.trim() || enviandoComentario) return;
     setEnviandoComentario(true);
     const texto = textoComentario.trim();
+
+    if (comentarioEditando) {
+      const salvou = await editarComentario(alvo.id, comentarioEditando.id, texto);
+      setEnviandoComentario(false);
+      if (!salvou) { Alert.alert('Erro', 'Não foi possível salvar a edição.'); return; }
+      setComentarioEditando(null);
+      setTextoComentario('');
+      return;
+    }
+
     const ok = await comentarResumo(alvo.id, { autorUid: uid, autorNome: meuNome, autorFoto: minhaFoto, texto });
     setEnviandoComentario(false);
     if (!ok) { Alert.alert('Erro', 'Não foi possível comentar.'); return; }
@@ -199,19 +235,21 @@ export default function FeedResumos({ navigation, route }: any) {
     }
   };
 
-  const handleApagarComentario = (c: Comentario) => {
+  const handleApagarComentario = async (c: Comentario) => {
     const alvo = resumoComentarios;
     if (!alvo) return;
-    Alert.alert('Apagar comentário?', '', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Apagar', style: 'destructive', onPress: async () => {
-          if (await apagarComentario(alvo.id, c.id)) {
-            setResumos(prev => prev.map(r => r.id === alvo.id ? { ...r, comentariosCount: Math.max(0, (r.comentariosCount || 1) - 1) } : r));
-          }
-        },
-      },
-    ]);
+    if (!(await confirmar('Apagar comentário?', 'Essa ação não pode ser desfeita.', 'Apagar', true))) return;
+    if (await apagarComentario(alvo.id, c.id)) {
+      if (comentarioEditando?.id === c.id) { setComentarioEditando(null); setTextoComentario(''); }
+      setResumos(prev => prev.map(r => r.id === alvo.id ? { ...r, comentariosCount: Math.max(0, (r.comentariosCount || 1) - 1) } : r));
+    } else {
+      Alert.alert('Erro', 'Não foi possível apagar o comentário.');
+    }
+  };
+
+  const iniciarEdicaoComentario = (c: Comentario) => {
+    setComentarioEditando(c);
+    setTextoComentario(c.texto);
   };
 
   const anexarArquivo = async () => {
@@ -282,29 +320,18 @@ export default function FeedResumos({ navigation, route }: any) {
     await alternarPrivacidadeResumo(item.id, privadoAtual);
   };
 
-  const handleApagar = (item: Resumo) => {
+  const handleApagar = async (item: Resumo) => {
     setMenuResumo(null);
-    Alert.alert(
-      'Apagar resumo?',
-      'Essa ação não pode ser desfeita.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Apagar',
-          style: 'destructive',
-          onPress: async () => {
-            setResumos(prev => prev.filter(r => r.id !== item.id));
-            await apagarResumo(item.id);
-          },
-        },
-      ],
-    );
+    if (!(await confirmar('Apagar resumo?', 'Essa ação não pode ser desfeita.', 'Apagar', true))) return;
+    setResumos(prev => prev.filter(r => r.id !== item.id));
+    await apagarResumo(item.id);
   };
 
   const renderItem = ({ item }: { item: Resumo }) => {
     const curti = !!(uid && item.curtidas?.includes(uid));
     const descurti = !!(uid && item.descurtidas?.includes(uid));
-    const foto = fotoUri(item.autorFoto);
+    const foto = fotoUri(perfis[item.autorUid] ? perfis[item.autorUid].foto : item.autorFoto);
+    const nomeAutor = perfis[item.autorUid]?.nome || item.autorNome;
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>
@@ -317,7 +344,7 @@ export default function FeedResumos({ navigation, route }: any) {
           )}
           <View style={{ flex: 1 }}>
             <Text style={[styles.autorLinha, { fontSize: fs(12.5) }]} numberOfLines={1}>
-              <Text style={styles.autorNome}>{item.autorNome}</Text> compartilhou um resumo
+              <Text style={styles.autorNome}>{nomeAutor}</Text> compartilhou um resumo
             </Text>
             <View style={styles.materiaTempoRow}>
               <Text style={[styles.materiaTempo, { fontSize: fs(11) }]}>
@@ -403,7 +430,7 @@ export default function FeedResumos({ navigation, route }: any) {
       <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
 
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <TouchableOpacity onPress={() => voltar(navigation)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
         <Text style={[styles.headerTitulo, { fontSize: fs(17) }]}>Feed de Resumos</Text>
@@ -565,29 +592,55 @@ export default function FeedResumos({ navigation, route }: any) {
               style={{ flexGrow: 0, maxHeight: 360 }}
               ListEmptyComponent={<Text style={[styles.vazioTxt, { paddingVertical: 24 }]}>Nenhum comentário ainda. Seja o primeiro!</Text>}
               renderItem={({ item: c }) => {
-                const fotoC = fotoUri(c.autorFoto);
+                const perfilC = perfis[c.autorUid];
+                const fotoC = fotoUri(perfilC ? perfilC.foto : c.autorFoto);
+                const nomeC = perfilC?.nome || c.autorNome;
+                const meu = c.autorUid === uid;
+                const podeApagar = meu || meuTipo === 'administrador';
                 return (
-                  <TouchableOpacity
-                    style={styles.comentario}
-                    activeOpacity={1}
-                    onLongPress={() => c.autorUid === uid && handleApagarComentario(c)}
-                  >
+                  <View style={styles.comentario}>
                     {fotoC
                       ? <Image source={{ uri: fotoC }} style={styles.avatar} />
                       : <View style={[styles.avatar, styles.avatarFallback]}><Ionicons name="person" size={14} color={CORES_SYMBIUS.textoSec} /></View>}
-                    <View style={styles.comentarioBolha}>
-                      <Text style={styles.comentarioAutor}>{c.autorNome} <Text style={styles.comentarioTempo}>· {formatarTempo(c.criadoEm)}</Text></Text>
+                    <View style={[styles.comentarioBolha, comentarioEditando?.id === c.id && styles.comentarioBolhaEditando]}>
+                      <Text style={styles.comentarioAutor}>
+                        {nomeC} <Text style={styles.comentarioTempo}>· {formatarTempo(c.criadoEm)}{c.editadoEm ? ' · editado' : ''}</Text>
+                      </Text>
                       <Text style={styles.comentarioTexto}>{c.texto}</Text>
+                      {podeApagar && (
+                        <View style={styles.comentarioAcoes}>
+                          {meu && (
+                            <TouchableOpacity onPress={() => iniciarEdicaoComentario(c)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.comentarioAcao}>
+                              <Ionicons name="create-outline" size={14} color={CORES_SYMBIUS.textoSec} />
+                              <Text style={styles.comentarioAcaoTxt}>Editar</Text>
+                            </TouchableOpacity>
+                          )}
+                          <TouchableOpacity onPress={() => handleApagarComentario(c)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.comentarioAcao}>
+                            <Ionicons name="trash-outline" size={14} color="#D64545" />
+                            <Text style={[styles.comentarioAcaoTxt, { color: '#D64545' }]}>Apagar</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
-                  </TouchableOpacity>
+                  </View>
                 );
               }}
             />
 
+            {comentarioEditando && (
+              <View style={styles.editandoBarra}>
+                <Ionicons name="create-outline" size={14} color={CORES_SYMBIUS.laranjaTexto} />
+                <Text style={styles.editandoTxt} numberOfLines={1}>Editando comentário</Text>
+                <TouchableOpacity onPress={() => { setComentarioEditando(null); setTextoComentario(''); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close" size={16} color={CORES_SYMBIUS.textoSec} />
+                </TouchableOpacity>
+              </View>
+            )}
+
             <View style={styles.comentarioInputRow}>
               <TextInput
                 style={[styles.input, { flex: 1, paddingVertical: 10 }]}
-                placeholder="Escreva um comentário..."
+                placeholder={comentarioEditando ? 'Edite seu comentário...' : 'Escreva um comentário...'}
                 placeholderTextColor={CORES_SYMBIUS.textoSec}
                 value={textoComentario}
                 onChangeText={setTextoComentario}
@@ -686,6 +739,12 @@ const styles = StyleSheet.create({
   comentario: { flexDirection: 'row', gap: 8, marginBottom: 10 },
   comentarioBolha: { flex: 1, backgroundColor: CORES_SYMBIUS.fundoSuave, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
   comentarioAutor: { color: CORES_SYMBIUS.texto, fontFamily: F.bold, fontSize: 12.5 },
+  comentarioBolhaEditando: { borderWidth: 1.5, borderColor: CORES_SYMBIUS.laranja },
+  comentarioAcoes: { flexDirection: 'row', gap: 16, marginTop: 6 },
+  comentarioAcao: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  comentarioAcaoTxt: { fontSize: 11.5, fontFamily: F.semibold, color: CORES_SYMBIUS.textoSec },
+  editandoBarra: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: CORES_SYMBIUS.fundoLaranjaClaro, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, marginTop: 6 },
+  editandoTxt: { flex: 1, fontSize: 12, fontFamily: F.semibold, color: CORES_SYMBIUS.laranjaTexto },
   comentarioTempo: { color: CORES_SYMBIUS.textoSec, fontFamily: F.regular, fontSize: 11 },
   comentarioTexto: { color: CORES_SYMBIUS.texto, fontFamily: F.regular, fontSize: 13, lineHeight: 18, marginTop: 2 },
   comentarioInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 4 },

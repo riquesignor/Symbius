@@ -1,8 +1,9 @@
+import { voltar } from '../navegacao';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity,
   Image, StatusBar, Dimensions, Platform,
-  ActivityIndicator, FlatList, Vibration, Animated, PanResponder, Switch, Modal, TextInput,
+  ActivityIndicator, FlatList, Vibration, Animated, PanResponder, Switch, Modal, TextInput, Alert,
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
 import {
@@ -17,6 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { dispararPush } from '../services/pushNotificationsService';
 import { Grupo, criarGrupo, MAX_MEMBROS_GRUPO } from '../services/gruposService';
+import { conversaNaoLida, ocultaParaMim, apagarConversaParaMim, msDe } from '../utils/conversas';
 
 // ── Fonte Poppins ──
 import { F } from '../constants/theme';
@@ -125,7 +127,7 @@ function useOnlineStatus(uids: string[]) {
           setStatuses(prev => ({
             ...prev,
             [uid]: {
-              online:       d.online === true,
+              online:       d.online === true && (d.online_ping ? Date.now() - msDe(d.online_ping, Date.now()) < 150000 : true),
               ultimo_acesso: d.ultimo_acesso || null,
               statusOnline: d.statusOnline !== false,
             },
@@ -170,6 +172,7 @@ export default function Match({ navigation, route }: any) {
   const [popupInfo,      setPopupInfo]      = useState(false);
   const [popupMateria,   setPopupMateria]   = useState(false);
   const [salvandoVisivel, setSalvandoVisivel] = useState(false);
+  const [respondidas, setRespondidas] = useState<Set<string>>(new Set());
   const [grupos,         setGrupos]         = useState<Grupo[]>([]);
   const [modalGrupo,     setModalGrupo]     = useState(false);
   const [grupoNome,      setGrupoNome]      = useState('');
@@ -332,7 +335,7 @@ export default function Match({ navigation, route }: any) {
   const solicitacoes = useMemo(() => {
     const porRemetente = new Map<string, any>();
     solicitacoesBrutas.forEach(sol => {
-      if (relacoes.get(sol.deUid)?.aceito) return;
+      if (relacoes.get(sol.deUid)?.aceito || respondidas.has(sol.deUid)) return;
       const atual = porRemetente.get(sol.deUid);
       if (!atual || tsMs(sol.criadoEm) > tsMs(atual.criadoEm)) porRemetente.set(sol.deUid, sol);
     });
@@ -340,7 +343,7 @@ export default function Match({ navigation, route }: any) {
       .map(sol => ({ ...sol, remetente: perfisRemetentes[sol.deUid] }))
       .filter(sol => sol.remetente)
       .sort((x, y) => tsMs(y.criadoEm) - tsMs(x.criadoEm));
-  }, [solicitacoesBrutas, relacoes, perfisRemetentes]);
+  }, [solicitacoesBrutas, relacoes, perfisRemetentes, respondidas]);
 
   useEffect(() => {
     const faltando = [...new Set(solicitacoesBrutas.map(sol => sol.deUid))].filter(uid => !perfisRemetentes[uid]);
@@ -365,25 +368,12 @@ export default function Match({ navigation, route }: any) {
     );
     const unsub = onSnapshot(q, async snap => {
       const parVistos = new Map<string, any>();
-      const UM_DIA_SEG = 24 * 60 * 60;
-      const agoraSeg = Date.now() / 1000;
       await Promise.all(snap.docs.map(async d => {
         const data     = d.data();
         const outroUid = data.membros?.find((id: string) => id !== meuUid);
         if (!outroUid) return;
         const oSnap = await getDoc(doc(db, 'usuarios', outroUid));
         if (!oSnap.exists()) return;
-
-        // Some da lista se o match já foi finalizado/avaliado há mais de 1 dia
-        const conversaId = [meuUid, outroUid].sort().join('_');
-        const cSnap = await getDoc(doc(db, 'conversas', conversaId));
-        if (cSnap.exists()) {
-          const cData = cSnap.data();
-          const finalizadoTs = cData?.finalizadoEm?.seconds;
-          if (cData?.matchFinalizado && finalizadoTs && (agoraSeg - finalizadoTs) > UM_DIA_SEG) {
-            return;
-          }
-        }
 
         const jaExiste = parVistos.get(outroUid);
         const ts = data.criadoEm?.seconds ?? 0;
@@ -449,8 +439,13 @@ export default function Match({ navigation, route }: any) {
 
   const responderSolicitacao = async (solId: string, deUid: string, aceitar: boolean) => {
     if (!meuUid) return;
+    // A tela mostra só a solicitação mais recente de cada pessoa. Se a pessoa mandou
+    // mais de uma, fechar só a visível fazia a antiga aparecer no lugar ("não sai").
+    const ids = new Set<string>([solId, ...solicitacoesBrutas.filter(s => s.deUid === deUid).map(s => s.id)]);
+    setRespondidas(prev => new Set(prev).add(deUid));
     try {
-      await updateDoc(doc(db, 'match_solicitacoes', solId), { status: aceitar ? 'aceito' : 'recusado' });
+      await Promise.all([...ids].map(id =>
+        updateDoc(doc(db, 'match_solicitacoes', id), { status: aceitar ? 'aceito' : 'recusado' })));
       if (!aceitar) return;
 
       // Se eu também tinha mandado pra essa pessoa, fecha a minha junto —
@@ -465,7 +460,11 @@ export default function Match({ navigation, route }: any) {
         corpo: `${meusDados?.nome_completo || 'Alguém'} aceitou estudar com você. Bora conversar?`,
         dados: { tipo: 'match_aceito', deUid: meuUid },
       });
-    } catch (e) { console.log(e); }
+    } catch (e) {
+      console.log(e);
+      setRespondidas(prev => { const n = new Set(prev); n.delete(deUid); return n; });
+      Alert.alert('Erro', 'Não foi possível responder à solicitação. Tente de novo.');
+    }
   };
 
   const enviarSolicitacao = async (paraUid: string) => {
@@ -498,6 +497,18 @@ export default function Match({ navigation, route }: any) {
     const novo = { ...pulados, [uid]: Date.now() };
     setPulados(novo);
     AsyncStorage.setItem(CHAVE_PULADOS, JSON.stringify(novo)).catch(() => {});
+  };
+
+  const pedirApagarConversa = (outroUid: string, nome: string) => {
+    if (!meuUid) return;
+    const conversaId = [meuUid, outroUid].sort().join('_');
+    const executar = () => apagarConversaParaMim(conversaId, meuUid).catch(e => console.log('Erro ao apagar conversa:', e));
+    const msg = 'Ela some só pra você. Você continua com o match e, se chegar mensagem nova, ela reaparece.';
+    if (Platform.OS === 'web') { if (window.confirm(`Apagar a conversa com ${nome}?\n${msg}`)) executar(); return; }
+    Alert.alert(`Apagar a conversa com ${nome}?`, msg, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Apagar', style: 'destructive', onPress: executar },
+    ]);
   };
 
   const abrirChat = (outroUid: string, outroNome: string, outraFoto: string) => {
@@ -535,10 +546,10 @@ export default function Match({ navigation, route }: any) {
   // ── Matches ordenados pela última mensagem ──
   const matchesNaoLidos = matches.filter(m => {
     const conversa = conversas[m.outro?.uid];
-    return conversa && !conversa.visto && conversa.quemEnviou !== meuUid;
+    return conversaNaoLida(conversa, meuUid) && !ocultaParaMim(conversa, meuUid);
   }).length;
 
-  const matchesOrdenados = [...matches].sort((a, b) => {
+  const matchesOrdenados = [...matches].filter(m => !ocultaParaMim(conversas[m.outro?.uid], meuUid)).sort((a, b) => {
     const ca = conversas[a.outro?.uid];
     const cb = conversas[b.outro?.uid];
     const ta = ca?.data_postagem?.seconds ?? a._ts ?? 0;
@@ -721,7 +732,8 @@ export default function Match({ navigation, route }: any) {
 
     const ultimaMsg  = conversa?.ultimaMensagem || '';
     const quemEnviou = conversa?.quemEnviou;
-    const naoLida    = conversa && !conversa.visto && quemEnviou !== meuUid;
+    const naoLida    = conversaNaoLida(conversa, meuUid);
+    const finalizado = !!conversa?.matchFinalizado;
     const prefixo    = quemEnviou === meuUid
       ? 'Você: '
       : (item.outro?.nome_completo?.split(' ')[0] + ': ' || '');
@@ -740,6 +752,8 @@ export default function Match({ navigation, route }: any) {
       <TouchableOpacity
         style={[styles.solCard, { backgroundColor: C.branco }, naoLida && styles.solCardNaoLido]}
         onPress={() => abrirChat(outroUid, item.outro?.nome_completo, item.outro?.foto)}
+        onLongPress={() => pedirApagarConversa(outroUid, item.outro?.nome_completo || 'este usuário')}
+        delayLongPress={450}
         activeOpacity={0.75}
       >
         <TouchableOpacity style={styles.avatarWrap} onPress={() => abrirPerfil(outroUid)} activeOpacity={0.8}>
@@ -767,6 +781,12 @@ export default function Match({ navigation, route }: any) {
           >
             {labelMsg}
           </Text>
+          {finalizado && (
+            <View style={styles.pillFinalizado}>
+              <Ionicons name="checkmark-circle" size={11} color={CORES_SYMBIUS.verdeEscuro} />
+              <Text style={styles.pillFinalizadoTxt}>Match finalizado · segure para apagar</Text>
+            </View>
+          )}
         </View>
 
         {/* Badge de não lida */}
@@ -787,7 +807,7 @@ export default function Match({ navigation, route }: any) {
 
       {/* NAVBAR */}
       <View style={[styles.navbar, { paddingTop: insets.top, minHeight: 60 + insets.top, backgroundColor: CORES_SYMBIUS.fundo, borderBottomColor: CORES_SYMBIUS.borda }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={() => voltar(navigation)}>
           <Ionicons name="arrow-back" size={22} color={C.azulEscuro} />
         </TouchableOpacity>
         <View style={styles.logoWrap}>
@@ -910,7 +930,7 @@ export default function Match({ navigation, route }: any) {
 
                   {grupos.length > 0 && <Text style={styles.secaoLista}>GRUPOS</Text>}
                   {grupos.map(g => {
-                    const naoLida = g.quemEnviou && g.quemEnviou !== meuUid;
+                    const naoLida = conversaNaoLida(g, meuUid);
                     return (
                       <TouchableOpacity
                         key={g.id}
@@ -1225,6 +1245,8 @@ const styles = StyleSheet.create({
   // Avatar com bolinha online (canto inferior direito — igual Instagram)
   avatarWrap:    { position: 'relative' },
   bolinhaOnline: { position: 'absolute', bottom: 1, right: 1, width: 13, height: 13, borderRadius: 7, backgroundColor: CORES.verde, borderWidth: 2, borderColor: CORES.branco },
+  pillFinalizado: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', marginTop: 5, backgroundColor: CORES_SYMBIUS.fundoSuave, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
+  pillFinalizadoTxt: { fontSize: 10, fontFamily: F.semibold, color: CORES_SYMBIUS.textoSec },
   badgeNaoLida:  { width: 10, height: 10, borderRadius: 5, backgroundColor: CORES.rosa, marginLeft: 8, alignSelf: 'center' },
 
   // Tags inline no match

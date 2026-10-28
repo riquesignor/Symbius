@@ -1,3 +1,4 @@
+import { voltar } from '../navegacao';
 import React, { useRef, useEffect } from 'react';
 import SymbiusTabBar from '../components/SymbiusTabBar';
 import {
@@ -177,7 +178,7 @@ export default function Contato({ navigation, route }: any) {
         },
       ]}>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={() => voltar(navigation)}
           style={styles.backBtn}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           accessibilityRole="button"

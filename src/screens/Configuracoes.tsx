@@ -1,3 +1,4 @@
+import { voltar } from '../navegacao';
   import React, { useState, useEffect, useRef } from 'react';
   import {
     StyleSheet, Text, View, TouchableOpacity, ScrollView,
@@ -487,7 +488,7 @@
 
         {/* HEADER */}
         <View style={[styles.header, { paddingTop: insets.top + 14, backgroundColor: CORES.azulEscuro }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.btnVoltar}>
+          <TouchableOpacity onPress={() => voltar(navigation)} style={styles.btnVoltar}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>

@@ -1,6 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { dbAdmin } from './_lib/firebaseAdmin';
-import { liberarCors, uidDoToken, permitePush, enviarParaTokens, TIPOS_SO_ADMIN, ehAdmin } from './_lib/push';
+import {
+  liberarCors, uidDoToken, permitePush, enviarParaTokens, TIPOS_SO_ADMIN, ehAdmin,
+  mensagensNaoLidas, montarBloco,
+} from './_lib/push';
 
 // POST /api/enviar-push
 // Headers: Authorization: Bearer <firebase-id-token-do-remetente>
@@ -38,13 +41,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!usuario?.fcmToken) return res.status(200).json({ enviado: false, motivo: 'Destinatário sem token FCM' });
     if (!permitePush(usuario, dados.tipo, dados.grupoId ? String(dados.grupoId) : remetenteUid)) return res.status(200).json({ enviado: false, motivo: 'Bloqueado pelas preferências do destinatário' });
 
+    let tituloFinal = String(titulo).slice(0, 120);
+    let corpoFinal = String(corpo).slice(0, 240);
+    let tag: string | undefined;
+
+    if (dados.tipo === 'mensagem') {
+      // Várias mensagens da mesma pessoa viram UMA notificação com a lista das
+      // não lidas, que substitui a anterior (tag fixa por conversa).
+      const conversaId = [remetenteUid, destinatarioUid].sort().join('_');
+      const bloco = await mensagensNaoLidas({ conversaId, destinatarioUid, remetenteUid });
+      ({ titulo: tituloFinal, corpo: corpoFinal } = montarBloco(tituloFinal, bloco, corpoFinal));
+      tag = `chat_${conversaId}`;
+    } else if (dados.tipo === 'mensagem_grupo' && dados.grupoId) {
+      const bloco = await mensagensNaoLidas({ conversaId: String(dados.grupoId), destinatarioUid, comNome: true });
+      ({ titulo: tituloFinal, corpo: corpoFinal } = montarBloco(tituloFinal, bloco, corpoFinal));
+      tag = `grupo_${dados.grupoId}`;
+    } else if (dados.tipo === 'solicitacao_match' || dados.tipo === 'match_aceito') {
+      tag = `${dados.tipo}_${remetenteUid}`;
+    } else if (dados.resumoId) {
+      tag = `${dados.tipo}_${dados.resumoId}`;
+    }
+
     // O remetente vem do token verificado, não do corpo — evita alguém se
     // passar por outra pessoa no toque da notificação.
     const { enviados, erros } = await enviarParaTokens(
       [{ uid: destinatarioUid, token: usuario.fcmToken }],
-      String(titulo).slice(0, 120),
-      String(corpo).slice(0, 240),
+      tituloFinal,
+      corpoFinal,
       { ...dados, remetenteUid, ...(dados.tipo === 'mensagem' ? { outroUid: remetenteUid } : {}) },
+      { tag },
     );
     return res.status(200).json(enviados > 0 ? { enviado: true } : { enviado: false, motivo: erros[0] || 'falha no FCM' });
   } catch (e: any) {

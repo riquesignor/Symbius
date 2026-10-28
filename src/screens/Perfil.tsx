@@ -1,3 +1,4 @@
+import { voltar } from '../navegacao';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
@@ -465,7 +466,7 @@ export default function Perfil({ navigation, route }: any) {
      
       <View style={[heroStyles.topHeader, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity
-          onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Index', { uid }))}
+          onPress={() => voltar(navigation)}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           style={{ width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-start' }}
           accessibilityRole="button"

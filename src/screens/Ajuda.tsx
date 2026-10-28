@@ -1,3 +1,4 @@
+import { voltar } from '../navegacao';
 import React, { useState, useRef, useEffect } from 'react';
 import SymbiusTabBar from '../components/SymbiusTabBar';
 import {
@@ -217,7 +218,7 @@ export default function Ajuda({ navigation, route }: any) {
       {/* HEADER */}
       <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === 'android' ? 8 : 0), backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={() => voltar(navigation)}
           style={styles.backBtn}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           accessibilityRole="button"

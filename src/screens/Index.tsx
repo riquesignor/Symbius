@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
-  StyleSheet, Text, View, TouchableOpacity, ScrollView,
+  StyleSheet, Text, View, TouchableOpacity, ScrollView, RefreshControl,
   StatusBar, TextInput, ActivityIndicator, Switch,
   Image, FlatList, Dimensions, Modal,
 } from 'react-native';
@@ -112,6 +112,9 @@ export default function Index({ navigation, route }: any) {
   const { notificacoesChat, limparNotificacoesChat } = useNotificacao();
   const { modoEscuro, setModoEscuro } = useAppSettings();
 
+  const [atualizando, setAtualizando] = useState(false);
+  const [tickAtualizar, setTickAtualizar] = useState(0);
+
   const carregar = useCallback(async () => {
     try {
       let uidAtual = uid;
@@ -131,6 +134,15 @@ export default function Index({ navigation, route }: any) {
   }, [uid]);
 
   useEffect(() => { carregar(); }, [carregar]);
+
+  // Puxar a tela pra baixo: recarrega perfil/XP e refaz a lista de avisos da agenda
+  // (os posts do mural já são ao vivo, via onSnapshot).
+  const atualizarTela = async () => {
+    setAtualizando(true);
+    setTickAtualizar(t => t + 1);
+    await carregar();
+    setTimeout(() => setAtualizando(false), 500);
+  };
 
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('data_publicacao', 'desc'));
@@ -195,7 +207,7 @@ export default function Index({ navigation, route }: any) {
         setNotificacoesAgenda(notifs);
       } catch (e) { console.error('Erro ao carregar notificações de agenda:', e); }
     })();
-  }, [uid, userData?.ra, userData?.turma, userData?.tipo]);
+  }, [uid, userData?.ra, userData?.turma, userData?.tipo, tickAtualizar]);
 
   const totalNotificacoesAtivas =
     notificacoesChat.length + notificacoesAgenda.filter(n => !notifDescartadas.has(n.id)).length;
@@ -369,7 +381,19 @@ export default function Index({ navigation, route }: any) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 12 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 12 }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={atualizando}
+            onRefresh={atualizarTela}
+            tintColor={CORES_SYMBIUS.verdeEscuro}
+            colors={[CORES_SYMBIUS.verdeEscuro]}
+            progressViewOffset={insets.top}
+          />
+        }
+      >
 
         {/* HEADER */}
         <View style={styles.topoMarca}>

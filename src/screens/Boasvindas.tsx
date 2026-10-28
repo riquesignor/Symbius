@@ -38,9 +38,9 @@ export default function Boasvindas({ navigation }: any) {
         <TouchableOpacity
           style={styles.btnLogin}
           activeOpacity={0.7}
-          onPress={() => navigation.navigate('Login')}
+          onPress={() => navigation.navigate('EscolhaPapel')}
         >
-          <Text style={styles.btnLoginText}>Já tenho uma conta</Text>
+          <Text style={styles.btnLoginText}>Criar conta</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
