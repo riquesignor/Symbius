@@ -327,6 +327,13 @@ export default function FeedResumos({ navigation, route }: any) {
     await apagarResumo(item.id);
   };
 
+  const abrirPerfil = (autorUid: string) => {
+    if (!autorUid) return;
+    setResumoComentarios(null);
+    if (autorUid === uid) navigation.navigate('Perfil', { uid });
+    else navigation.navigate('PerfilPublico', { uid: autorUid, meuUid: uid });
+  };
+
   const renderItem = ({ item }: { item: Resumo }) => {
     const curti = !!(uid && item.curtidas?.includes(uid));
     const descurti = !!(uid && item.descurtidas?.includes(uid));
@@ -335,17 +342,25 @@ export default function FeedResumos({ navigation, route }: any) {
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          {foto ? (
-            <Image source={{ uri: foto }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, styles.avatarFallback]}>
-              <Ionicons name="person" size={18} color={CORES_SYMBIUS.textoSec} />
+          <TouchableOpacity
+            onPress={() => abrirPerfil(item.autorUid)}
+            activeOpacity={0.7}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Abrir perfil de ${nomeAutor}`}
+          >
+            {foto ? (
+              <Image source={{ uri: foto }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.avatarFallback]}>
+                <Ionicons name="person" size={18} color={CORES_SYMBIUS.textoSec} />
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.autorNome, { fontSize: fs(14) }]} numberOfLines={1}>{nomeAutor}</Text>
+              <Text style={[styles.tempo, { fontSize: fs(12) }]}>{formatarTempo(item.criadoEm)}</Text>
             </View>
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.autorNome, { fontSize: fs(14) }]} numberOfLines={1}>{nomeAutor}</Text>
-            <Text style={[styles.tempo, { fontSize: fs(12) }]}>{formatarTempo(item.criadoEm)}</Text>
-          </View>
+          </TouchableOpacity>
           {uid && item.autorUid === uid && (
             <TouchableOpacity
               onPress={() => setMenuResumo(item)}
@@ -607,9 +622,11 @@ export default function FeedResumos({ navigation, route }: any) {
                 const podeApagar = meu || meuTipo === 'administrador';
                 return (
                   <View style={styles.comentario}>
-                    {fotoC
-                      ? <Image source={{ uri: fotoC }} style={styles.avatar} />
-                      : <View style={[styles.avatar, styles.avatarFallback]}><Ionicons name="person" size={14} color={CORES_SYMBIUS.textoSec} /></View>}
+                    <TouchableOpacity onPress={() => abrirPerfil(c.autorUid)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={`Abrir perfil de ${nomeC}`}>
+                      {fotoC
+                        ? <Image source={{ uri: fotoC }} style={styles.avatar} />
+                        : <View style={[styles.avatar, styles.avatarFallback]}><Ionicons name="person" size={14} color={CORES_SYMBIUS.textoSec} /></View>}
+                    </TouchableOpacity>
                     <View style={[styles.comentarioBolha, comentarioEditando?.id === c.id && styles.comentarioBolhaEditando]}>
                       <Text style={styles.comentarioAutor}>
                         {nomeC} <Text style={styles.comentarioTempo}>· {formatarTempo(c.criadoEm)}{c.editadoEm ? ' · editado' : ''}</Text>

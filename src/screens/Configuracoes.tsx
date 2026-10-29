@@ -232,7 +232,7 @@ import { voltar } from '../navegacao';
     const toggleModoEscuro = (v: boolean) => {
       setConfirmacao({
         titulo: v ? 'Ativar modo escuro?' : 'Voltar pro modo claro?',
-        msg: 'O app vai reiniciar rapidinho para aplicar o novo tema em todas as telas.',
+        msg: 'O tema novo atravessa a tela como uma onda e é aplicado em todas as telas.',
         btnTxt: 'Aplicar',
         onOk: () => {
           setConfirmacao(null);

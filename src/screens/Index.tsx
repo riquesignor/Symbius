@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView, RefreshControl,
   StatusBar, TextInput, ActivityIndicator, Switch,
-  Image, FlatList, Dimensions, Modal,
+  Image, FlatList, Dimensions, Modal, useWindowDimensions,
 } from 'react-native';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -38,7 +38,7 @@ const { width } = Dimensions.get('window');
 const PAD_H = 20;
 const DESTAQUE_W = (width - PAD_H * 2 - 12) / 2;
 const CARD_GAP = 12;
-const CARD_CARROSSEL_W = Math.round(width * 0.62);
+const LARGURA_MAX_CONTEUDO = 760; // em tela larga (tablet/web) o conteúdo não estica
 const LARGURA_ANTIGO = (width - 44 - 12) / 2; // largura de card dentro do notifSheet (padding 22 de cada lado)
 
 const DIAS_VALIDADE_POST = 30;
@@ -120,6 +120,11 @@ export default function Index({ navigation, route }: any) {
   const { notificacoesChat, limparNotificacoesChat } = useNotificacao();
   const { modoEscuro, setModoEscuro } = useAppSettings();
 
+  const { width: larguraTela } = useWindowDimensions();
+  const areaUtil = Math.min(larguraTela, LARGURA_MAX_CONTEUDO) - PAD_H * 2;
+  const colunasCarrossel = areaUtil >= 520 ? 2 : 1;
+  const larguraCard = Math.floor((areaUtil - CARD_GAP * (colunasCarrossel - 1)) / colunasCarrossel);
+  const [imagemAmpliada, setImagemAmpliada] = useState<string | null>(null);
   const [atualizando, setAtualizando] = useState(false);
   const [tickAtualizar, setTickAtualizar] = useState(0);
 
@@ -627,13 +632,13 @@ export default function Index({ navigation, route }: any) {
                 <Ionicons name="chevron-forward" size={18} color={CORES_SYMBIUS.textoSec} />
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity
-                style={styles.vinculoCard}
-                activeOpacity={0.9}
-                onPress={() => abrirChat(vinculos[0])}
-                accessibilityRole="button"
-                accessibilityLabel={`Elo com ${vinculos[0].outro?.nome_completo || 'colega'}. Abrir conversa.`}
-              >
+              <View style={styles.vinculoCard}>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => abrirChat(vinculos[0])}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Elo com ${vinculos[0].outro?.nome_completo || 'colega'}. Abrir conversa.`}
+                >
                 <View style={styles.vinculoPar}>
                   <View style={styles.vinculoLado}>
                     <Text style={styles.vinculoQuem}>Você ensina</Text>
@@ -651,13 +656,31 @@ export default function Index({ navigation, route }: any) {
                     </Text>
                   </View>
                 </View>
+                </TouchableOpacity>
                 <View style={styles.vinculoRodape}>
-                  <Text style={styles.vinculoRodapeTxt}>
-                    {vinculos.length > 1 ? `+${vinculos.length - 1} outros elos · ` : ''}Conversar
-                  </Text>
-                  <Ionicons name="chevron-forward" size={16} color={CORES_SYMBIUS.verdeEscuro} />
+                  {vinculos.length > 1 && (
+                    <TouchableOpacity
+                      onPress={() => irPara('Match', { aba: 'matches' })}
+                      hitSlop={HIT_SLOP_MD}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Ver mais ${vinculos.length - 1} elos`}
+                      style={{ marginRight: 'auto' }}
+                    >
+                      <Text style={[styles.vinculoRodapeTxt, { textDecorationLine: 'underline' }]}>+{vinculos.length - 1} outros elos</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    onPress={() => abrirChat(vinculos[0])}
+                    hitSlop={HIT_SLOP_MD}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Conversar"
+                  >
+                    <Text style={styles.vinculoRodapeTxt}>Conversar</Text>
+                    <Ionicons name="chevron-forward" size={16} color={CORES_SYMBIUS.verdeEscuro} />
+                  </TouchableOpacity>
                 </View>
-              </TouchableOpacity>
+              </View>
             )}
 
             {/* PRÓXIMO NA AGENDA (só aparece se houver algo nos próximos dias) */}
@@ -728,23 +751,26 @@ export default function Index({ navigation, route }: any) {
               </View>
             ) : (
               postsFiltrados.map(post => (
-                <View key={post.id} style={{ marginBottom: 10 }}>{renderDestaqueCard(post, { largura: width - PAD_H * 2 })}</View>
+                <View key={post.id} style={{ marginBottom: 10 }}>{renderDestaqueCard(post, { largura: areaUtil })}</View>
               ))
             )}
           </View>
         ) : postsValidos.length > 0 ? (
-          <FlatList
-            data={postsValidos}
-            keyExtractor={(p) => p.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            snapToInterval={CARD_CARROSSEL_W + CARD_GAP}
-            decelerationRate="fast"
-            style={styles.carrossel}
-            contentContainerStyle={styles.carrosselConteudo}
-            ItemSeparatorComponent={() => <View style={{ width: CARD_GAP }} />}
-            renderItem={({ item }) => renderDestaqueCard(item, { largura: CARD_CARROSSEL_W })}
-          />
+          // cada card ocupa a área toda (1 por vez no celular, 2 no tablet): nada de pedaço do próximo vazando
+          <View style={{ width: areaUtil, alignSelf: 'center' }}>
+            <FlatList
+              data={postsValidos}
+              keyExtractor={(p) => p.id}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              snapToInterval={larguraCard + CARD_GAP}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              style={{ width: areaUtil }}
+              ItemSeparatorComponent={() => <View style={{ width: CARD_GAP }} />}
+              renderItem={({ item }) => renderDestaqueCard(item, { largura: larguraCard })}
+            />
+          </View>
         ) : (
           <View style={styles.destEmpty}>
             <Ionicons name="newspaper-outline" size={30} color={CORES_SYMBIUS.borda2} />
@@ -767,18 +793,40 @@ export default function Index({ navigation, route }: any) {
       <NivelUpSymbiusModal info={levelUpInfo} onFechar={() => setLevelUpInfo(null)} />
 
       {/* MODAL — leitura do post */}
-      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
+      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => (imagemAmpliada ? setImagemAmpliada(null) : setModalVisible(false))}>
         <View style={styles.modalWrap}>
+          {imagemAmpliada && (
+            <TouchableOpacity style={styles.lightbox} activeOpacity={1} onPress={() => setImagemAmpliada(null)} accessibilityLabel="Fechar imagem ampliada">
+              <Image source={{ uri: imagemAmpliada }} style={styles.lightboxImg} resizeMode="contain" />
+              <View style={styles.lightboxFechar}>
+                <Ionicons name="close" size={22} color="#FFF" />
+              </View>
+            </TouchableOpacity>
+          )}
           <View style={styles.modalCover}>
             {selectedPost?.capa
-              ? <Image source={{ uri: selectedPost.capa }} style={StyleSheet.absoluteFill} />
+              ? <Image source={{ uri: selectedPost.capa }} style={StyleSheet.absoluteFill} resizeMode="cover" />
               : (
                 <View style={[StyleSheet.absoluteFill, styles.modalCoverVazia]}>
                   <Text style={styles.modalMarca}>Simbio</Text>
                 </View>
               )
             }
-            <View style={styles.modalCoverOverlay} />
+            <View style={styles.modalCoverOverlay} pointerEvents="none" />
+            {!!selectedPost?.capa && (
+              <TouchableOpacity
+                style={StyleSheet.absoluteFill}
+                activeOpacity={1}
+                onPress={() => setImagemAmpliada(selectedPost.capa)}
+                accessibilityRole="imagebutton"
+                accessibilityLabel="Ampliar imagem do post"
+              />
+            )}
+            {!!selectedPost?.capa && (
+              <View style={styles.dicaAmpliar} pointerEvents="none">
+                <Ionicons name="expand" size={13} color="#FFF" />
+              </View>
+            )}
             <TouchableOpacity style={styles.btnFechar} onPress={() => setModalVisible(false)} hitSlop={HIT_SLOP_SM}>
               <Ionicons name="chevron-down" size={24} color="#FFF" />
             </TouchableOpacity>
@@ -1200,6 +1248,10 @@ const styles = StyleSheet.create({
   // ── Modal de leitura do post ──
   modalWrap: { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
   modalCover: { height: 220 },
+  dicaAmpliar: { position: 'absolute', right: 12, bottom: 12, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+  lightbox: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, backgroundColor: 'rgba(0,0,0,0.94)', justifyContent: 'center', alignItems: 'center' },
+  lightboxImg: { width: '100%', height: '100%' },
+  lightboxFechar: { position: 'absolute', top: 48, right: 18, width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.18)', justifyContent: 'center', alignItems: 'center' },
   modalCoverVazia: { backgroundColor: CORES_SYMBIUS.verdeEscuro, justifyContent: 'center', alignItems: 'center' },
   modalMarca: { color: CORES_SYMBIUS.creme, fontSize: 30, fontFamily: F.black },
   modalCoverOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.18)' },

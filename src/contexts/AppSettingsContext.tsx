@@ -5,6 +5,7 @@ import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firest
 import { db, auth } from '../config/firebaseConfig';
 import { CORES as CORES_LIGHT, CORES_DARK, Tema } from '../constants/theme';
 import { reiniciarApp } from '../utils/reiniciarApp';
+import { executarTransicaoTema } from '../components/TransicaoTema';
 
 
 type Cores = Tema;
@@ -189,6 +190,8 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // A paleta é aplicada antes das telas carregarem (index.ts), então trocar
   // o tema exige recarregar o JS.
   const setModoEscuro = async (v: boolean) => {
+    // a onda cobre a tela e só então o app reinicia por baixo dela
+    if (!(await executarTransicaoTema(v))) return;
     setModoEscuroState(v);
     await salvarLocal('cfg_modoEscuro', v);
     reiniciarApp();

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>%WEB_TITLE%</title>
+    <!-- Antes do JS carregar a página já nasce na cor do tema salvo (evita o flash branco ao trocar de tema) -->
+    <script>
+      try {
+        var escuro = localStorage.getItem('cfg_modoEscuro') === '1';
+        document.documentElement.style.backgroundColor = escuro ? '#0D1F13' : '#FAF9F5';
+      } catch (e) {}
+    </script>
+    <style id="expo-reset">
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        overflow: hidden;
+      }
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+  </head>
+
+  <body>
+    <noscript>
+      You need to enable JavaScript to run this app.
+    </noscript>
+    <div id="root"></div>
+  </body>
+</html>

@@ -50,6 +50,7 @@ import Loja            from './src/screens/Loja';
 import TesteNivelUp    from './src/screens/TesteNivelUp';
 
 import comEntradaAnimada from './src/components/comEntradaAnimada';
+import { marcarAppPronto, transicaoEmAndamento } from './src/components/TransicaoTema';
 
 const Stack = createStackNavigator();
 
@@ -115,10 +116,15 @@ export default function App() {
     verificarSessao();
   }, []);
 
+  // avisa a onda da troca de tema que já dá pra mostrar o app de verdade
+  useEffect(() => {
+    if (initialRoute !== null && fontsLoaded) marcarAppPronto();
+  }, [initialRoute, fontsLoaded]);
+
   if (initialRoute === null || !fontsLoaded) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: CORES_SYMBIUS.fundo }}>
-        <ActivityIndicator size="large" color={CORES_SYMBIUS.verdeEscuro} />
+        {!transicaoEmAndamento() && <ActivityIndicator size="large" color={CORES_SYMBIUS.verdeEscuro} />}
       </View>
     );
   }
