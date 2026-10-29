@@ -1,0 +1,8 @@
+# A Vercel é só o backend de notificações: sobe apenas a pasta api e o necessário pra ela rodar.
+/*
+!/api
+!/package.json
+!/package-lock.json
+!/vercel.json
+!/tsconfig.json
+!/.npmrc

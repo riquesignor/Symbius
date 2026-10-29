@@ -1,10 +1,6 @@
 {
-  "buildCommand": "npx expo export --platform web",
-  "outputDirectory": "dist",
+  "buildCommand": null,
   "framework": null,
-  "rewrites": [
-    { "source": "/((?!api/|_expo/|assets/).*)", "destination": "/index.html" }
-  ],
   "crons": [
     { "path": "/api/cron-lembretes", "schedule": "0 12 * * *" }
   ]
