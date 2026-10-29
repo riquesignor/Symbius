@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { calcularNivel, calcularProgressoXp } from '../utils/gamification';
 import { awardDailyCheckIn, CheckInResult, LevelUpInfo } from '../services/gamificationService';
 import { useNotificacao } from '../contexts/NotificacaoProvider';
+import { NIVEL_NUMERO } from '../constants/temaSymbius';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { F } from '../constants/theme';
 import { CORES_SYMBIUS } from './Boasvindas';
@@ -77,6 +78,12 @@ const SUBS_AGENDA: { sub: string; rotulo: string; icon: any }[] = [
 const quandoTexto = (dias: number) =>
   dias === 0 ? 'hoje' : dias === 1 ? 'amanhã' : dias > 0 ? `em ${dias} dias` : `há ${Math.abs(dias)} dias`;
 
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+// O Perfil salva em posso_ensinar; `ensinar` é o campo antigo (igual ao Match.tsx)
+const materiasQueEnsina = (u: any): string[] =>
+  [...new Set<string>([...(u?.posso_ensinar || []), ...(u?.ensinar || [])])];
+
 const ACOES = [
   { chave: 'match',   label: 'Encontrar match', icone: 'location-outline'    as const, cor: CORES_SYMBIUS.verdeMedio },
   { chave: 'duvida',  label: 'Tirar dúvida',    icone: 'help-buoy-outline'   as const, cor: CORES_SYMBIUS.laranja },
@@ -111,6 +118,56 @@ export default function Index({ navigation, route }: any) {
 
   const { notificacoesChat, limparNotificacoesChat } = useNotificacao();
   const { modoEscuro, setModoEscuro } = useAppSettings();
+
+  // ── Vínculos (matches aceitos): mesma consulta e mesmo filtro do Match.tsx ──
+  const [vinculos, setVinculos] = useState<any[]>([]);
+  useEffect(() => {
+    if (!uid) return;
+    let ativo = true;
+    const q = query(
+      collection(db, 'match_solicitacoes'),
+      where('status', '==', 'aceito'),
+      where('membros', 'array-contains', uid),
+    );
+    const unsub = onSnapshot(q, async (snap) => {
+      const UM_DIA_SEG = 24 * 60 * 60;
+      const agoraSeg = Date.now() / 1000;
+      const porPessoa = new Map<string, any>();
+      await Promise.all(snap.docs.map(async d => {
+        try {
+          const data = d.data();
+          const outroUid = data.membros?.find((id: string) => id !== uid);
+          if (!outroUid) return;
+          const oSnap = await getDoc(doc(db, 'usuarios', outroUid));
+          if (!oSnap.exists()) return;
+          // Some da lista se o match foi finalizado há mais de 1 dia
+          const cSnap = await getDoc(doc(db, 'conversas', [uid, outroUid].sort().join('_')));
+          const finalizadoTs = cSnap.exists() ? cSnap.data()?.finalizadoEm?.seconds : null;
+          if (cSnap.exists() && cSnap.data()?.matchFinalizado && finalizadoTs && (agoraSeg - finalizadoTs) > UM_DIA_SEG) return;
+          const ts = data.criadoEm?.seconds ?? 0;
+          const existente = porPessoa.get(outroUid);
+          if (!existente || ts > existente._ts) {
+            porPessoa.set(outroUid, { id: d.id, _ts: ts, outro: { ...oSnap.data(), uid: outroUid } });
+          }
+        } catch {}
+      }));
+      if (ativo) setVinculos([...porPessoa.values()].sort((a, b) => b._ts - a._ts));
+    }, () => {});
+    return () => { ativo = false; unsub(); };
+  }, [uid]);
+
+  const abrirChat = (v: any) => {
+    if (!uid) return;
+    navigation.navigate('Chat', {
+      room: [uid, v.outro.uid].sort().join('_'),
+      meuUid: uid,
+      meuNome: userData?.nome_completo,
+      minhaFoto: userData?.foto || null,
+      outroUid: v.outro.uid,
+      outroNome: v.outro.nome_completo,
+      outraFoto: v.outro.foto || null,
+    });
+  };
 
   const carregar = useCallback(async () => {
     try {
@@ -219,6 +276,10 @@ export default function Index({ navigation, route }: any) {
   const xpTotal = userData?.xp_total || 0;
   const nivel = calcularNivel(xpTotal);
   const progresso = calcularProgressoXp(xpTotal);
+  const sementes = userData?.moedas_saldo || 0;
+  const streak = userData?.streak_dias || 0;
+  const matchesHoje = userData?.matches_bonificados_hoje || 0;
+  const buscando = busca.trim().length > 0;
 
   // ── Desafio do dia só aparece se fizer 24h reais desde o último check-in
   // (não é reset de meia-noite — usa o timestamp exato salvo pelo backend) ──
@@ -228,6 +289,29 @@ export default function Index({ navigation, route }: any) {
     const ultimoMs = typeof ts === 'number' ? ts : (ts?.toMillis ? ts.toMillis() : new Date(ts).getTime());
     return Date.now() - ultimoMs >= 24 * 60 * 60 * 1000;
   }, [userData?.ultimo_checkin_ts]);
+
+  // Próximo estágio (próxima fase, ou o próximo animal quando está na última fase)
+  const proximoEstagio = useMemo(() => {
+    const prox = calcularNivel(nivel.xpMaximo + 1);
+    if (prox.animal !== nivel.animal) return prox.nomeAnimal;
+    if (prox.subfase !== nivel.subfase) return prox.nomeSubfase;
+    return null;
+  }, [nivel.xpMaximo, nivel.animal, nivel.subfase]);
+
+  // Frase da saudação muda conforme a situação real do aluno
+  const fraseDoDia = checkInDisponivel
+    ? 'Seu desafio do dia está esperando.'
+    : streak >= 2
+      ? `${streak} dias seguidos. Bora manter!`
+      : proximoEstagio && progresso.faltam > 0
+        ? `Faltam ${progresso.faltam} XP pra virar ${proximoEstagio}.`
+        : 'Hoje é um ótimo dia para aprender.';
+
+  // Próximo item da agenda (os mesmos que o sino já carrega: eventos da série e lembretes)
+  const proximaAgenda = useMemo(
+    () => notificacoesAgenda.find(n => !notifDescartadas.has(n.id) && n.dias >= 0 && n.tipo !== 'lembrete_vencido') || null,
+    [notificacoesAgenda, notifDescartadas],
+  );
 
   const postsValidos = useMemo(() => posts.filter(postValido), [posts]);
   // Posts fora da janela de 30 dias — hoje eram "perdidos pra sempre" no
@@ -369,7 +453,7 @@ export default function Index({ navigation, route }: any) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 12 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 28 }]} showsVerticalScrollIndicator={false}>
 
         {/* HEADER */}
         <View style={styles.topoMarca}>
@@ -382,66 +466,201 @@ export default function Index({ navigation, route }: any) {
             <Text style={styles.marca}>simbio</Text>
           </TouchableOpacity>
           <View style={styles.headerIcones}>
-            {temPermissaoDeStaff && (
-              <TouchableOpacity
-                onPress={() => setModoEdicao(!modoEdicao)}
-                hitSlop={HIT_SLOP_SM}
-                style={[styles.btnEdit, modoEdicao && styles.btnEditAtivo]}
-                accessibilityRole="switch"
-                accessibilityLabel={modoEdicao ? 'Desativar modo editor' : 'Ativar modo editor'}
-                accessibilityState={{ checked: modoEdicao }}
-              >
-                <FontAwesome5 name="pen" size={11} color={modoEdicao ? CORES_SYMBIUS.creme : CORES_SYMBIUS.verdeEscuro} />
-              </TouchableOpacity>
-            )}
             <TouchableOpacity
-              onPress={() => setModalNotif(true)}
+              onPress={() => irPara('Loja')}
               hitSlop={HIT_SLOP_SM}
-              style={{ marginLeft: 14 }}
+              style={styles.chipSementes}
               accessibilityRole="button"
-              accessibilityLabel="Notificações"
-              accessibilityHint="Toque duplo para ver suas notificações"
+              accessibilityLabel={`${sementes} Sementes. Abrir a loja.`}
             >
-              <Ionicons name="notifications-outline" size={20} color={CORES_SYMBIUS.texto} />
-              {totalNotificacoesAtivas > 0 && <View style={styles.dotNotif} />}
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => irPara('Loja')} hitSlop={HIT_SLOP_SM} style={{ marginLeft: 14 }}>
-              <Ionicons name="bag-outline" size={20} color={CORES_SYMBIUS.texto} />
+              <Ionicons name="leaf" size={14} color={CORES_SYMBIUS.semente} />
+              <Text style={styles.chipSementesTxt}>{sementes}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setMiniMenuAberto(true)}
               hitSlop={HIT_SLOP_SM}
-              style={{ marginLeft: 14 }}
+              style={styles.btnTopo}
               accessibilityRole="button"
               accessibilityLabel="Mais opções"
               accessibilityHint="Abre o menu com dúvidas, contato e admin"
             >
-              <Ionicons name="ellipsis-horizontal" size={20} color={CORES_SYMBIUS.texto} />
+              <Ionicons name="ellipsis-horizontal" size={21} color={CORES_SYMBIUS.texto} />
+              {totalNotificacoesAtivas > 0 && <View style={styles.dotNotif} />}
             </TouchableOpacity>
           </View>
         </View>
 
         <Text style={styles.saudacao}>Olá, {primeiroNome}!</Text>
-        <Text style={styles.subSaudacao}>Hoje é um ótimo dia para aprender.</Text>
+        <Text style={styles.subSaudacao}>{fraseDoDia}</Text>
 
         {/* BUSCA */}
         <View style={styles.buscaWrap}>
-          <Ionicons name="search-outline" size={16} color={CORES_SYMBIUS.textoMuted} />
+          <Ionicons name="search-outline" size={18} color={CORES_SYMBIUS.textoSec} />
           <TextInput
             style={styles.buscaInput}
             placeholder="Buscar posts, dúvidas, assuntos..."
-            placeholderTextColor={CORES_SYMBIUS.textoMuted}
+            placeholderTextColor={CORES_SYMBIUS.textoSec}
             value={busca}
             onChangeText={setBusca}
             returnKeyType="search"
             clearButtonMode="while-editing"
           />
           {busca.length > 0 && (
-            <TouchableOpacity onPress={() => setBusca('')} hitSlop={HIT_SLOP_SM}>
-              <Ionicons name="close" size={16} color={CORES_SYMBIUS.textoMuted} />
+            <TouchableOpacity onPress={() => setBusca('')} hitSlop={HIT_SLOP_SM} accessibilityLabel="Limpar busca">
+              <Ionicons name="close" size={18} color={CORES_SYMBIUS.textoSec} />
             </TouchableOpacity>
           )}
         </View>
+
+        {!buscando && (
+          <>
+            {/* HERÓI: o animal atual do aluno */}
+            <View
+              style={styles.heroi}
+              accessible
+              accessibilityLabel={`${nivel.nomeAnimal} ${nivel.nomeSubfase}, nível ${NIVEL_NUMERO[nivel.animal]}. ${xpTotal} de experiência. Faltam ${progresso.faltam} XP para evoluir. ${streak} dias de sequência.`}
+            >
+              <View style={styles.heroiTopo}>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.heroiFase}>
+                    <Text style={styles.heroiFaseTxt}>{nivel.nomeSubfase} · Nível {NIVEL_NUMERO[nivel.animal]}</Text>
+                  </View>
+                  <Text style={styles.heroiNome}>{nivel.nomeAnimal}</Text>
+                  <Text style={styles.heroiFaltam}>faltam {progresso.faltam} XP para evoluir</Text>
+                </View>
+                <View style={styles.heroiMedalhao}>
+                  <AnimalImagem animal={nivel.animal} size={118} />
+                </View>
+              </View>
+
+              <View style={styles.heroiBarraFundo}>
+                <View style={[styles.heroiBarra, { width: `${Math.max(progresso.percentual, 3)}%` }]} />
+              </View>
+
+              <View style={styles.heroiStats}>
+                <View style={styles.heroiStat}>
+                  <Text style={styles.heroiStatValor}>{xpTotal}</Text>
+                  <Text style={styles.heroiStatRotulo}>XP total</Text>
+                </View>
+                <View style={styles.heroiDivisor} />
+                <View style={styles.heroiStat}>
+                  <View style={styles.heroiStatLinha}>
+                    <Ionicons name="flame" size={16} color={CORES_SYMBIUS.semente} />
+                    <Text style={styles.heroiStatValor}>{streak}</Text>
+                  </View>
+                  <Text style={styles.heroiStatRotulo}>{streak === 1 ? 'dia seguido' : 'dias seguidos'}</Text>
+                </View>
+                <View style={styles.heroiDivisor} />
+                <View style={styles.heroiStat}>
+                  <Text style={styles.heroiStatValor}>{matchesHoje}/3</Text>
+                  <Text style={styles.heroiStatRotulo}>elos hoje</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* DESAFIO DO DIA (check-in real, via gamificationService) — só
+                aparece se já passaram 24h reais desde o último check-in;
+                some sozinho depois de coletado e só volta no dia seguinte. */}
+            {checkInDisponivel && (
+              <TouchableOpacity
+                style={styles.cardDesafio}
+                activeOpacity={0.9}
+                onPress={fazerCheckIn}
+                disabled={processandoCheckIn}
+                accessibilityRole="button"
+                accessibilityLabel="Desafio do dia. Toque para coletar a recompensa."
+              >
+                <View style={styles.desafioIcone}>
+                  <Ionicons name="checkmark" size={20} color={CORES_SYMBIUS.semente} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.desafioLabel}>Desafio do dia</Text>
+                  <Text style={styles.desafioTitulo}>
+                    {checkIn?.ganhou
+                      ? `Feito! +${checkIn.xp} XP e +${checkIn.moedas} Sementes`
+                      : 'Conecte-se com 1 novo elo'}
+                  </Text>
+                </View>
+                {processandoCheckIn
+                  ? <ActivityIndicator color={CORES_SYMBIUS.tinta} />
+                  : (
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={styles.desafioXp}>+10 XP</Text>
+                      <Text style={styles.desafioMoedas}>+5 Sementes</Text>
+                    </View>
+                  )
+                }
+              </TouchableOpacity>
+            )}
+
+            {/* VÍNCULO: quem ensina o quê (o mais recente) */}
+            {vinculos.length === 0 ? (
+              <TouchableOpacity style={styles.vinculoVazio} activeOpacity={0.85} onPress={() => irPara('Match')} accessibilityRole="button">
+                <Ionicons name="infinite" size={22} color={CORES_SYMBIUS.verdeEscuro} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.vinculoVazioTitulo}>Encontre seu primeiro elo</Text>
+                  <Text style={styles.vinculoVazioSub}>Quem ensina o que você quer aprender.</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={CORES_SYMBIUS.textoSec} />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.vinculoCard}
+                activeOpacity={0.9}
+                onPress={() => abrirChat(vinculos[0])}
+                accessibilityRole="button"
+                accessibilityLabel={`Elo com ${vinculos[0].outro?.nome_completo || 'colega'}. Abrir conversa.`}
+              >
+                <View style={styles.vinculoPar}>
+                  <View style={styles.vinculoLado}>
+                    <Text style={styles.vinculoQuem}>Você ensina</Text>
+                    <Text style={styles.vinculoMateria} numberOfLines={2}>{materiasQueEnsina(userData)[0] || 'A definir'}</Text>
+                  </View>
+                  <View style={styles.vinculoElo}>
+                    <Ionicons name="infinite" size={20} color={CORES_SYMBIUS.verdeEscuro} />
+                  </View>
+                  <View style={[styles.vinculoLado, { alignItems: 'flex-end' }]}>
+                    <Text style={styles.vinculoQuem} numberOfLines={1}>
+                      {(vinculos[0].outro?.nome_completo || 'Colega').split(' ')[0]} ensina
+                    </Text>
+                    <Text style={[styles.vinculoMateria, { textAlign: 'right' }]} numberOfLines={2}>
+                      {materiasQueEnsina(vinculos[0].outro)[0] || 'A definir'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.vinculoRodape}>
+                  <Text style={styles.vinculoRodapeTxt}>
+                    {vinculos.length > 1 ? `+${vinculos.length - 1} outros elos · ` : ''}Conversar
+                  </Text>
+                  <Ionicons name="chevron-forward" size={16} color={CORES_SYMBIUS.verdeEscuro} />
+                </View>
+              </TouchableOpacity>
+            )}
+
+            {/* PRÓXIMO NA AGENDA (só aparece se houver algo nos próximos dias) */}
+            {proximaAgenda && (
+              <TouchableOpacity
+                style={styles.agendaCard}
+                activeOpacity={0.85}
+                onPress={() => irPara('Calendario')}
+                accessibilityRole="button"
+                accessibilityLabel={`Próximo na agenda: ${proximaAgenda.titulo}. Abrir calendário.`}
+              >
+                <View style={styles.agendaData}>
+                  <Text style={styles.agendaDia}>{proximaAgenda.data.split('-')[2]}</Text>
+                  <Text style={styles.agendaMes}>{MESES_CURTOS[Number(proximaAgenda.data.split('-')[1]) - 1]}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.agendaTitulo} numberOfLines={1}>{proximaAgenda.titulo}</Text>
+                  <Text style={styles.agendaMeta}>
+                    {proximaAgenda.tipo === 'evento' ? proximaAgenda.rotulo : 'Lembrete'} · {quandoTexto(proximaAgenda.dias)}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={CORES_SYMBIUS.textoSec} />
+              </TouchableOpacity>
+            )}
+          </>
+        )}
 
         {modoEdicao && (
           <View style={styles.alertEdicao} accessibilityRole="alert" accessibilityLabel="Modo editor ativado">
@@ -452,10 +671,7 @@ export default function Index({ navigation, route }: any) {
 
         {/* ═══ DESTAQUES (mural real, restaurado do Index original) ═══ */}
         <View style={styles.secaoHeaderRow}>
-          <View>
-            <Text style={styles.secaoEyebrow}>EM DESTAQUE</Text>
-            <Text style={styles.secaoTitulo}>Confira agora</Text>
-          </View>
+          <Text style={styles.secaoTitulo}>Confira agora</Text>
           <View style={styles.navDestRow}>
             {modoEdicao && isSuperAdmin && (
               <TouchableOpacity
@@ -520,52 +736,6 @@ export default function Index({ navigation, route }: any) {
               </TouchableOpacity>
             )}
           </View>
-        )}
-
-        {/* SEU PROGRESSO */}
-        <Text style={styles.secaoTituloSimples}>Seu progresso</Text>
-        <View style={styles.cardProgresso}>
-          <View style={styles.progressoIconeWrap}>
-            <AnimalImagem animal={nivel.animal} size={44} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.progressoTitulo}>{nivel.nomeAnimal} · {nivel.nomeSubfase}</Text>
-            <Text style={styles.progressoSub}>{xpTotal} XP · faltam {progresso.faltam}</Text>
-            <View style={styles.barraFundo}>
-              <View style={[styles.barraPreenchida, { width: `${progresso.percentual}%` }]} />
-            </View>
-          </View>
-          <Text style={styles.progressoMoedas}>+10 XP</Text>
-        </View>
-
-        {/* DESAFIO DO DIA (check-in real, via gamificationService) — só
-            aparece se já passaram 24h reais desde o último check-in;
-            some sozinho depois de coletado e só volta no dia seguinte. */}
-        {checkInDisponivel && (
-          <TouchableOpacity
-            style={styles.cardDesafio}
-            activeOpacity={0.9}
-            onPress={fazerCheckIn}
-            disabled={processandoCheckIn}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={styles.desafioLabel}>Desafio do dia</Text>
-              <Text style={styles.desafioTitulo}>
-                {checkIn?.ganhou
-                  ? `Feito! +${checkIn.xp} XP, +${checkIn.moedas} Sementes`
-                  : 'Conecte-se com 1 novo match'}
-              </Text>
-            </View>
-            {processandoCheckIn
-              ? <ActivityIndicator color={CORES_SYMBIUS.creme} />
-              : (
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.desafioXp}>+10 XP</Text>
-                  <Text style={styles.desafioMoedas}>5 Sementes</Text>
-                </View>
-              )
-            }
-          </TouchableOpacity>
         )}
 
       </ScrollView>
@@ -750,7 +920,7 @@ export default function Index({ navigation, route }: any) {
 
       {/* MENU "MAIS" — dúvidas / contato / admin */}
       <Modal visible={miniMenuAberto} transparent animationType="fade" onRequestClose={() => setMiniMenuAberto(false)}>
-        <TouchableOpacity style={[styles.menuOverlay, { paddingTop: insets.top + 44 }]} activeOpacity={1} onPress={() => setMiniMenuAberto(false)}>
+        <TouchableOpacity style={[styles.menuOverlay, { paddingTop: insets.top + 60 }]} activeOpacity={1} onPress={() => setMiniMenuAberto(false)}>
           <View style={styles.menuPopup}>
             <TouchableOpacity
               style={styles.menuItem}
@@ -790,6 +960,18 @@ export default function Index({ navigation, route }: any) {
               <Ionicons name="settings" size={17} color={CORES_SYMBIUS.verdeEscuro} />
               <Text style={styles.menuItemText}>Configurações</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => { setMiniMenuAberto(false); setModalNotif(true); }}
+              accessibilityRole="button"
+              accessibilityLabel={`Notificações${totalNotificacoesAtivas > 0 ? `, ${totalNotificacoesAtivas} novas` : ''}`}
+            >
+              <Ionicons name="notifications" size={17} color={CORES_SYMBIUS.verdeEscuro} />
+              <Text style={[styles.menuItemText, { flex: 1 }]}>Notificações</Text>
+              {totalNotificacoesAtivas > 0 && (
+                <View style={styles.menuBadge}><Text style={styles.menuBadgeTxt}>{totalNotificacoesAtivas}</Text></View>
+              )}
+            </TouchableOpacity>
             {isAdmin && (
               <>
                 <View style={styles.menuDivider} />
@@ -799,6 +981,22 @@ export default function Index({ navigation, route }: any) {
                 >
                   <Ionicons name="shield-checkmark" size={17} color={CORES_SYMBIUS.verdeEscuro} />
                   <Text style={styles.menuItemText}>Painel Admin</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            {temPermissaoDeStaff && (
+              <>
+                {!isAdmin && <View style={styles.menuDivider} />}
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => { setMiniMenuAberto(false); setModoEdicao(!modoEdicao); }}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: modoEdicao }}
+                  accessibilityLabel="Modo editor"
+                >
+                  <FontAwesome5 name="pen" size={14} color={CORES_SYMBIUS.verdeEscuro} />
+                  <Text style={[styles.menuItemText, { flex: 1 }]}>Modo editor</Text>
+                  {modoEdicao && <Ionicons name="checkmark-circle" size={18} color={CORES_SYMBIUS.verdeEscuro} />}
                 </TouchableOpacity>
               </>
             )}
@@ -812,30 +1010,115 @@ export default function Index({ navigation, route }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
   centro: { justifyContent: 'center', alignItems: 'center' },
-  scroll: { paddingHorizontal: PAD_H, paddingBottom: 40 },
+  scroll: { paddingHorizontal: PAD_H, paddingBottom: 48 },
 
   topoMarca: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  marca: { fontSize: 24, fontFamily: F.black, letterSpacing: -0.5, color: CORES_SYMBIUS.verdeEscuro },
-  headerIcones: { flexDirection: 'row', alignItems: 'center' },
+  marca: { fontSize: 26, fontFamily: F.black, letterSpacing: -0.6, color: CORES_SYMBIUS.verdeEscuro },
+  headerIcones: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  btnTopo: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   btnEdit: {
-    width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center',
+    width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center',
     backgroundColor: CORES_SYMBIUS.fundoSuave, borderWidth: 1, borderColor: CORES_SYMBIUS.borda2,
   },
   btnEditAtivo: { backgroundColor: CORES_SYMBIUS.verdeEscuro, borderColor: CORES_SYMBIUS.verdeEscuro },
+  chipSementes: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, height: 34, paddingHorizontal: 12, borderRadius: 17,
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderWidth: 1.5, borderColor: CORES_SYMBIUS.semente,
+  },
+  chipSementesTxt: { fontSize: 14, fontFamily: F.bold, color: CORES_SYMBIUS.texto },
   dotNotif: {
-    position: 'absolute', top: -1, right: -1, width: 8, height: 8, borderRadius: 4,
+    position: 'absolute', top: 8, right: 9, width: 8, height: 8, borderRadius: 4,
     backgroundColor: CORES_SYMBIUS.laranjaTexto, borderWidth: 1.5, borderColor: CORES_SYMBIUS.fundo,
   },
 
-  saudacao: { fontSize: 21, fontFamily: F.black, color: CORES_SYMBIUS.texto, marginTop: 24 },
-  subSaudacao: { fontSize: 13.5, color: CORES_SYMBIUS.textoSec, fontFamily: F.medium, marginTop: 6 },
+  saudacao: { fontSize: 28, lineHeight: 34, fontFamily: F.black, letterSpacing: -0.5, color: CORES_SYMBIUS.texto, marginTop: 28 },
+  subSaudacao: { fontSize: 15, lineHeight: 22, color: CORES_SYMBIUS.textoSec, fontFamily: F.medium, marginTop: 6 },
 
   buscaWrap: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: CORES_SYMBIUS.fundoSuave, borderRadius: 14, paddingHorizontal: 14,
-    paddingVertical: 13, marginTop: 24,
+    flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48,
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 16, paddingHorizontal: 16,
+    borderWidth: 1, borderColor: CORES_SYMBIUS.borda2, marginTop: 22,
   },
-  buscaInput: { flex: 1, color: CORES_SYMBIUS.texto, fontSize: 13, fontFamily: F.regular },
+  buscaInput: { flex: 1, color: CORES_SYMBIUS.texto, fontSize: 14, fontFamily: F.regular, paddingVertical: 12 },
+
+  // ── Herói: animal atual ──
+  heroi: { backgroundColor: CORES_SYMBIUS.heroiFundo, borderRadius: 28, padding: 20, marginTop: 28 },
+  heroiTopo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  heroiFase: {
+    alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999,
+    borderWidth: 1.5, borderColor: CORES_SYMBIUS.semente,
+  },
+  heroiFaseTxt: { fontSize: 12.5, fontFamily: F.bold, color: CORES_SYMBIUS.heroiTexto },
+  heroiNome: { fontSize: 34, lineHeight: 42, fontFamily: F.black, letterSpacing: -0.8, color: CORES_SYMBIUS.heroiTexto, marginTop: 10 },
+  heroiFaltam: { fontSize: 13, fontFamily: F.medium, color: CORES_SYMBIUS.heroiTextoSec, marginTop: 2 },
+  heroiMedalhao: {
+    width: 128, height: 128, borderRadius: 64, backgroundColor: CORES_SYMBIUS.heroiElevado,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  heroiBarraFundo: { height: 10, borderRadius: 5, backgroundColor: CORES_SYMBIUS.heroiElevado, marginTop: 22, overflow: 'hidden' },
+  heroiBarra: { height: 10, borderRadius: 5, backgroundColor: CORES_SYMBIUS.semente },
+  heroiStats: {
+    flexDirection: 'row', alignItems: 'center', marginTop: 20, paddingTop: 18,
+    borderTopWidth: 1, borderTopColor: CORES_SYMBIUS.heroiElevado,
+  },
+  heroiStat: { flex: 1, alignItems: 'center', gap: 2 },
+  heroiStatLinha: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  heroiStatValor: { fontSize: 20, lineHeight: 26, fontFamily: F.black, color: CORES_SYMBIUS.heroiTexto },
+  heroiStatRotulo: { fontSize: 12, fontFamily: F.medium, color: CORES_SYMBIUS.heroiTextoSec },
+  heroiDivisor: { width: 1, height: 32, backgroundColor: CORES_SYMBIUS.heroiElevado },
+
+  // ── Desafio do dia ──
+  cardDesafio: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 68, marginTop: 14,
+    backgroundColor: CORES_SYMBIUS.semente, borderRadius: 22, paddingVertical: 14, paddingHorizontal: 16,
+  },
+  desafioIcone: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: CORES_SYMBIUS.tinta,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  desafioLabel: { color: CORES_SYMBIUS.tinta, fontSize: 15, fontFamily: F.black },
+  desafioTitulo: { color: CORES_SYMBIUS.tinta, fontSize: 13, fontFamily: F.medium, marginTop: 1 },
+  desafioXp: { color: CORES_SYMBIUS.tinta, fontSize: 14, fontFamily: F.black },
+  desafioMoedas: { color: CORES_SYMBIUS.tinta, fontSize: 12, fontFamily: F.semibold, marginTop: 1 },
+
+  // ── Vínculo ──
+  vinculoCard: {
+    marginTop: 14, backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 22, padding: 18,
+    borderWidth: 1, borderColor: CORES_SYMBIUS.borda2,
+  },
+  vinculoPar: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  vinculoLado: { flex: 1 },
+  vinculoQuem: { fontSize: 12, fontFamily: F.medium, color: CORES_SYMBIUS.textoSec },
+  vinculoMateria: { fontSize: 18, lineHeight: 24, fontFamily: F.black, color: CORES_SYMBIUS.texto, marginTop: 3 },
+  vinculoElo: {
+    width: 44, height: 44, borderRadius: 22, backgroundColor: CORES_SYMBIUS.fundoSuave,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  vinculoRodape: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 14, paddingTop: 12,
+    borderTopWidth: 1, borderTopColor: CORES_SYMBIUS.borda,
+  },
+  vinculoRodapeTxt: { fontSize: 13, fontFamily: F.semibold, color: CORES_SYMBIUS.verdeEscuro },
+  vinculoVazio: {
+    flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 68, padding: 16, marginTop: 14, borderRadius: 22,
+    borderWidth: 1.5, borderStyle: 'dashed', borderColor: CORES_SYMBIUS.borda2,
+  },
+  vinculoVazioTitulo: { fontSize: 14.5, fontFamily: F.bold, color: CORES_SYMBIUS.texto },
+  vinculoVazioSub: { fontSize: 12.5, fontFamily: F.regular, color: CORES_SYMBIUS.textoSec, marginTop: 2 },
+
+  // ── Agenda ──
+  agendaCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 68, marginTop: 14, paddingVertical: 12, paddingHorizontal: 16,
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 22, borderWidth: 1, borderColor: CORES_SYMBIUS.borda2,
+  },
+  agendaData: {
+    width: 48, height: 52, borderRadius: 14, backgroundColor: CORES_SYMBIUS.fundoSuave,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  agendaDia: { fontSize: 20, lineHeight: 24, fontFamily: F.black, color: CORES_SYMBIUS.verdeEscuro },
+  agendaMes: { fontSize: 12, fontFamily: F.semibold, color: CORES_SYMBIUS.textoSec, textTransform: 'uppercase' },
+  agendaTitulo: { fontSize: 14.5, fontFamily: F.bold, color: CORES_SYMBIUS.texto },
+  agendaMeta: { fontSize: 12.5, fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 2 },
 
   alertEdicao: {
     flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: CORES_SYMBIUS.verdeEscuro,
@@ -843,9 +1126,9 @@ const styles = StyleSheet.create({
   },
   txtEdicao: { color: CORES_SYMBIUS.creme, fontSize: 11.5, fontFamily: F.bold, letterSpacing: 0.4 },
 
-  secaoHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 36, marginBottom: 16 },
+  secaoHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 36, marginBottom: 16 },
   secaoEyebrow: { fontSize: 10, fontFamily: F.bold, color: CORES_SYMBIUS.textoSec, letterSpacing: 0.6 },
-  secaoTitulo: { fontSize: 16, fontFamily: F.black, color: CORES_SYMBIUS.texto, marginTop: 2 },
+  secaoTitulo: { fontSize: 20, fontFamily: F.black, letterSpacing: -0.3, color: CORES_SYMBIUS.texto },
   secaoTituloSimples: { fontSize: 15, fontFamily: F.bold, color: CORES_SYMBIUS.texto, marginTop: 36, marginBottom: 14 },
 
   navDestRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -890,31 +1173,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   acaoLabel: { color: CORES_SYMBIUS.texto, fontSize: 10.5, fontFamily: F.semibold, textAlign: 'center' },
-
-  cardProgresso: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 16, padding: 14,
-    borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
-  },
-  progressoIconeWrap: {
-    width: 44, height: 44, borderRadius: 22, backgroundColor: CORES_SYMBIUS.fundoSuave,
-    justifyContent: 'center', alignItems: 'center', overflow: 'hidden',
-  },
-  progressoTitulo: { color: CORES_SYMBIUS.texto, fontSize: 14, fontFamily: F.bold },
-  progressoSub: { color: CORES_SYMBIUS.textoMuted, fontSize: 11, fontFamily: F.medium, marginTop: 4, marginBottom: 6 },
-  progressoMoedas: { color: CORES_SYMBIUS.laranja, fontSize: 12, fontFamily: F.bold },
-  barraFundo: { height: 6, backgroundColor: CORES_SYMBIUS.borda, borderRadius: 3, overflow: 'hidden' },
-  barraPreenchida: { height: 6, backgroundColor: CORES_SYMBIUS.verdeEscuro, borderRadius: 3 },
-
-  cardDesafio: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: CORES_SYMBIUS.verdeEscuro, borderRadius: 16, padding: 16,
-    marginTop: 16,
-  },
-  desafioLabel: { color: CORES_SYMBIUS.creme, fontSize: 13, fontFamily: F.bold },
-  desafioTitulo: { color: '#C7D4C2', fontSize: 12, fontFamily: F.medium, marginTop: 2 },
-  desafioXp: { color: CORES_SYMBIUS.creme, fontSize: 12, fontFamily: F.bold },
-  desafioMoedas: { color: '#C7D4C2', fontSize: 11, fontFamily: F.medium, marginTop: 2 },
 
   // ── Modal de leitura do post ──
   modalWrap: { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
@@ -974,5 +1232,7 @@ const styles = StyleSheet.create({
   },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13 },
   menuItemText: { fontSize: 14, fontFamily: F.semibold, color: CORES_SYMBIUS.texto },
+  menuBadge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, backgroundColor: CORES_SYMBIUS.laranjaTexto, justifyContent: 'center', alignItems: 'center' },
+  menuBadgeTxt: { color: '#FFFFFF', fontSize: 12, fontFamily: F.bold },
   menuDivider: { height: 1, backgroundColor: CORES_SYMBIUS.borda, marginVertical: 2 },
 });

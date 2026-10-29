@@ -437,7 +437,7 @@ export default function Match({ navigation, route }: any) {
     const outroData: any = outroSnap.exists() ? outroSnap.data() : {};
     await setDoc(doc(db, 'conversas', conversaId), {
       membros: [meuUid, outroUid],
-      ultimaMensagem: 'Vocês fizeram match!',
+      ultimaMensagem: 'Vocês criaram um elo!',
       data_postagem: serverTimestamp(),
       quemEnviou: outroUid, visto: false, isMatch: true,
       dadosMembros: {
@@ -461,7 +461,7 @@ export default function Match({ navigation, route }: any) {
       await criarConversaDoMatch(deUid);
       dispararPush({
         destinatarioUid: deUid,
-        titulo: 'Deu match!',
+        titulo: 'Novo elo!',
         corpo: `${meusDados?.nome_completo || 'Alguém'} aceitou estudar com você. Bora conversar?`,
         dados: { tipo: 'match_aceito', deUid: meuUid },
       });
@@ -486,7 +486,7 @@ export default function Match({ navigation, route }: any) {
       });
       dispararPush({
         destinatarioUid: paraUid,
-        titulo: 'Nova solicitação de match',
+        titulo: 'Nova solicitação de elo',
         corpo: `${meusDados?.nome_completo || 'Alguém'} quer estudar com você!`,
         dados: { tipo: 'solicitacao_match', deUid: meuUid },
       });
@@ -622,40 +622,21 @@ export default function Match({ navigation, route }: any) {
         showsVerticalScrollIndicator={false}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         ListHeaderComponent={<>
-          <View style={[styles.cardVisivel, !perfilVisivel && styles.cardVisivelOff]}>
-            <Ionicons name={perfilVisivel ? 'eye' : 'eye-off'} size={20} color={perfilVisivel ? CORES_SYMBIUS.verdeEscuro : CORES_SYMBIUS.laranjaTexto} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.cardVisivelTitulo}>{perfilVisivel ? 'Seu perfil aparece no match' : 'Seu perfil está oculto'}</Text>
-              <Text style={styles.cardVisivelSub}>
-                {perfilVisivel
-                  ? (materiasQueEnsina(meusDados).length === 0
-                    ? 'Marque no Perfil o que você pode ensinar pra aparecer nos filtros.'
-                    : 'Outras pessoas podem te encontrar e mandar solicitação.')
-                  : 'Ninguém te encontra no Descobrir enquanto estiver desligado.'}
-              </Text>
-            </View>
-            <Switch
-              value={perfilVisivel}
-              onValueChange={alternarVisibilidade}
-              disabled={salvandoVisivel || !meusDados}
-              trackColor={{ false: CORES_SYMBIUS.borda2, true: CORES_SYMBIUS.verdeMedio }}
-              thumbColor={perfilVisivel ? CORES_SYMBIUS.verdeEscuro : '#f4f3f4'}
-            />
-          </View>
-          {solicitacoes.length > 0 ? (
-          <TouchableOpacity style={styles.avisoSolic} onPress={() => setAbaAtiva('solicitacoes')} activeOpacity={0.85}>
-            <View style={styles.avisoSolicIcone}>
-              <Ionicons name="mail-unread" size={18} color={CORES_SYMBIUS.creme} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.avisoSolicTitulo}>
-                {solicitacoes.length === 1 ? '1 pessoa quer estudar com você' : `${solicitacoes.length} pessoas querem estudar com você`}
-              </Text>
-              <Text style={styles.avisoSolicSub}>Toque para responder</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={CORES_SYMBIUS.creme} />
-          </TouchableOpacity>
-        ) : null}
+          {!perfilVisivel && (
+            <TouchableOpacity
+              style={[styles.cardVisivel, styles.cardVisivelOff]}
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('Configuracoes', { uid: meuUid })}
+              accessibilityRole="button"
+            >
+              <Ionicons name="eye-off" size={20} color={CORES_SYMBIUS.laranjaTexto} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cardVisivelTitulo}>Seu perfil está oculto</Text>
+                <Text style={styles.cardVisivelSub}>Ninguém te encontra aqui. Mude em Configurações.</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={CORES_SYMBIUS.textoSec} />
+            </TouchableOpacity>
+          )}
         </>}
         ListHeaderComponentStyle={{ marginBottom: 12, gap: 10 }}
         ListEmptyComponent={(
@@ -786,12 +767,12 @@ export default function Match({ navigation, route }: any) {
       />
 
       {/* NAVBAR */}
-      <View style={[styles.navbar, { paddingTop: insets.top, minHeight: 60 + insets.top, backgroundColor: CORES_SYMBIUS.fundo, borderBottomColor: CORES_SYMBIUS.borda }]}>
+      <View style={[styles.navbar, { paddingTop: insets.top + 16, minHeight: 60 + insets.top + 16, backgroundColor: CORES_SYMBIUS.fundo, borderBottomColor: CORES_SYMBIUS.borda }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={22} color={C.azulEscuro} />
         </TouchableOpacity>
         <View style={styles.logoWrap}>
-          <Text style={[styles.logo, { color: C.azulEscuro, fontFamily: F.black }]}>Match de Estudos</Text>
+          <Text style={[styles.logo, { color: C.azulEscuro, fontFamily: F.black }]}>Elos de Estudos</Text>
         </View>
         <TouchableOpacity onPress={() => setPopupInfo(true)}>
           <Ionicons name="help-circle-outline" size={26} color={C.azulEscuro} />
@@ -817,7 +798,7 @@ export default function Match({ navigation, route }: any) {
               />
             )}
             <Text numberOfLines={1} style={[styles.tabTxt, { color: abaAtiva === aba ? CORES.branco : C.textoSec, fontFamily: F.bold }, abaAtiva === aba && styles.tabTxtAtiva]}>
-              {aba === 'descobrir' ? 'Descobrir' : aba === 'solicitacoes' ? 'Solicitações' : 'Matches'}
+              {aba === 'descobrir' ? 'Descobrir' : aba === 'solicitacoes' ? 'Pedidos' : 'Elos'}
             </Text>
             {aba === 'solicitacoes' && solicitacoes.length > 0 && (
               <View style={styles.badge}>
@@ -875,6 +856,14 @@ export default function Match({ navigation, route }: any) {
               keyExtractor={i => i.id}
               renderItem={renderSolicitacao}
               contentContainerStyle={{ padding: 16 }}
+              ListHeaderComponent={(
+                <View style={styles.solicTopo}>
+                  <Text style={styles.solicTitulo}>
+                    {solicitacoes.length === 1 ? '1 pessoa quer estudar com você' : `${solicitacoes.length} pessoas querem estudar com você`}
+                  </Text>
+                  <Text style={styles.solicSub}>Aceite para abrir o chat e criar um elo.</Text>
+                </View>
+              )}
             />
       )}
 
@@ -883,7 +872,7 @@ export default function Match({ navigation, route }: any) {
         matchesOrdenados.length === 0 && grupos.length === 0
           ? <View style={styles.centro}>
               <Ionicons name="heart-outline" size={56} color={CORES.cinzaClaro} />
-              <Text style={styles.txtVazio}>Nenhum match ainda.</Text>
+              <Text style={styles.txtVazio}>Nenhum elo ainda.</Text>
               <Text style={[styles.txtVazio, { fontSize: 13, marginTop: 4 }]}>
                 Comece a descobrir monitores!
               </Text>
@@ -905,7 +894,7 @@ export default function Match({ navigation, route }: any) {
                     <Text style={styles.btnCriarGrupoTxt}>Criar grupo de estudo</Text>
                   </TouchableOpacity>
                   {matches.length < 2 && (
-                    <Text style={styles.dicaGrupo}>Você precisa de pelo menos 2 matches para montar um grupo.</Text>
+                    <Text style={styles.dicaGrupo}>Você precisa de pelo menos 2 elos para montar um grupo.</Text>
                   )}
 
                   {grupos.length > 0 && <Text style={styles.secaoLista}>GRUPOS</Text>}
@@ -931,7 +920,7 @@ export default function Match({ navigation, route }: any) {
                       </TouchableOpacity>
                     );
                   })}
-                  {matchesOrdenados.length > 0 && <Text style={styles.secaoLista}>MATCHES</Text>}
+                  {matchesOrdenados.length > 0 && <Text style={styles.secaoLista}>ELOS</Text>}
                 </View>
               }
             />
@@ -1003,13 +992,13 @@ export default function Match({ navigation, route }: any) {
               <Ionicons name="people" size={32} color={CORES.rosa} />
             </View>
             <Text style={[styles.popupTitulo, { color: C.azulEscuro, fontFamily: F.black }]}>
-              O que é o <Text style={{ fontStyle: 'italic', color: CORES.rosa }}>Match Acadêmico</Text>?
+              O que é o <Text style={{ fontStyle: 'italic', color: CORES.rosa }}>Elo Acadêmico</Text>?
             </Text>
             <ScrollView style={{ maxHeight: height * 0.45 }} showsVerticalScrollIndicator={false}>
               {[
                 { num: '01', titulo: 'Encontre seu monitor ideal',         desc: 'Conectamos alunos que querem aprender com quem pode ensinar — da mesma série ou superior.' },
                 { num: '02', titulo: 'Você escolhe com quem quer estudar', desc: 'Nada é imposto. Você vê o perfil de cada pessoa e decide se quer se conectar.' },
-                { num: '03', titulo: 'Match mútuo → Chat liberado',        desc: 'Só quando os dois aceitarem é que o chat é aberto. Seguro e respeitoso.' },
+                { num: '03', titulo: 'Elo mútuo → Chat liberado',        desc: 'Só quando os dois aceitarem é que o chat é aberto. Seguro e respeitoso.' },
                 { num: '04', titulo: 'Configure no seu Perfil',            desc: 'Vá em Perfil e configure quais matérias você pode ensinar e quais quer melhorar.' },
               ].map(item => (
                 <View key={item.num} style={styles.popupItem}>
@@ -1150,13 +1139,16 @@ const styles = StyleSheet.create({
     borderRadius: 14, paddingVertical: 11, backgroundColor: CORES_SYMBIUS.verdeEscuro,
   },
   feedBtnAceitarTxt: { fontSize: 13.5, fontFamily: F.bold, color: CORES_SYMBIUS.creme },
+  solicTopo:        { marginBottom: 14, paddingHorizontal: 2 },
+  solicTitulo:      { fontSize: 18, lineHeight: 24, fontFamily: F.black, letterSpacing: -0.3, color: CORES_SYMBIUS.texto },
+  solicSub:         { fontSize: 13, fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 3 },
   avisoSolic: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: CORES_SYMBIUS.laranjaTexto, borderRadius: 16, padding: 14,
+    flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, padding: 14, borderRadius: 20,
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderWidth: 1.5, borderColor: CORES_SYMBIUS.semente,
   },
-  avisoSolicIcone: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.18)', justifyContent: 'center', alignItems: 'center' },
-  avisoSolicTitulo: { fontSize: 14, fontFamily: F.bold, color: CORES_SYMBIUS.creme },
-  avisoSolicSub:    { fontSize: 11.5, fontFamily: F.medium, color: 'rgba(244,241,232,0.85)', marginTop: 1 },
+  avisoSolicIcone: { width: 42, height: 42, borderRadius: 21, backgroundColor: CORES_SYMBIUS.semente, justifyContent: 'center', alignItems: 'center' },
+  avisoSolicTitulo: { fontSize: 14, fontFamily: F.bold, color: CORES_SYMBIUS.texto },
+  avisoSolicSub:    { fontSize: 12, fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 1 },
 
   container:          { flex: 1, backgroundColor: CORES.fundo },
   navbar:             { minHeight: 60, paddingBottom: 8, backgroundColor: CORES.branco, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
@@ -1166,7 +1158,7 @@ const styles = StyleSheet.create({
   tabs:               { flexDirection: 'row', backgroundColor: CORES.branco, paddingHorizontal: 16, paddingBottom: 14, paddingTop: 10, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
   tabsTrack:          { flex: 1, flexDirection: 'row', gap: 4, backgroundColor: CORES.fundo, padding: 4, borderRadius: 14 },
   tab:                { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8, minHeight: 44, borderRadius: 12 },
-  tabAtiva:           { backgroundColor: CORES.azulEscuro, flexGrow: 1.35 },
+  tabAtiva:           { backgroundColor: CORES.azulEscuro },
   tabTxt:             { fontSize: 13, fontFamily: F.bold, color: CORES.textoSec },
   tabTxtAtiva:        { color: CORES.branco },
   badge:              { backgroundColor: CORES.rosa, width: 18, height: 18, borderRadius: 9, justifyContent: 'center', alignItems: 'center', marginLeft: 2 },

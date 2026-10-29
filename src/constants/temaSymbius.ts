@@ -37,36 +37,37 @@ export const TEMA_SYMBIUS: Tema = {
 export const NIVEL_GRADIENTE: Record<Animal, {
   c1: string;
   c2: string;
-  glow: string;      // cor do drop-shadow atrás do emoji
+  glow: string;      // cor do brilho atrás do animal
   labelTopo: string;  // "Novo nível alcançado!"
   subtitulo: string;  // "Nível N"
   citacaoCor: string;
   botaoTexto: string; // cor do texto do botão "Continuar" (fundo é sempre creme)
   citacao: string;
 }> = {
+  // cada fundo parte da cor do próprio animal
   tubarao: {
-    c1: '#7A5A2E', c2: '#2E1E10', glow: 'rgba(255,180,80,0.5)',
-    labelTopo: '#F4E8D8', subtitulo: '#D8C4A6', citacaoCor: '#E8D9C2', botaoTexto: '#2E1E10',
+    c1: '#2F78AA', c2: '#08213A', glow: 'rgba(110,185,235,0.5)',
+    labelTopo: '#E3F1FB', subtitulo: '#A9CFE8', citacaoCor: '#D4E8F5', botaoTexto: '#08213A',
     citacao: 'Quem lidera com força, inspira com exemplo.',
   },
   leopardo: {
-    c1: '#6E5A2E', c2: '#26200F', glow: 'rgba(230,190,80,0.5)',
-    labelTopo: '#F1EAD8', subtitulo: '#D6CBA6', citacaoCor: '#E6DEC2', botaoTexto: '#26200F',
+    c1: '#C28A1E', c2: '#2E1F06', glow: 'rgba(255,200,80,0.55)',
+    labelTopo: '#FBF0D6', subtitulo: '#E8CE8E', citacaoCor: '#F3E3B8', botaoTexto: '#2E1F06',
     citacao: 'Agilidade é saber a hora certa de agir.',
   },
   gaviao: {
-    c1: '#B4762E', c2: '#3A2410', glow: 'rgba(255,170,80,0.55)',
-    labelTopo: '#F7E7CE', subtitulo: '#E0C6A0', citacaoCor: '#F0DDBC', botaoTexto: '#3A2410',
+    c1: '#8C5A33', c2: '#2A180C', glow: 'rgba(230,165,95,0.5)',
+    labelTopo: '#F6E8D8', subtitulo: '#DDBF9C', citacaoCor: '#EBD5B8', botaoTexto: '#2A180C',
     citacao: 'A precisão é o começo da confiança.',
   },
   raposa: {
-    c1: '#A85A2E', c2: '#331F10', glow: 'rgba(255,140,60,0.5)',
-    labelTopo: '#F6E4D2', subtitulo: '#DEC1A2', citacaoCor: '#EED7BC', botaoTexto: '#331F10',
+    c1: '#CC5A1E', c2: '#3A1507', glow: 'rgba(255,135,60,0.55)',
+    labelTopo: '#FCE9DC', subtitulo: '#F0B995', citacaoCor: '#F7D9C4', botaoTexto: '#3A1507',
     citacao: 'Esperteza abre caminhos que a força não vê.',
   },
   coruja: {
-    c1: '#4A5A3E', c2: '#1C2416', glow: 'rgba(150,190,120,0.5)',
-    labelTopo: '#E4EDD8', subtitulo: '#C2CFA6', citacaoCor: '#D9E4C2', botaoTexto: '#1C2416',
+    c1: '#6F6B5C', c2: '#1D1C17', glow: 'rgba(210,200,160,0.45)',
+    labelTopo: '#F0ECDD', subtitulo: '#CFC8B0', citacaoCor: '#E3DDC8', botaoTexto: '#1D1C17',
     citacao: 'Sabedoria começa com a primeira pergunta.',
   },
 };

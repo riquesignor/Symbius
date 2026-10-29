@@ -349,7 +349,7 @@ export default function Admin({ navigation, route }: any) {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: C.fundo }]}>
-      <StatusBar barStyle="light-content" backgroundColor={CORES.azulEscuro} />
+      <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
 
       {/* TOAST */}
       {toast !== '' && (
@@ -360,22 +360,23 @@ export default function Admin({ navigation, route }: any) {
       )}
 
       {/* HEADER */}
-      <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 28 }]}>
         <TouchableOpacity
           onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Index', params: { uid } }] })}
           style={styles.btnVoltar}
+          accessibilityLabel="Voltar"
         >
-          <Ionicons name="arrow-back" size={22} color={CORES.branco} />
+          <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <View style={styles.headerEyebrowRow}>
-            <View style={styles.headerDot} />
-            <Text style={[styles.headerEyebrow, { fontSize: fs(9) }]}>PAINEL RESTRITO</Text>
-          </View>
-          <Text style={[styles.headerTitulo, { fontSize: fs(19) }]}>Dashboard Admin</Text>
-        </View>
-        <TouchableOpacity onPress={carregar} style={styles.btnRefresh}>
-          <Ionicons name="refresh" size={18} color={CORES.branco} />
+        <Text
+          style={[styles.headerTitulo, styles.headerTituloCentro, { top: insets.top + 28, fontSize: fs(17) }]}
+          pointerEvents="none"
+        >
+          Dashboard Admin
+        </Text>
+        <View style={{ flex: 1 }} />
+        <TouchableOpacity onPress={carregar} style={styles.btnRefresh} accessibilityLabel="Atualizar">
+          <Ionicons name="refresh" size={20} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
       </View>
 
@@ -953,13 +954,14 @@ const styles = StyleSheet.create({
   toast:     { position: 'absolute', alignSelf: 'center', backgroundColor: CORES.azulEscuro, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 24, zIndex: 9999, elevation: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
   toastText: { color: CORES.branco, fontFamily: F.bold },
 
-  header:          { backgroundColor: CORES.azulEscuro, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingBottom: 16, gap: 12 },
-  btnVoltar:       { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
+  header:          { backgroundColor: CORES_SYMBIUS.fundo, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingBottom: 10, gap: 8 },
+  btnVoltar:       { width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-start' },
   headerEyebrowRow:{ flexDirection: 'row', alignItems: 'center', gap: 6 },
   headerDot:       { width: 6, height: 6, borderRadius: 3, backgroundColor: CORES.amarelo },
   headerEyebrow:   { color: 'rgba(255,255,255,0.7)', fontFamily: F.black, letterSpacing: 1.6 },
-  headerTitulo:    { color: CORES.branco, fontFamily: F.black, letterSpacing: -0.4, marginTop: 2 },
-  btnRefresh:      { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
+  headerTitulo:    { color: CORES_SYMBIUS.texto, fontFamily: F.black, letterSpacing: -0.3 },
+  headerTituloCentro: { position: 'absolute', left: 0, right: 0, height: 44, lineHeight: 44, textAlign: 'center' },
+  btnRefresh:      { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
 
   // ABAS com indicador animado
   abas:             { flexDirection: 'row', paddingHorizontal: 4, borderBottomWidth: 1, position: 'relative' },
