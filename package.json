@@ -6,7 +6,8 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "deploy:backend": "vercel --prod --yes --meta protegido=NAO-APAGAR-backend-de-notificacoes"
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
