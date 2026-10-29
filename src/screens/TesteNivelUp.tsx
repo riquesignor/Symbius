@@ -42,7 +42,7 @@ export default function TesteNivelUp({ navigation }: any) {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
+    <View style={[styles.container, { paddingTop: insets.top + 22 }]}>
       <View style={styles.topo}>
         <TouchableOpacity onPress={() => voltar(navigation)} style={styles.btnVoltar} accessibilityLabel="Voltar">
           <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />

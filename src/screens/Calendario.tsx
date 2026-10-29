@@ -73,11 +73,11 @@ const gerarIdAleatorio = (prefix: string) => {
 const TIPOS_EVENTO = ['Prova','Feriado','Aviso','Evento'];
 
 const TIPO_CONFIG: Record<string, { color: string; bg: string; icon: any }> = {
-  lembrete: { color: '#2c3e50', bg: '#EBF0F5', icon: 'bookmark'      },
-  Prova:    { color: '#e74c3c', bg: '#FDECEA', icon: 'document-text' },
-  Feriado:  { color: '#27ae60', bg: '#E8F8EE', icon: 'sunny'         },
-  Aviso:    { color: '#e67e22', bg: '#FEF3E7', icon: 'megaphone'     },
-  Evento:   { color: '#8e44ad', bg: '#F3E8FA', icon: 'sparkles'      },
+  lembrete: { color: '#6B7A70', bg: '#6B7A7022', icon: 'bookmark'      },
+  Prova:    { color: '#C84B2E', bg: '#C84B2E22', icon: 'document-text' },
+  Feriado:  { color: '#3E8E55', bg: '#3E8E5522', icon: 'sunny'         },
+  Aviso:    { color: '#A8841F', bg: '#C8A84B33', icon: 'megaphone'     },
+  Evento:   { color: '#3F82B5', bg: '#3F82B522', icon: 'sparkles'      },
 };
 
 const TIPO_COLLECTION: Record<string, { sub: string; prefix: string }> = {
@@ -145,7 +145,8 @@ export default function Calendario({ navigation, route }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const insets = useSafeAreaInsets();
   const { width: winW, height: winH } = useWindowDimensions();
-  const CEL_SIZE = Math.floor((winW - 32) / 7);
+  const CEL_SIZE = Math.floor((Math.min(winW, 520) - 32 - 24) / 7);
+  const CEL_ALT = Math.round(CEL_SIZE * 1.05);
 
   const { cores: _coresContexto, fonteScale, modoEscuro: _modoEscuroReal } = useAppSettings();
   // Paleta Symbius ainda não tem modo escuro definitivo (pendente) — fixado
@@ -556,22 +557,7 @@ useEffect(() => {
   };
   
   const renderCelula = (dia: number | null, idx: number) => {
-    if (!dia) return (
-      <View
-        key={`v${idx}`}
-        style={[
-          styles.celulaVazia,
-          {
-            width: CEL_SIZE,
-            height: CEL_SIZE * 0.95,
-            backgroundColor: modoEscuro ? C.cinzaClaro : C.branco,
-            borderColor: C.cinzaClaro,
-          }
-        ]}
-      />
-    );
-
-    
+    if (!dia) return <View key={`v${idx}`} style={{ width: CEL_SIZE, height: CEL_ALT }} />;
 
     const dataStr   = formatarDataStr(ano, mes + 1, dia);
     const eHoje     = dia === hoje.getDate() && noMesAtual;
@@ -584,28 +570,17 @@ useEffect(() => {
     return (
       <TouchableOpacity
         key={dataStr}
-        style={[
-          styles.celula,
-          {
-            width: CEL_SIZE,
-            height: CEL_SIZE * 0.95,
-            backgroundColor: C.branco,
-            borderColor: C.cinzaClaro,
-          },
-          
-        ]}
+        style={[styles.celula, { width: CEL_SIZE, height: CEL_ALT }]}
         onPress={() => { setDiaSelecionado(dataStr); setModalDia(true); }}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={`${dia} de ${MESES[mes]}${temLemb || temAdmin ? ', com compromissos' : ''}`}
       >
-        <View style={[
-          styles.numWrap,
-          eHoje && { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
-        ]}>
+        <View style={[styles.numWrap, eHoje && { backgroundColor: CORES_SYMBIUS.verdeEscuro }]}>
           <Text style={[
             styles.numDia,
-            { color: C.azulEscuro, fontSize: fs(11) },
-            eFimSem && { color: C.textoSec },
-            eHoje && { color: modoEscuro ? CORES.azulEscuro : CORES.branco }
+            { color: eFimSem ? CORES_SYMBIUS.textoSec : CORES_SYMBIUS.texto, fontSize: fs(14) },
+            eHoje && { color: CORES_SYMBIUS.creme },
           ]}>
             {dia}
           </Text>
@@ -665,52 +640,46 @@ useEffect(() => {
 
   
 
-  // ── Card de evento (com fade in) ──
+  // ── Linha de evento ──
+  const quandoCurto = (dataStr: string) => {
+    const [a, m, d] = dataStr.split('-').map(Number);
+    const alvo = new Date(a, m - 1, d); alvo.setHours(0, 0, 0, 0);
+    const ref = new Date(); ref.setHours(0, 0, 0, 0);
+    const diff = Math.round((alvo.getTime() - ref.getTime()) / 86400000);
+    if (diff === 0) return { texto: 'Hoje', destaque: true, passado: false };
+    if (diff === 1) return { texto: 'Amanhã', destaque: true, passado: false };
+    if (diff === -1) return { texto: 'Ontem', destaque: false, passado: true };
+    if (diff > 0) return { texto: `Em ${diff} dias`, destaque: false, passado: false };
+    return { texto: `Há ${Math.abs(diff)} dias`, destaque: false, passado: true };
+  };
+
   const renderEventoCard = ({ item, index }: any) => {
-    const config   = TIPO_CONFIG[item.tipo] || TIPO_CONFIG.Evento;
+    const config = TIPO_CONFIG[item.tipo] || TIPO_CONFIG.Evento;
     const [, m, d] = item.data.split('-').map(Number);
-    const contagem = calcularDiasRestantes(item.data);
+    const quando = quandoCurto(item.data);
+    const series = (item.series || []).join(' · ');
 
     return (
-      <FadeInView delay={index * 60}>
+      <FadeInView delay={index * 50}>
         <TouchableOpacity
-          style={[styles.evCard, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+          style={[styles.evLinha, quando.passado && { opacity: 0.6 }]}
           onPress={() => { setEventoDetalhe(item); setModalDetalhe(true); }}
-          activeOpacity={0.85}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={`${item.tipo}: ${item.titulo}, ${d} de ${MESES[m - 1]}, ${quando.texto}`}
         >
-          <View style={[styles.evDataBox, { backgroundColor: config.bg }]}>
-            <Text style={[styles.evDataDia, { color: config.color, fontSize: fs(19) }]}>{d}</Text>
-            <Text style={[styles.evDataMes, { color: config.color, fontSize: fs(9) }]}>{MESES_ABREV[m - 1]}</Text>
+          <View style={[styles.evBarra, { backgroundColor: config.color }]} />
+          <View style={styles.evData}>
+            <Text style={[styles.evDataDia, { color: config.color, fontSize: fs(22) }]}>{d}</Text>
+            <Text style={[styles.evDataMes, { fontSize: fs(12) }]}>{MESES_ABREV[m - 1]}</Text>
           </View>
-
-          <View style={styles.evConteudo}>
-            <View style={styles.evTopo}>
-              <View style={[styles.evIconWrap, { backgroundColor: config.bg }]}>
-                <Ionicons name={config.icon} size={11} color={config.color} />
-              </View>
-              <Text style={[styles.evTipoLabel, { color: config.color, fontSize: fs(9) }]}>
-                {item.tipo.toUpperCase()}
-              </Text>
-              <View style={[styles.evChipMini, { backgroundColor: contagem.cor + '18' }]}>
-                <Text style={[styles.evChipMiniText, { color: contagem.cor, fontSize: fs(8) }]}>
-                  {contagem.texto}
-                </Text>
-              </View>
-            </View>
-
-            <Text style={[styles.evTitulo, { color: C.azulEscuro, fontSize: fs(13) }]} numberOfLines={1}>
-              {item.titulo}
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.evTitulo, { fontSize: fs(15) }]} numberOfLines={1}>{item.titulo}</Text>
+            <Text style={[styles.evMeta, { fontSize: fs(12) }]} numberOfLines={1}>
+              {item.tipo}{series ? ` · ${series}` : ''}
             </Text>
-
-            <View style={styles.evMetaRow}>
-              <Ionicons name="people-outline" size={10} color={C.textoSec} />
-              <Text style={[styles.evMeta, { color: C.textoSec, fontSize: fs(10) }]}>
-                {(item.series || []).join(' · ')}
-              </Text>
-            </View>
           </View>
-
-          <Ionicons name="chevron-forward" size={16} color={C.cinzaClaro} />
+          <Text style={[styles.evQuando, { fontSize: fs(12) }, quando.destaque && styles.evQuandoDestaque]}>{quando.texto}</Text>
         </TouchableOpacity>
       </FadeInView>
     );
@@ -725,7 +694,7 @@ useEffect(() => {
   return (
     <View style={[styles.container, { backgroundColor: C.fundo }]}>
       {/* StatusBar continua azul fixo (identidade visual do header) */}
-      <StatusBar barStyle="light-content" backgroundColor={CORES.azulEscuro} />
+      <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
 
       {/* TOAST — mantém azul escuro fixo (overlay) */}
       {toast !== '' && (
@@ -734,27 +703,18 @@ useEffect(() => {
         </View>
       )}
 
-      {/* HEADER — mantém azul escuro fixo (identidade visual) */}
-      <View style={[
-        styles.header,
-        { paddingTop: insets.top },
-        !modoEscuro && { shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4 }
-      ]}>
-        <TouchableOpacity onPress={() => voltar(navigation)} style={styles.btnVoltar}>
-          <Ionicons name="arrow-back" size={22} color={CORES.branco} />
+      {/* HEADER */}
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+        <TouchableOpacity onPress={() => voltar(navigation)} style={styles.btnVoltar} accessibilityLabel="Voltar">
+          <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.headerEyebrow, { fontSize: fs(9) }]}>AGENDA ESCOLAR</Text>
-          <Text style={[styles.headerTitulo, { fontSize: fs(18) }]}>Calendário</Text>
-        </View>
-        <TouchableOpacity onPress={() => setModalLegenda(true)} style={styles.btnIcone}>
-          <Ionicons name="information-circle-outline" size={22} color={CORES.branco} />
-        </TouchableOpacity>
-        {isAdmin && (
-          <TouchableOpacity onPress={abrirFormNovoEvento} style={styles.btnAdd}>
-            <Ionicons name="add" size={18} color={CORES.branco} />
-            <Text style={[styles.btnAddText, { fontSize: fs(12) }]}>Evento</Text>
+        <Text style={[styles.headerTitulo, { flex: 1, textAlign: 'center', fontSize: fs(17) }]} numberOfLines={1}>Calendário</Text>
+        {isAdmin ? (
+          <TouchableOpacity onPress={abrirFormNovoEvento} style={styles.btnAdd} accessibilityRole="button" accessibilityLabel="Novo evento">
+            <Ionicons name="add-circle" size={30} color={CORES_SYMBIUS.verdeEscuro} />
           </TouchableOpacity>
+        ) : (
+          <View style={{ width: 44 }} />
         )}
       </View>
 
@@ -771,163 +731,114 @@ useEffect(() => {
         }
         contentContainerStyle={{ paddingBottom: 40 }}
       >
-        {/* NAV MÊS */}
-        <View style={[styles.navMes, { backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
+        {/* MÊS */}
+        <FadeInView delay={0}>
+        <View style={styles.navMes}>
           <TouchableOpacity
-            style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+            style={styles.btnNavMes}
             onPress={() => { if (mes === 0) { setMes(11); setAno(a => a - 1); } else setMes(m => m - 1); }}
+            accessibilityLabel="Mês anterior"
           >
-            <Ionicons name="chevron-back" size={16} color={C.azulEscuro} />
+            <Ionicons name="chevron-back" size={20} color={CORES_SYMBIUS.texto} />
           </TouchableOpacity>
 
           <View style={{ alignItems: 'center' }}>
-            <Text style={[styles.navMesNome, { color: C.azulEscuro, fontSize: fs(16) }]}>{MESES[mes]}</Text>
-            <Text style={[styles.navAno, { color: C.textoSec, fontSize: fs(11) }]}>{ano}</Text>
+            <Text style={[styles.navMesNome, { fontSize: fs(26) }]}>{MESES[mes]}</Text>
+            <Text style={[styles.navAno, { fontSize: fs(13) }]}>{ano}</Text>
           </View>
 
           <TouchableOpacity
-            style={[styles.btnNavMes, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+            style={styles.btnNavMes}
             onPress={() => { if (mes === 11) { setMes(0); setAno(a => a + 1); } else setMes(m => m + 1); }}
+            accessibilityLabel="Próximo mês"
           >
-            <Ionicons name="chevron-forward" size={16} color={C.azulEscuro} />
+            <Ionicons name="chevron-forward" size={20} color={CORES_SYMBIUS.texto} />
           </TouchableOpacity>
         </View>
 
-        {/* BOTÃO IR PRA HOJE */}
         {!noMesAtual && (
           <TouchableOpacity
-            style={[styles.btnHoje, { backgroundColor: C.branco, borderColor: C.cinzaClaro }]}
+            style={styles.btnHoje}
             onPress={() => { setMes(hoje.getMonth()); setAno(hoje.getFullYear()); }}
+            accessibilityRole="button"
           >
-            <Ionicons name="locate" size={12} color={C.azulEscuro} />
-            <Text style={[styles.btnHojeText, { color: C.azulEscuro, fontSize: fs(11) }]}>Ir para hoje</Text>
+            <Ionicons name="locate" size={14} color={CORES_SYMBIUS.verdeEscuro} />
+            <Text style={[styles.btnHojeText, { fontSize: fs(13) }]}>Voltar para hoje</Text>
           </TouchableOpacity>
         )}
+        </FadeInView>
 
-        {/* DIAS DA SEMANA */}
-        <View style={[styles.semanaRow, { backgroundColor: C.branco, borderTopColor: C.cinzaClaro }]}>
-          {DIAS_SEMANA.map(d => (
-            <Text
-              key={d}
-              style={[styles.semanaLabel, { width: CEL_SIZE, color: C.textoSec, fontSize: fs(10) }]}
-            >
-              {d}
+        {/* CALENDÁRIO */}
+        <FadeInView delay={80}>
+        <View style={[styles.cardCal, { width: CEL_SIZE * 7 + 26 }]}>
+          <View style={styles.semanaRow}>
+            {DIAS_SEMANA.map(d => (
+              <Text key={d} style={[styles.semanaLabel, { width: CEL_SIZE, fontSize: fs(12) }]}>{d}</Text>
+            ))}
+          </View>
+          <View style={styles.grade}>
+            {celulas.map((dia, idx) => renderCelula(dia, idx))}
+          </View>
+        </View>
+        </FadeInView>
+
+        {/* EVENTOS DO MÊS */}
+        <FadeInView delay={160}>
+        <View style={styles.secao}>
+          <View style={styles.secaoTopo}>
+            <Text style={[styles.secaoTitulo, { fontSize: fs(20) }]}>
+              {isAdmin ? 'Eventos cadastrados' : 'Eventos da sua turma'}
             </Text>
-          ))}
-        </View>
-
-        {/* GRADE */}
-        <View style={[styles.grade, { backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
-          {celulas.map((dia, idx) => renderCelula(dia, idx))}
-        </View>
-
-        {/* SEÇÃO EVENTOS */}
-        <View style={[styles.secaoEventos, { backgroundColor: C.branco }]}>
-          <View style={styles.secaoHeader}>
-            <View>
-              <Text style={[styles.secaoEyebrow, { color: C.rosa, fontSize: fs(9) }]}>
-                {MESES[mes].toUpperCase()} · {ano}
-              </Text>
-              <Text style={[styles.secaoTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>
-                {isAdmin ? 'Eventos cadastrados' : 'Eventos da sua turma'}
-              </Text>
-            </View>
-            <View style={[styles.secaoCount, { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro }]}>
-              <Text style={[
-                styles.secaoCountText,
-                { color: modoEscuro ? CORES.azulEscuro : CORES.branco, fontSize: fs(12) }
-              ]}>
-                {eventosFiltrados.length}
-              </Text>
-            </View>
+            <Text style={[styles.secaoCont, { fontSize: fs(13) }]}>
+              {eventosFiltrados.length} {eventosFiltrados.length === 1 ? 'evento' : 'eventos'}
+            </Text>
           </View>
 
-          {/* CHIPS DE FILTRO */}
-          <View style={{ position: 'relative' }}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsRow}
-          >
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow} style={styles.chipsScroll}>
             <TouchableOpacity
-              style={[
-                styles.chip,
-                { backgroundColor: modoEscuro ? C.cinzaClaro : C.fundo, borderColor: C.cinzaClaro },
-                filtroTipo === 'todos' && { backgroundColor: modoEscuro ? C.amarelo : CORES.azulEscuro, borderColor: modoEscuro ? C.amarelo : CORES.azulEscuro }
-              ]}
+              style={[styles.chip, filtroTipo === 'todos' && styles.chipAtivo]}
               onPress={() => setFiltroTipo('todos')}
+              accessibilityRole="button"
+              accessibilityState={{ selected: filtroTipo === 'todos' }}
             >
-              <Text style={[
-                styles.chipText,
-                { color: C.textoSec, fontSize: fs(11) },
-                filtroTipo === 'todos' && { color: modoEscuro ? CORES.azulEscuro : CORES.branco }
-              ]}>
-                Todos
-              </Text>
+              <Text style={[styles.chipText, { fontSize: fs(13) }, filtroTipo === 'todos' && styles.chipTextAtivo]}>Todos</Text>
             </TouchableOpacity>
             {TIPOS_EVENTO.map(t => {
-              const config = TIPO_CONFIG[t];
               const ativo = filtroTipo === t;
               return (
                 <TouchableOpacity
                   key={t}
-                  style={[
-                    styles.chip,
-                    { backgroundColor: config.bg, borderColor: config.bg },
-                    ativo && { backgroundColor: config.color, borderColor: config.color }
-                  ]}
+                  style={[styles.chip, ativo && styles.chipAtivo]}
                   onPress={() => setFiltroTipo(t)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: ativo }}
                 >
-                  <Ionicons
-                    name={config.icon}
-                    size={11}
-                    color={ativo ? CORES.branco : config.color}
-                  />
-                  <Text style={[
-                    styles.chipText,
-                    { fontSize: fs(11) },
-                    ativo && { color: CORES.branco },
-                    !ativo && { color: config.color }
-                  ]}>
-                    {t}
-                  </Text>
+                  <View style={[styles.chipDot, { backgroundColor: TIPO_CONFIG[t].color }]} />
+                  <Text style={[styles.chipText, { fontSize: fs(13) }, ativo && styles.chipTextAtivo]}>{t}</Text>
                 </TouchableOpacity>
               );
             })}
           </ScrollView>
-          <LinearGradient
-            colors={[
-              'transparent',
-              modoEscuro ? 'rgba(17,24,39,0.95)' : 'rgba(255,255,255,0.95)',
-            ]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 36, pointerEvents: 'none' }}
-          />
-          </View>
 
-          {/* LISTA */}
           {eventosFiltrados.length === 0 ? (
             <View style={styles.listaVazia}>
-              <Ionicons name="calendar-outline" size={32} color={C.cinzaClaro} />
-              <Text style={[styles.listaVaziaText, { color: C.textoSec, fontSize: fs(12) }]}>
+              <Ionicons name="calendar-outline" size={30} color={CORES_SYMBIUS.borda2} />
+              <Text style={[styles.listaVaziaText, { fontSize: fs(13) }]}>
                 Nenhum evento{filtroTipo !== 'todos' ? ` do tipo ${filtroTipo}` : ''} em {MESES[mes]}.
               </Text>
             </View>
           ) : (
-            <FlatList
-              data={eventosFiltrados}
-              keyExtractor={item => item.id}
-              renderItem={renderEventoCard}
-              ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
-              scrollEnabled={eventosFiltrados.length > 3}
-              style={{ maxHeight: Math.max(220, winH * 0.32) }}
-              contentContainerStyle={{ paddingTop: 4, paddingBottom: 4 }}
-            />
+            <View style={styles.listaCard}>
+              {eventosFiltrados.map((item: any, index: number) => (
+                <View key={item.id}>
+                  {index > 0 && <View style={styles.evSeparador} />}
+                  {renderEventoCard({ item, index })}
+                </View>
+              ))}
+            </View>
           )}
         </View>
+        </FadeInView>
       </ScrollView>
 
 
@@ -1528,64 +1439,80 @@ const styles = StyleSheet.create({
   toastText:         { color: CORES.branco, fontFamily: F.bold },
 
   // HEADER — fixo (identidade visual)
-  header:            { backgroundColor: CORES.azulEscuro, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 14, gap: 10 },
-  btnVoltar:         { padding: 4 },
+  header:            { backgroundColor: CORES_SYMBIUS.fundo, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingBottom: 10, gap: 8 },
+  btnVoltar:         { width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-start' },
   headerEyebrow:     { color: 'rgba(255,255,255,0.5)', fontFamily: F.black, letterSpacing: 1.6 },
-  headerTitulo:      { color: CORES.branco, fontFamily: F.black, letterSpacing: -0.4 },
-  btnIcone:          { padding: 4 },
-  btnAdd:            { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: CORES.rosa, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10 },
-  btnAddText:        { color: CORES.branco, fontFamily: F.bold },
+  headerTitulo:      { color: CORES_SYMBIUS.texto, fontFamily: F.black, letterSpacing: -0.3 },
+  headerTituloCentro: { position: 'absolute', left: 0, right: 0, height: 44, lineHeight: 44, textAlign: 'center' },
+  btnIcone:          { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  btnAdd:            { width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-end' },
+  btnAddText:        { color: CORES_SYMBIUS.creme, fontFamily: F.bold },
 
   // NAV MÊS
-  navMes:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1 },
-  btnNavMes:         { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
-  navMesNome:        { fontFamily: F.black, textAlign: 'center', letterSpacing: -0.3 },
-  navAno:            { textAlign: 'center', fontFamily: F.semibold },
+  navMes:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 14 },
+  btnNavMes:         { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', backgroundColor: CORES_SYMBIUS.fundoCard, borderWidth: 1, borderColor: CORES_SYMBIUS.borda2 },
+  navMesNome:        { fontFamily: F.black, textAlign: 'center', letterSpacing: -0.6, color: CORES_SYMBIUS.texto },
+  navAno:            { textAlign: 'center', fontFamily: F.semibold, color: CORES_SYMBIUS.textoSec },
 
-  btnHoje:           { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'center', marginVertical: 8, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 18, borderWidth: 1 },
-  btnHojeText:       { fontFamily: F.bold },
+  btnHoje:           { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center', minHeight: 40, marginBottom: 10, paddingHorizontal: 14 },
+  btnHojeText:       { fontFamily: F.bold, color: CORES_SYMBIUS.verdeEscuro },
 
   // GRADE
-  semanaRow:         { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 6, borderTopWidth: 1 },
-  semanaLabel:       { textAlign: 'center', fontFamily: F.black, letterSpacing: 0.6 },
-  grade:             { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, paddingTop: 4, borderBottomWidth: 1 },
-  celula:            { borderWidth: 0.5, padding: 4 },
+  semanaRow:         { flexDirection: 'row', paddingBottom: 4 },
+  semanaLabel:       { textAlign: 'center', fontFamily: F.semibold, color: CORES_SYMBIUS.textoSec },
+  grade:             { flexDirection: 'row', flexWrap: 'wrap' },
+  celula:            { alignItems: 'center', justifyContent: 'center' },
   celulaVazia:       { borderWidth: 0.5 },
-  numWrap:           { width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
-  numDia:            { fontFamily: F.bold },
-  dotsRow:           { flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginTop: 2 },
-  dot:               { width: 8, height: 8, borderRadius: 4 },
+  numWrap:           { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center' },
+  numDia:            { fontFamily: F.semibold },
+  dotsRow:           { flexDirection: 'row', justifyContent: 'center', gap: 3, height: 7, marginTop: 1 },
+  dot:               { width: 5, height: 5, borderRadius: 3 },
 
   // SEÇÃO EVENTOS
   secaoEventos:      { marginHorizontal: 16, marginTop: 18, borderRadius: 20, padding: 16, elevation: 3, shadowColor: CORES.azulEscuro, shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
   secaoHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   secaoEyebrow:      { fontFamily: F.black, letterSpacing: 1.4, marginBottom: 2 },
-  secaoTitulo:       { fontFamily: F.black, letterSpacing: -0.3 },
+  secaoTitulo:       { fontFamily: F.black, letterSpacing: -0.3, color: CORES_SYMBIUS.texto },
   secaoCount:        { minWidth: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 10 },
   secaoCountText:    { fontFamily: F.black },
 
   // CHIPS
-  chipsRow:          { gap: 8, paddingVertical: 8, paddingHorizontal: 2, flexDirection: 'row' },
-  chip:              { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
-  chipText:          { fontFamily: F.bold },
+  chipsRow:          { gap: 8, paddingRight: 16, flexDirection: 'row' },
+  chip:              { flexDirection: 'row', alignItems: 'center', gap: 7, minHeight: 40, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: CORES_SYMBIUS.borda2, backgroundColor: CORES_SYMBIUS.fundoCard },
+  cardCal:           { alignSelf: 'center', backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 24, borderWidth: 1, borderColor: CORES_SYMBIUS.borda2, paddingVertical: 14, paddingHorizontal: 12 },
+  secao:             { marginHorizontal: 16, marginTop: 32 },
+  secaoTopo:         { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14 },
+  secaoCont:         { fontFamily: F.medium, color: CORES_SYMBIUS.textoSec },
+  chipsScroll:       { marginHorizontal: -16, paddingLeft: 16, marginBottom: 16, flexGrow: 0 },
+  chipAtivo:         { backgroundColor: CORES_SYMBIUS.verdeEscuro, borderColor: CORES_SYMBIUS.verdeEscuro },
+  chipTextAtivo:     { color: CORES_SYMBIUS.creme, fontFamily: F.bold },
+  chipDot:           { width: 8, height: 8, borderRadius: 4 },
+  listaCard:         { backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 22, borderWidth: 1, borderColor: CORES_SYMBIUS.borda2, overflow: 'hidden' },
+  evLinha:           { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 72, paddingVertical: 12, paddingRight: 16 },
+  evBarra:           { width: 4, alignSelf: 'stretch', borderTopRightRadius: 3, borderBottomRightRadius: 3 },
+  evData:            { width: 40, alignItems: 'center' },
+  evSeparador:       { height: 1, marginLeft: 18, backgroundColor: CORES_SYMBIUS.borda },
+  evQuando:          { fontFamily: F.medium, color: CORES_SYMBIUS.textoSec },
+  evQuandoDestaque:  { fontFamily: F.bold, color: CORES_SYMBIUS.verdeEscuro },
+  chipText:          { fontFamily: F.semibold, color: CORES_SYMBIUS.textoSec },
 
   // CARD
   evCard:            { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, padding: 10, borderWidth: 0.5 },
   evDataBox:         { width: 48, height: 54, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  evDataDia:         { fontFamily: F.black, lineHeight: 22 },
-  evDataMes:         { fontFamily: F.black, letterSpacing: 0.8, marginTop: 2 },
+  evDataDia:         { fontFamily: F.black, lineHeight: 26 },
+  evDataMes:         { fontFamily: F.semibold, color: CORES_SYMBIUS.textoSec, textTransform: 'uppercase' },
   evConteudo:        { flex: 1, gap: 3 },
   evTopo:            { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
   evIconWrap:        { width: 18, height: 18, borderRadius: 9, justifyContent: 'center', alignItems: 'center' },
   evTipoLabel:       { fontFamily: F.black, letterSpacing: 0.6 },
   evChipMini:        { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginLeft: 'auto' as any },
   evChipMiniText:    { fontFamily: F.black, letterSpacing: 0.4 },
-  evTitulo:          { fontFamily: F.bold },
+  evTitulo:          { fontFamily: F.bold, color: CORES_SYMBIUS.texto },
   evMetaRow:         { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  evMeta:            { fontFamily: F.semibold },
+  evMeta:            { fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 2 },
 
-  listaVazia:        { alignItems: 'center', paddingVertical: 28, gap: 8 },
-  listaVaziaText:    { fontFamily: F.medium, textAlign: 'center' },
+  listaVazia:        { alignItems: 'center', paddingVertical: 32, gap: 8 },
+  listaVaziaText:    { fontFamily: F.medium, textAlign: 'center', color: CORES_SYMBIUS.textoSec },
 
   // MODAL DETALHE
   detHero:           { borderRadius: 18, padding: 22, alignItems: 'center', marginBottom: 12 },

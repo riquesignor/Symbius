@@ -274,6 +274,20 @@ import { voltar } from '../navegacao';
       if (v) Vibration.vibrate(50);
     };
 
+    // Aparecer no Descobrir do Match (campo visivel_match; ausente conta como ligado)
+    const [visivelMatch, setVisivelMatch] = useState(true);
+    useEffect(() => {
+      if (!uid) return;
+      getDoc(doc(db, 'usuarios', uid)).then(snap => {
+        if (snap.exists()) setVisivelMatch(snap.data()?.visivel_match !== false);
+      }).catch(() => {});
+    }, [uid]);
+    const toggleVisivelMatch = (v: boolean) => {
+      setVisivelMatch(v);
+      salvarFirestore('visivel_match', v);
+      setToast(v ? 'Seu perfil aparece nos Elos' : 'Seu perfil está oculto nos Elos');
+    };
+
     const toggleStatusOnline = (v: boolean) => {
       setStatusOnline(v);
       salvarFirestore('statusOnline', v);
@@ -476,7 +490,7 @@ import { voltar } from '../navegacao';
 
     return (
       <View style={[styles.container, { backgroundColor: C.fundo }]}>
-        <StatusBar barStyle={modoEscuro ? "light-content" : "light-content"} backgroundColor={CORES.azulEscuro} />
+        <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
 
         {/* TOAST */}
         {toast !== '' && (
@@ -487,20 +501,14 @@ import { voltar } from '../navegacao';
         )}
 
         {/* HEADER */}
-        <View style={[styles.header, { paddingTop: insets.top + 14, backgroundColor: CORES.azulEscuro }]}>
-          <TouchableOpacity onPress={() => voltar(navigation)} style={styles.btnVoltar}>
-            <Ionicons name="arrow-back" size={22} color="#FFF" />
+        <View style={[styles.header, { paddingTop: insets.top + 28 }]}>
+          <TouchableOpacity onPress={() => voltar(navigation)} style={styles.btnVoltar} accessibilityLabel="Voltar">
+            <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
           </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <View style={styles.headerEyebrowRow}>
-              <View style={styles.headerDot} />
-              <Text style={styles.headerEyebrow}>PERSONALIZE SEU APP</Text>
-            </View>
-            <Text style={styles.headerTitulo}>Configurações</Text>
-          </View>
-          <TouchableOpacity style={styles.headerIconWrap} onPress={() => toggleModoEscuro(!modoEscuro)}>
-            <Ionicons name={modoEscuro ? 'sunny' : 'moon'} size={18} color={CORES.amarelo} />
-          </TouchableOpacity>
+          <Text style={[styles.headerTitulo, styles.headerTituloCentro, { top: insets.top + 28 }]} pointerEvents="none">
+            Configurações
+          </Text>
+          <View style={{ flex: 1 }} />
         </View>
 
         <ScrollView
@@ -565,15 +573,15 @@ import { voltar } from '../navegacao';
                 icon="chatbubbles"
                 iconCor={CORES.azulEscuro}
                 label="Mensagens"
-                descricao="Chat com seus matches"
+                descricao="Chat com seus elos"
                 toggle={notifMensagens && notifGeral}
                 onToggle={toggleNotifMensagens}
               />
               <SettingRow
                 icon="heart"
                 iconCor={CORES.rosa}
-                label="Match"
-                descricao="Solicitações e matches aceitos"
+                label="Elos"
+                descricao="Solicitações e elos aceitos"
                 toggle={notifMatch && notifGeral}
                 onToggle={toggleNotifMatch}
               />
@@ -620,6 +628,14 @@ import { voltar } from '../navegacao';
                 descricao="Mostrar quando você está ativo"
                 toggle={statusOnline}
                 onToggle={toggleStatusOnline}
+              />
+              <SettingRow
+                icon="infinite"
+                iconCor={CORES.verde}
+                label="Aparecer nos Elos"
+                descricao="Outras pessoas podem te encontrar no Descobrir e mandar solicitação"
+                toggle={visivelMatch}
+                onToggle={toggleVisivelMatch}
               />
               <SettingRow
                 icon="school"
@@ -1008,12 +1024,13 @@ import { voltar } from '../navegacao';
     toastText:           { color: CORES.branco, fontFamily: F.bold, fontSize: 12 },
 
     // HEADER
-    header:              { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingBottom: 16, gap: 12 },
-    btnVoltar:           { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
+    header:              { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingBottom: 10, gap: 8, backgroundColor: CORES_SYMBIUS.fundo },
+    btnVoltar:           { width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-start' },
     headerEyebrowRow:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
     headerDot:           { width: 6, height: 6, borderRadius: 3, backgroundColor: CORES.amarelo },
     headerEyebrow:       { color: 'rgba(255,255,255,0.7)', fontSize: 9, fontFamily: F.black, letterSpacing: 1.6 },
-    headerTitulo:        { color: CORES.branco, fontSize: 19, fontFamily: F.black, letterSpacing: -0.4, marginTop: 2 },
+    headerTitulo:        { color: CORES_SYMBIUS.texto, fontSize: 17, fontFamily: F.black, letterSpacing: -0.3 },
+    headerTituloCentro:  { position: 'absolute', left: 0, right: 0, height: 44, lineHeight: 44, textAlign: 'center' },
     headerIconWrap:      { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
 
     // SECTION

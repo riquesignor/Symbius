@@ -212,7 +212,7 @@ export default function PerfilPublico({ navigation, route }: any) {
   if (!usuario) return (
     <SafeAreaView style={[styles.container, { backgroundColor: CORES_SYMBIUS.fundo }]}>
       <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 22 }]}>
         <TouchableOpacity onPress={() => voltar(navigation)} style={styles.btnVoltar}>
           <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
@@ -239,7 +239,7 @@ export default function PerfilPublico({ navigation, route }: any) {
 
   // ════ CABEÇALHO (compartilhado) ════
   const Header = (
-    <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+    <View style={[styles.header, { paddingTop: insets.top + 22 }]}>
       <TouchableOpacity onPress={() => voltar(navigation)} style={styles.btnVoltar}>
         <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
       </TouchableOpacity>

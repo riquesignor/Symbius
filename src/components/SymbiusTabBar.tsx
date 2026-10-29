@@ -21,7 +21,7 @@ interface Props {
 const ITENS: { chave: SymbiusAba; label: string; icone: keyof typeof Ionicons.glyphMap; iconeAtivo: keyof typeof Ionicons.glyphMap; destino: string }[] = [
   { chave: 'inicio', label: 'Início', icone: 'home-outline', iconeAtivo: 'home', destino: 'Index' },
   { chave: 'agenda', label: 'Agenda', icone: 'calendar-outline', iconeAtivo: 'calendar', destino: 'Calendario' },
-  { chave: 'match',  label: 'Match',  icone: 'infinite-outline', iconeAtivo: 'infinite', destino: 'Match' },
+  { chave: 'match',  label: 'Elos',  icone: 'infinite-outline', iconeAtivo: 'infinite', destino: 'Match' },
   { chave: 'feed',   label: 'Resumos',   icone: 'newspaper-outline', iconeAtivo: 'newspaper', destino: 'Resumos' },
   { chave: 'perfil', label: 'Perfil', icone: 'person-outline', iconeAtivo: 'person', destino: 'Perfil' },
 ];

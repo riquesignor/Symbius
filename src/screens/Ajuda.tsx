@@ -66,7 +66,7 @@ const SECOES = [
       {
         pergunta: 'Como iniciar uma conversa?',
         resposta:
-          'Acesse a seção de Matches ou a lista de contatos e toque no perfil da pessoa com quem deseja conversar. A conversa será iniciada automaticamente.',
+          'Acesse a seção de Elos ou a lista de contatos e toque no perfil da pessoa com quem deseja conversar. A conversa será iniciada automaticamente.',
       },
       {
         pergunta: 'O que significa o indicador verde?',
@@ -93,7 +93,7 @@ const SECOES = [
       {
         pergunta: 'Como ativar ou desativar notificações?',
         resposta:
-          'Nas Configurações, acesse a seção "Notificações" e ajuste as preferências para Avisos, Eventos e Matches. Você pode silenciar categorias específicas.',
+          'Nas Configurações, acesse a seção "Notificações" e ajuste as preferências para Avisos, Eventos e Elos. Você pode silenciar categorias específicas.',
       },
       {
         pergunta: 'O que é o banner de mensagem?',
@@ -216,7 +216,7 @@ export default function Ajuda({ navigation, route }: any) {
     <View style={[styles.container, { backgroundColor: C.fundo }]}>
 
       {/* HEADER */}
-      <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === 'android' ? 8 : 0), backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 + (Platform.OS === 'android' ? 8 : 0), backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
         <TouchableOpacity
           onPress={() => voltar(navigation)}
           style={styles.backBtn}

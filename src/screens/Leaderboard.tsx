@@ -49,6 +49,7 @@ export default function Leaderboard({ navigation, route }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [abaAtiva, setAbaAtiva]     = useState<Aba>('geral');
   const [meuXp, setMeuXp]           = useState<number | null>(null);
+  const [top3, setTop3]             = useState<any[]>([]);
 
   // ── Minha jornada (independente da posição no ranking) ───────────────
   useEffect(() => {
@@ -99,9 +100,20 @@ export default function Leaderboard({ navigation, route }: any) {
     buscarRanking();
   }, [abaAtiva]);
 
+  // Pódio: os 3 primeiros do ranking geral (independente da aba da lista)
+  const buscarTop3 = useCallback(async () => {
+    try {
+      const snap = await getDocs(query(collection(db, 'usuarios'), orderBy('xp_total', 'desc'), limit(3)));
+      setTop3(snap.docs.map((d, i) => ({ ...(d.data() as any), uid: d.id, posicao: i + 1 })));
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => { buscarTop3(); }, []);
+
   const onRefresh = () => {
     setRefreshing(true);
     buscarRanking();
+    buscarTop3();
   };
 
   const abrirPerfil = (uid: string) => navigation.navigate('PerfilPublico', { uid, meuUid: uidAtual });
@@ -111,12 +123,12 @@ export default function Leaderboard({ navigation, route }: any) {
     const nivel = calcularNivel(item.xp_total || 0);
     return item.foto_url
       ? <Image source={{ uri: item.foto_url }} style={{ width: tamanho, height: tamanho, borderRadius: tamanho / 2 }} />
-      : <AnimalImagem animal={nivel.animal} size={tamanho} />;
+      : <AnimalImagem animal={nivel.animal} size={tamanho} rosto />;
   };
 
   // ── Pódio (1º, 2º e 3º) ───────────────────────────────────────────────
   const renderPodio = () => {
-    const [p1, p2, p3] = [ranking[0], ranking[1], ranking[2]];
+    const [p1, p2, p3] = [top3[0], top3[1], top3[2]];
     if (!p1) return null;
     // ordem visual: 2º | 1º | 3º
     const colunas = [
@@ -239,6 +251,7 @@ export default function Leaderboard({ navigation, route }: any) {
 
   const cabecalho = (
     <View>
+      {renderPodio()}
       {renderJornada()}
 
       <View style={styles.abasRow}>
@@ -252,15 +265,11 @@ export default function Leaderboard({ navigation, route }: any) {
               accessibilityRole="tab"
               accessibilityState={{ selected: ativa }}
             >
-              <Text style={[styles.abaTxt, ativa && styles.abaTxtAtiva, { fontSize: fs(13) }]}>
-                {a.label}
-              </Text>
+              <Text style={[styles.abaTxt, ativa && styles.abaTxtAtiva, { fontSize: fs(13) }]}>{a.label}</Text>
             </TouchableOpacity>
           );
         })}
       </View>
-
-      {!loading && renderPodio()}
     </View>
   );
 
@@ -279,7 +288,7 @@ export default function Leaderboard({ navigation, route }: any) {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
 
-      <View style={[styles.header, { paddingTop: insets.top || 12 }]}>
+      <View style={[styles.header, { paddingTop: (insets.top || 12) + 16 }]}>
         <TouchableOpacity onPress={() => voltar(navigation)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} accessibilityLabel="Voltar">
           <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
@@ -288,7 +297,7 @@ export default function Leaderboard({ navigation, route }: any) {
       </View>
 
       <FlatList
-        data={loading ? [] : ranking.slice(3)}
+        data={loading ? [] : (abaAtiva === 'geral' ? ranking.slice(3) : ranking)}
         keyExtractor={item => item.uid}
         renderItem={renderItem}
         ListHeaderComponent={cabecalho}
@@ -317,7 +326,7 @@ const styles = StyleSheet.create({
 
   // ── Sua jornada ──
   jornadaCard: {
-    marginTop: 12, backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 24, padding: 16,
+    marginTop: 0, backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 24, padding: 16,
     borderWidth: 1, borderColor: CORES_SYMBIUS.borda2,
   },
   jornadaTopo: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 14 },
@@ -346,7 +355,7 @@ const styles = StyleSheet.create({
   // ── Abas ──
   abasRow: { flexDirection: 'row', gap: 8, paddingTop: 18, paddingBottom: 14 },
   abaPill: {
-    minHeight: 40, paddingHorizontal: 18, borderRadius: 20, justifyContent: 'center',
+    flex: 1, alignItems: 'center', minHeight: 40, paddingHorizontal: 8, borderRadius: 20, justifyContent: 'center',
     backgroundColor: CORES_SYMBIUS.fundoCard, borderWidth: 1, borderColor: CORES_SYMBIUS.borda2,
   },
   abaPillAtiva: { backgroundColor: CORES_SYMBIUS.heroiFundo, borderColor: CORES_SYMBIUS.heroiFundo },

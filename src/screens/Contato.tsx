@@ -172,7 +172,7 @@ export default function Contato({ navigation, route }: any) {
       <View style={[
         styles.header,
         {
-          paddingTop: insets.top + (Platform.OS === 'android' ? 8 : 0),
+          paddingTop: insets.top + 16 + (Platform.OS === 'android' ? 8 : 0),
           backgroundColor: C.branco,
           borderBottomColor: C.cinzaClaro,
         },

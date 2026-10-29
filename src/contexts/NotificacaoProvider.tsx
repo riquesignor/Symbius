@@ -345,7 +345,7 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
           if (s.exists()) { nome = s.data().nome_completo || nome; foto = s.data().foto || null; }
         } catch {}
         mostrarBannerRef.current({
-          titulo: 'Nova solicitação de match',
+          titulo: 'Nova solicitação de elo',
           corpo: `${nome} quer estudar com você!`,
           foto, icone: 'heart',
           rota: 'Match', params: { uid: uidAtual, aba: 'solicitacoes' },

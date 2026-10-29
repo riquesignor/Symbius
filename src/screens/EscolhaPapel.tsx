@@ -78,7 +78,7 @@ export default function EscolhaPapel({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
-  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
+  header: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 4 },
   marcaWrap: { alignItems: 'center', paddingVertical: 12 },
   marca: { fontSize: 26, fontFamily: F.bold, color: CORES_SYMBIUS.verdeEscuro },
   tituloWrap: { paddingHorizontal: 28 },

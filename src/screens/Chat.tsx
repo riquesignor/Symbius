@@ -1078,7 +1078,7 @@ export default function Chat({ route, navigation }: any) {
       setEscolhaConversa(true);
     } catch (e: any) {
       console.log("❌ Erro ao finalizar match:", e.message);
-      Alert.alert("Erro", "Não foi possível finalizar o match. Tente novamente.");
+      Alert.alert("Erro", "Não foi possível finalizar o elo. Tente novamente.");
     } finally {
       setEnviandoAvaliacao(false);
     }
@@ -1142,7 +1142,7 @@ export default function Chat({ route, navigation }: any) {
     <KeyboardAvoidingView style={[styles.container, { backgroundColor: CC.fundo }]} behavior={Platform.OS==="ios"?"padding":"height"}>
 
       {/* ── HEADER ── */}
-      <View style={[styles.header, { paddingTop: insets.top + 10, backgroundColor: CC.headerBg, borderBottomColor: CC.headerBorder }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 24, backgroundColor: CC.headerBg, borderBottomColor: CC.headerBorder }]}>
         <TouchableOpacity onPress={() => voltar(navigation)} style={[styles.backBtn, { backgroundColor: CC.backBtn }]}>
           <Ionicons name="arrow-back" size={22} color={CC.backIcon} />
         </TouchableOpacity>
@@ -1700,7 +1700,7 @@ export default function Chat({ route, navigation }: any) {
                     >
                       {enviandoAvaliacao
                         ? <ActivityIndicator color="#fff" />
-                        : <Text style={avaliacaoStyles.btnConfirmarTxt}>Finalizar match</Text>}
+                        : <Text style={avaliacaoStyles.btnConfirmarTxt}>Finalizar elo</Text>}
                     </TouchableOpacity>
 
                     <TouchableOpacity onPress={() => setAvaliacaoEtapa('pergunta')} disabled={enviandoAvaliacao}>
@@ -1726,7 +1726,7 @@ export default function Chat({ route, navigation }: any) {
             <Ionicons name={xpToast.neutro ? "mail-outline" : "leaf"} size={28} color={CORES_SYMBIUS.verdeEscuro} />
             <View>
               <Text style={[avaliacaoStyles.toastTitulo, { color: modoEscuro ? CORES_SYMBIUS.texto : CORES_SYMBIUS.texto, fontFamily: F.bold }]}>
-                {xpToast.neutro ? "Feedback enviado!" : "Match finalizado!"}
+                {xpToast.neutro ? "Feedback enviado!" : "Elo finalizado!"}
               </Text>
               <Text style={[avaliacaoStyles.toastSubtitulo, { color: "#8D99AE", fontFamily: F.medium }]}>
                 {xpToast.neutro ? "Tenta com outro professor sem problema" : `+${xpToast.xp} XP · +${xpToast.moedas} Sementes`}

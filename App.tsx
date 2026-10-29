@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { doc, getDoc } from 'firebase/firestore';
@@ -129,7 +129,7 @@ export default function App() {
         <NavigationContainer ref={navegacaoRef}>
           <Stack.Navigator
             initialRouteName={initialRoute}
-            screenOptions={{ headerShown: false, cardStyle: { backgroundColor: CORES_SYMBIUS.fundo } }}
+            screenOptions={{ headerShown: false, cardStyle: { backgroundColor: CORES_SYMBIUS.fundo, ...(Platform.OS === 'web' ? ({ height: '100vh' } as any) : {}) } }}
           >
             <Stack.Screen name="Boasvindas"     component={BoasvindasA} />
             <Stack.Screen name="EscolhaPapel"   component={EscolhaPapelA} />

@@ -187,7 +187,7 @@ export default function Cadastro({ navigation, route }: any) {
           </View>
         )}
 
-        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <View style={[styles.header, { paddingTop: insets.top + 22 }]}>
           <TouchableOpacity onPress={() => voltar(navigation)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
           </TouchableOpacity>

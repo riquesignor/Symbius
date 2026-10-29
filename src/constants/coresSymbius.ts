@@ -36,11 +36,13 @@ const CLARO = {
   splashTextoSec: '#B9C9B4',
 
   // cards de destaque verde-mata (ranking, etc.)
-  heroiFundo:    '#16301F',
-  heroiElevado:  '#24472E',
+  heroiFundo:    '#2F6F44',
+  heroiElevado:  '#3F8556',
   heroiTexto:    '#F0EAD8',
-  heroiTextoSec: '#8FD4A0',
+  heroiTextoSec: '#D4EBD9',
+  tinta:         '#14301D', // texto escuro sobre o amarelo
   folha:         '#52A86A',
+  semente:       '#C8A84B', // amarelo: moeda, recompensas e destaques
 
   barStyle: 'dark-content' as 'dark-content' | 'light-content',
 };
@@ -79,11 +81,13 @@ const ESCURO: typeof CLARO = {
   splashTexto:    '#F4F1E8',
   splashTextoSec: '#B9C9B4',
 
-  heroiFundo:    '#1A3A22',
-  heroiElevado:  '#264D31',
+  heroiFundo:    '#245A34',
+  heroiElevado:  '#31703F',
   heroiTexto:    '#F0EAD8',
-  heroiTextoSec: '#8FD4A0',
+  heroiTextoSec: '#D4EBD9',
+  tinta:         '#14301D',
   folha:         '#52A86A',
+  semente:       '#C8A84B',
 
   barStyle: 'light-content',
 };

@@ -10,11 +10,20 @@ export { CORES_SYMBIUS, CORES_SYMBIUS_DARK } from '../constants/coresSymbius';
 
 export default function Boasvindas({ navigation }: any) {
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      <Image source={require('../../assets/fundo.jpg')} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityElementsHidden importantForAccessibility="no" />
+      {/* Foto em 9:16 preenchendo a tela inteira (corta as bordas em vez de esticar) */}
+      <Image
+        source={require('../../assets/fundo.jpg')}
+        style={[StyleSheet.absoluteFill, { width: '100%', height: '100%' }]}
+        resizeMode="cover"
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+      />
+      <View style={styles.escurecer} pointerEvents="none" />
 
+      <SafeAreaView style={{ flex: 1 }}>
       <View style={styles.conteudo}>
         <View style={{ flex: 1 }} />
         <View style={styles.centro}>
@@ -43,12 +52,14 @@ export default function Boasvindas({ navigation }: any) {
           <Text style={styles.btnLoginText}>Criar conta</Text>
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: CORES_SYMBIUS.splashBg },
+  container: { flex: 1, backgroundColor: CORES_SYMBIUS.splashBg, overflow: 'hidden' },
+  escurecer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(6,22,12,0.38)' },
   conteudo: {
     flex: 1, paddingHorizontal: 28, paddingBottom: 34, paddingTop: 60,
   },

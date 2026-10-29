@@ -114,7 +114,7 @@ export default function Loja({ navigation, route }: any) {
       <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top || 12 }]}>
+      <View style={[styles.header, { paddingTop: (insets.top || 12) + 16 }]}>
         <TouchableOpacity onPress={() => voltar(navigation)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
