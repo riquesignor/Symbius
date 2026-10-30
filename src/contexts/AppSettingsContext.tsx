@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../config/firebaseConfig';
 import { CORES as CORES_LIGHT, CORES_DARK, Tema } from '../constants/theme';
 import { reiniciarApp } from '../utils/reiniciarApp';
 import { executarTransicaoTema } from '../components/TransicaoTema';
+import { aplicarDecaimentoInatividade } from '../services/gamificationService';
 
 
 type Cores = Tema;
@@ -126,6 +127,14 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const uid = await AsyncStorage.getItem('uid');
       if (uid) {
         await recarregarDoFirebase(uid);
+        aplicarDecaimentoInatividade(uid).then((resultado) => {
+          if (resultado.aplicado) {
+            Alert.alert(
+              'Você ficou um tempo fora 😔',
+              `Ficou ${resultado.diasInativo} dias sem acessar o Symbius e perdeu ${resultado.xpPerdido} XP por inatividade. Volte a praticar pra recuperar o ritmo!`
+            );
+          }
+        }).catch(() => {});
         sincronizarPrefsNotif(uid, {
           geral:     map.cfg_notifGeral     !== '0',
           avisos:    map.cfg_notifAvisos    !== '0',
