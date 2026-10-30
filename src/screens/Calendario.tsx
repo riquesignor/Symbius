@@ -4,7 +4,7 @@ import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
   StatusBar, Modal, TextInput,
   ActivityIndicator, Platform, FlatList,
-  useWindowDimensions, Animated, Vibration
+  useWindowDimensions, Animated, Vibration, PanResponder
 } from 'react-native';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { db } from '../config/firebaseConfig';
@@ -190,6 +190,42 @@ useEffect(() => {
   const hoje = new Date();
   const [mes, setMes] = useState(hoje.getMonth());
   const [ano, setAno] = useState(hoje.getFullYear());
+
+  // ── Trocar de mês: setas e arrastar horizontal usam a mesma função ──
+  const mesAnoRef = useRef({ mes, ano });
+  mesAnoRef.current = { mes, ano };
+  const mudarMes = (delta: number) => {
+    const total = mesAnoRef.current.ano * 12 + mesAnoRef.current.mes + delta;
+    setAno(Math.floor(total / 12));
+    setMes(((total % 12) + 12) % 12);
+  };
+
+  // O gesto só é assumido quando o movimento é claramente horizontal, então
+  // a rolagem vertical da tela continua com o ScrollView.
+  const arrasteX = useRef(new Animated.Value(0)).current;
+  const LIMIAR_TROCA = 60;
+  const panMes = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 16 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderMove: (_, g) => arrasteX.setValue(g.dx * 0.6),
+    onPanResponderRelease: (_, g) => {
+      const trocar = Math.abs(g.dx) > LIMIAR_TROCA || Math.abs(g.vx) > 0.5;
+      if (!trocar) {
+        Animated.spring(arrasteX, { toValue: 0, useNativeDriver: false }).start();
+        return;
+      }
+      const direcao = g.dx < 0 ? 1 : -1; // arrastar pra esquerda = próximo mês
+      Animated.timing(arrasteX, { toValue: -direcao * 120, duration: 120, useNativeDriver: false }).start(() => {
+        mudarMesRef.current(direcao);
+        arrasteX.setValue(direcao * 120);
+        Animated.timing(arrasteX, { toValue: 0, duration: 160, useNativeDriver: false }).start();
+      });
+    },
+    onPanResponderTerminate: () => Animated.spring(arrasteX, { toValue: 0, useNativeDriver: false }).start(),
+  })).current;
+  const mudarMesRef = useRef(mudarMes);
+  mudarMesRef.current = mudarMes;
+  const opacidadeArraste = arrasteX.interpolate({ inputRange: [-120, 0, 120], outputRange: [0.3, 1, 0.3], extrapolate: 'clamp' });
 
   // ── Dados ──
   const [lembretes,    setLembretes]    = useState<Map<string, any[]>>(new Map());
@@ -736,7 +772,8 @@ useEffect(() => {
         <View style={styles.navMes}>
           <TouchableOpacity
             style={styles.btnNavMes}
-            onPress={() => { if (mes === 0) { setMes(11); setAno(a => a - 1); } else setMes(m => m - 1); }}
+            onPress={() => mudarMes(-1)}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             accessibilityLabel="Mês anterior"
           >
             <Ionicons name="chevron-back" size={20} color={CORES_SYMBIUS.texto} />
@@ -749,7 +786,8 @@ useEffect(() => {
 
           <TouchableOpacity
             style={styles.btnNavMes}
-            onPress={() => { if (mes === 11) { setMes(0); setAno(a => a + 1); } else setMes(m => m + 1); }}
+            onPress={() => mudarMes(1)}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             accessibilityLabel="Próximo mês"
           >
             <Ionicons name="chevron-forward" size={20} color={CORES_SYMBIUS.texto} />
@@ -770,7 +808,11 @@ useEffect(() => {
 
         {/* CALENDÁRIO */}
         <FadeInView delay={80}>
-        <View style={[styles.cardCal, { width: CEL_SIZE * 7 + 26 }]}>
+        <Animated.View
+          {...panMes.panHandlers}
+          style={[styles.cardCal, { width: CEL_SIZE * 7 + 26, opacity: opacidadeArraste, transform: [{ translateX: arrasteX }] }]}
+          accessibilityHint="Arraste para os lados para trocar de mês"
+        >
           <View style={styles.semanaRow}>
             {DIAS_SEMANA.map(d => (
               <Text key={d} style={[styles.semanaLabel, { width: CEL_SIZE, fontSize: fs(12) }]}>{d}</Text>
@@ -779,7 +821,7 @@ useEffect(() => {
           <View style={styles.grade}>
             {celulas.map((dia, idx) => renderCelula(dia, idx))}
           </View>
-        </View>
+        </Animated.View>
         </FadeInView>
 
         {/* EVENTOS DO MÊS */}
