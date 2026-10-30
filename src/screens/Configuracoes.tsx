@@ -53,7 +53,6 @@ import { voltar } from '../navegacao';
 
   const TAMANHOS_FONTE = ['Pequeno', 'Normal', 'Grande'];
   const SONS_NOTIF     = ['Nenhum', 'Leve', 'Normal', 'Forte'];
-  const VISIBILIDADES  = ['Público', 'Apenas Contatos', 'Privado'];
   const SERIES         = ['1º Ano', '2º Ano', '3º Ano', 'Não definir'];
 
   // ── Animação ──
@@ -161,8 +160,6 @@ import { voltar } from '../navegacao';
     notifDiario,    setNotifDiario,
     somNotif,      setSomNotif,
     vibracao,      setVibracao,
-    visibilidade,  setVisibilidade,
-    statusOnline,  setStatusOnline,
     serieFiltro,   setSerieFiltro,
   } = useAppSettings();
 
@@ -178,7 +175,6 @@ import { voltar } from '../navegacao';
     // ════ STATES — MODAIS ════
     const [modalFonte,        setModalFonte]        = useState(false);
     const [modalSom,          setModalSom]          = useState(false);
-    const [modalVisibilidade, setModalVisibilidade] = useState(false);
     const [modalSerie,        setModalSerie]        = useState(false);
     const [modalSenha,        setModalSenha]        = useState(false);
 
@@ -346,26 +342,6 @@ import { voltar } from '../navegacao';
       if (v) Vibration.vibrate(50);
     };
 
-    // Aparecer no Descobrir do Match (campo visivel_match; ausente conta como ligado)
-    const [visivelMatch, setVisivelMatch] = useState(true);
-    useEffect(() => {
-      if (!uid) return;
-      getDoc(doc(db, 'usuarios', uid)).then(snap => {
-        if (snap.exists()) setVisivelMatch(snap.data()?.visivel_match !== false);
-      }).catch(() => {});
-    }, [uid]);
-    const toggleVisivelMatch = (v: boolean) => {
-      setVisivelMatch(v);
-      salvarFirestore('visivel_match', v);
-      setToast(v ? 'Seu perfil aparece nos Elos' : 'Seu perfil está oculto nos Elos');
-    };
-
-    const toggleStatusOnline = (v: boolean) => {
-      setStatusOnline(v);
-      salvarFirestore('statusOnline', v);
-      setToast(v ? 'Status online visível' : 'Status online oculto');
-    };
-
     // ════ HANDLERS — SELETORES ════
     const selecionarFonte = (v: string) => {
       setTamanhoFonte(v);
@@ -379,13 +355,6 @@ import { voltar } from '../navegacao';
       salvarLocal('cfg_somNotif', v);
       setModalSom(false);
       setToast(`Som: ${v}`);
-    };
-
-    const selecionarVisibilidade = (v: string) => {
-      setVisibilidade(v);
-      salvarFirestore('visibilidade', v);
-      setModalVisibilidade(false);
-      setToast(`Perfil: ${v}`);
     };
 
     const selecionarSerie = (v: string) => {
@@ -626,25 +595,9 @@ import { voltar } from '../navegacao';
               <SettingRow
                 icon="eye"
                 iconCor={CORES.verde}
-                label="Visibilidade do Perfil"
-                valor={visibilidade}
-                onPress={() => setModalVisibilidade(true)}
-              />
-              <SettingRow
-                icon="radio-button-on"
-                iconCor={CORES.verde}
-                label="Status Online"
-                descricao="Mostrar quando você está ativo"
-                toggle={statusOnline}
-                onToggle={toggleStatusOnline}
-              />
-              <SettingRow
-                icon="infinite"
-                iconCor={CORES.verde}
-                label="Aparecer nos Elos"
-                descricao="Outras pessoas podem te encontrar no Descobrir e mandar solicitação"
-                toggle={visivelMatch}
-                onToggle={toggleVisivelMatch}
+                label="Privacidade do perfil"
+                descricao="Visibilidade, status online e aparecer nos Elos ficam no seu Perfil"
+                onPress={() => navigation.navigate('Perfil', { uid })}
               />
               <SettingRow
                 icon="school"
@@ -780,26 +733,6 @@ import { voltar } from '../navegacao';
                 >
                   <Text style={[styles.seletorItemText, { color: C.azulEscuro }]}>{s}</Text>
                   {somNotif === s && <Ionicons name="checkmark" size={18} color={C.azulEscuro} />}
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        </Modal>
-
-        {/* ── MODAL VISIBILIDADE ── */}
-        <Modal visible={modalVisibilidade} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 24, backgroundColor: C.branco }]}>
-              <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
-              <Text style={[styles.modalTitulo, { color: C.azulEscuro }]}>Visibilidade do Perfil</Text>
-              {VISIBILIDADES.map(v => (
-                <TouchableOpacity
-                  key={v}
-                  style={[styles.seletorItem, { borderBottomColor: C.cinzaClaro }]}
-                  onPress={() => selecionarVisibilidade(v)}
-                >
-                  <Text style={[styles.seletorItemText, { color: C.azulEscuro }]}>{v}</Text>
-                  {visibilidade === v && <Ionicons name="checkmark" size={18} color={C.azulEscuro} />}
                 </TouchableOpacity>
               ))}
             </View>

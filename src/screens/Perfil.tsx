@@ -20,6 +20,7 @@ import { calcularNivel, calcularFaseCoruja, calcularProgressoXp, Animal } from '
 import { F } from '../constants/theme';
 import { TEMA_SYMBIUS as CORES, CORES_SYMBIUS, NIVEL_GRADIENTE, NIVEL_NUMERO } from '../constants/temaSymbius';
 import SymbiusTabBar from '../components/SymbiusTabBar';
+import PainelPrivacidade from '../components/PainelPrivacidade';
 import { escolherImagemBase64, OrigemImagem } from '../utils/midiaNativa';
 import { sairDaConta } from '../services/authService';
 
@@ -212,9 +213,8 @@ const heroStyles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 20, paddingBottom: 8, minHeight: 44,
   },
-  // Absoluto nas duas laterais: centraliza em relação à tela, independente
-  // dos botões que ficam só do lado direito.
-  topHeaderTituloCentro: { position: 'absolute', left: 0, right: 0, height: 36, lineHeight: 36, textAlign: 'center' },
+  topHeaderTituloFlex: { flex: 1, textAlign: 'center' },
+  topHeaderLado: { width: 96, flexDirection: 'row', alignItems: 'center', gap: 8 },
   topHeaderTitulo: { fontFamily: F.bold, color: CORES_SYMBIUS.texto },
 
   banner: { width: '100%', overflow: 'hidden', borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
@@ -458,6 +458,18 @@ export default function Perfil({ navigation, route }: any) {
     } catch { setToast('Erro ao salvar'); }
   };
 
+  const alterarVisivelMatch = async (valor: boolean) => {
+    if (!uid) return;
+    setUsuario((prev: any) => prev ? { ...prev, visivel_match: valor } : prev);
+    try {
+      await updateDoc(doc(db, 'usuarios', uid), { visivel_match: valor });
+      setToast(valor ? 'Você aparece nos Elos' : 'Você está oculto nos Elos');
+    } catch {
+      setUsuario((prev: any) => prev ? { ...prev, visivel_match: !valor } : prev);
+      setToast('Erro ao salvar');
+    }
+  };
+
   const escolherPapel = async (papel: 'aprender' | 'ensinar') => {
     if (!uid || papel === papelAtivo) { setPapelAtivo(papel); return; }
     setPapelAtivo(papel);
@@ -531,22 +543,28 @@ export default function Perfil({ navigation, route }: any) {
           </View>
 
           <View style={[heroStyles.topHeader, heroStyles.topHeaderSobreBanner, { paddingTop: insets.top + 24 }]}>
-            <TouchableOpacity
-              onPress={() => (navigation.canGoBack() ? voltar(navigation) : navigation.navigate('Index', { uid }))}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={{ width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-start' }}
-              accessibilityRole="button"
-              accessibilityLabel="Voltar"
-            >
-              <Ionicons name="arrow-back" size={22} color={gAnimal.labelTopo} />
-            </TouchableOpacity>
+            {/* Lados com a mesma largura pra centralizar o título sem
+                sobrepor nada: antes ele era um Text absoluto por cima do
+                botão de voltar e roubava os toques no Android/iOS. */}
+            <View style={heroStyles.topHeaderLado}>
+              <TouchableOpacity
+                onPress={() => (navigation.canGoBack() ? voltar(navigation) : navigation.navigate('Index', { uid }))}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={heroStyles.btnBanner}
+                accessibilityRole="button"
+                accessibilityLabel="Voltar"
+              >
+                <Ionicons name="arrow-back" size={22} color={gAnimal.labelTopo} />
+              </TouchableOpacity>
+            </View>
             <Text
-              style={[heroStyles.topHeaderTitulo, heroStyles.topHeaderTituloCentro, { top: insets.top + 24, fontSize: fs(15), color: gAnimal.labelTopo }]}
-              pointerEvents="none"
+              style={[heroStyles.topHeaderTitulo, heroStyles.topHeaderTituloFlex, { fontSize: fs(15), color: gAnimal.labelTopo }]}
+              numberOfLines={1}
+              accessibilityRole="header"
             >
               Perfil
             </Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginLeft: 'auto' }}>
+            <View style={[heroStyles.topHeaderLado, { justifyContent: 'flex-end' }]}>
               <TouchableOpacity style={heroStyles.btnBanner} onPress={() => navigation.navigate('Loja', { uid })} accessibilityLabel="Loja">
                 <Ionicons name="bag-outline" size={19} color={gAnimal.labelTopo} />
               </TouchableOpacity>
@@ -826,6 +844,18 @@ export default function Perfil({ navigation, route }: any) {
                 </View>
               )}
             </View>
+          </View>
+        </FadeInView>
+
+        {/* PRIVACIDADE (antes ficava só em Configurações) */}
+        <FadeInView delay={600}>
+          <View style={styles.secaoN}>
+            <Text style={[styles.tituloN, { fontSize: fs(18) }]} accessibilityRole="header">Privacidade</Text>
+            <PainelPrivacidade
+              visivelMatch={usuario.visivel_match !== false}
+              onVisivelMatch={alterarVisivelMatch}
+              fs={fs}
+            />
           </View>
         </FadeInView>
 

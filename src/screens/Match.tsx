@@ -645,13 +645,13 @@ export default function Match({ navigation, route }: any) {
             <TouchableOpacity
               style={[styles.cardVisivel, styles.cardVisivelOff]}
               activeOpacity={0.85}
-              onPress={() => navigation.navigate('Configuracoes', { uid: meuUid })}
+              onPress={() => navigation.navigate('Perfil', { uid: meuUid })}
               accessibilityRole="button"
             >
               <Ionicons name="eye-off" size={20} color={CORES_SYMBIUS.laranjaTexto} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardVisivelTitulo}>Seu perfil está oculto</Text>
-                <Text style={styles.cardVisivelSub}>Ninguém te encontra aqui. Mude em Configurações.</Text>
+                <Text style={styles.cardVisivelSub}>Ninguém te encontra aqui. Mude no seu Perfil, em Privacidade.</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={CORES_SYMBIUS.textoSec} />
             </TouchableOpacity>
