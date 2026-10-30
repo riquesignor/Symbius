@@ -21,6 +21,7 @@ import { F } from '../constants/theme';
 import { TEMA_SYMBIUS as CORES, CORES_SYMBIUS, NIVEL_GRADIENTE, NIVEL_NUMERO } from '../constants/temaSymbius';
 import SymbiusTabBar from '../components/SymbiusTabBar';
 import PainelPrivacidade from '../components/PainelPrivacidade';
+import AvatarComCosmeticos from '../components/AvatarComCosmeticos';
 import { escolherImagemBase64, OrigemImagem } from '../utils/midiaNativa';
 import { sairDaConta } from '../services/authService';
 
@@ -242,7 +243,8 @@ const heroStyles = StyleSheet.create({
   statSep: { width: 1, height: 44, backgroundColor: CORES_SYMBIUS.borda2 },
   btnEditarBio: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: CORES_SYMBIUS.borda2, backgroundColor: CORES_SYMBIUS.fundoCard },
   heroWrap: { alignItems: 'center', paddingHorizontal: 24, paddingTop: 8, paddingBottom: 4 },
-  avatarWrap: { position: 'relative' },
+  // Folga embaixo: colar/laço saem dos limites da foto.
+  avatarWrap: { position: 'relative', marginBottom: 14 },
   avatar: { width: 96, height: 96, borderRadius: 48, borderWidth: 4, borderColor: CORES_SYMBIUS.fundo },
   avatarPlaceholder: {
     backgroundColor: CORES_SYMBIUS.fundoSuave, justifyContent: 'center', alignItems: 'center',
@@ -579,15 +581,13 @@ export default function Perfil({ navigation, route }: any) {
           {/* FOTO + NOME (a foto sobe sobre o banner) */}
           <View style={heroStyles.avatarRow}>
             <TouchableOpacity style={heroStyles.avatarWrap} onPress={() => setModalFoto(true)} activeOpacity={0.85} accessibilityLabel="Alterar foto de perfil">
-              {fotoUri(usuario.foto) ? (
-                <Image source={{ uri: fotoUri(usuario.foto)! }} style={heroStyles.avatar} />
-              ) : (
-                <View style={[heroStyles.avatar, heroStyles.avatarPlaceholder]}>
-                  <Text style={{ fontSize: fs(32), fontFamily: F.black, color: CORES_SYMBIUS.verdeEscuro }}>
-                    {iniciais(usuario.nome_completo)}
-                  </Text>
-                </View>
-              )}
+              <AvatarComCosmeticos
+                foto={usuario.foto}
+                nome={usuario.nome_completo}
+                tamanho={96}
+                cosmeticosEquipados={usuario.cosmeticos_equipados}
+                borda={{ cor: CORES_SYMBIUS.fundo, largura: 4 }}
+              />
               {salvandoFoto && (
                 <View style={[heroStyles.avatar, heroStyles.avatarCarregando]}>
                   <ActivityIndicator color="#FFF" />

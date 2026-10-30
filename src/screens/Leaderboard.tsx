@@ -1,6 +1,7 @@
 import { voltar } from '../navegacao';
 import React, { useState, useEffect, useCallback } from 'react';
 import SymbiusTabBar from '../components/SymbiusTabBar';
+import AvatarComCosmeticos from '../components/AvatarComCosmeticos';
 import {
   StyleSheet, Text, View, FlatList, TouchableOpacity,
   SafeAreaView, StatusBar, Image, ActivityIndicator, RefreshControl,
@@ -121,9 +122,15 @@ export default function Leaderboard({ navigation, route }: any) {
   // ── Avatar: foto real, ou o rosto do animal do nível ─────────────────
   const renderAvatar = (item: any, tamanho: number) => {
     const nivel = calcularNivel(item.xp_total || 0);
-    return item.foto_url
-      ? <Image source={{ uri: item.foto_url }} style={{ width: tamanho, height: tamanho, borderRadius: tamanho / 2 }} />
-      : <AnimalImagem animal={nivel.animal} size={tamanho} rosto />;
+    return (
+      <AvatarComCosmeticos
+        foto={item.foto || item.foto_url || null}
+        nome={item.nome_completo}
+        tamanho={tamanho}
+        cosmeticosEquipados={item.cosmeticos_equipados}
+        semFoto={<AnimalImagem animal={nivel.animal} size={tamanho} rosto />}
+      />
+    );
   };
 
   // ── Pódio (1º, 2º e 3º) ───────────────────────────────────────────────

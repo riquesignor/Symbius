@@ -28,6 +28,7 @@ import { CORES_SYMBIUS } from '../constants/temaSymbius';
 import { awardXpFinalizarMatch, AwardResult, LevelUpInfo } from '../services/gamificationService';
 import { alunoDoElo } from '../utils/elos';
 import ModalDenuncia from '../components/ModalDenuncia';
+import AvatarComCosmeticos from '../components/AvatarComCosmeticos';
 import NivelUpSymbiusModal from '../components/NivelUpSymbiusModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -553,6 +554,7 @@ export default function Chat({ route, navigation }: any) {
   const [editandoId,       setEditandoId]        = useState<string | null>(null);
   const [citando,          setCitando]           = useState<any | null>(null);
   const [outraFoto,        setOutraFoto]         = useState<string | null>(null);
+  const [outroCosmeticos,  setOutroCosmeticos]   = useState<any>(null);
   const [onlineStatus,     setOnlineStatus]      = useState(false);
   const [outroDigitando,   setOutroDigitando]    = useState(false);
   const [perfilVisible,    setPerfilVisible]     = useState(false);
@@ -743,6 +745,7 @@ export default function Chat({ route, navigation }: any) {
     if (!outroUid) return;
     getDoc(firestoreDoc(db, "usuarios", outroUid)).then(snap => { if (snap.exists()) setOutraFoto(snap.data().foto || null); });
     const unsub = onSnapshot(firestoreDoc(db, "usuarios", outroUid), (snap) => {
+      if (snap.exists()) setOutroCosmeticos(snap.data().cosmeticos_equipados || null);
       if (snap.exists()) { setOnlineStatus(snap.data().online === true && (snap.data().online_ping ? Date.now() - msDe(snap.data().online_ping, Date.now()) < 150000 : true)); setOutroDigitando(!!snap.data().digitandoEm); }
     });
     return () => unsub();
@@ -1159,7 +1162,7 @@ export default function Chat({ route, navigation }: any) {
         </TouchableOpacity>
         <TouchableOpacity style={styles.headerCenter} onPress={() => setPerfilVisible(true)} activeOpacity={0.7}>
           <View style={styles.headerAvatarWrap}>
-            <Image source={{ uri: outraFotoUri }} style={styles.headerAvatar} />
+            <AvatarComCosmeticos foto={outraFotoUri} nome={outroNome} tamanho={42} cosmeticosEquipados={outroCosmeticos} />
             <View style={[styles.headerOnlineDot, { backgroundColor: onlineStatus ? "#22C55E" : "#94A3B8" }]} />
           </View>
           <View>

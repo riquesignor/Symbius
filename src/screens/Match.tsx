@@ -20,6 +20,7 @@ import { dispararPush } from '../services/pushNotificationsService';
 import { Grupo, criarGrupo, MAX_MEMBROS_GRUPO } from '../services/gruposService';
 import { enviarConviteGrupo } from '../services/convitesService';
 import SeletorPessoas, { Pessoa } from '../components/SeletorPessoas';
+import AvatarComCosmeticos from '../components/AvatarComCosmeticos';
 import { conversaNaoLida, ocultaParaMim, apagarConversaParaMim, msDe } from '../utils/conversas';
 import { alunoDoElo } from '../utils/elos';
 
@@ -601,7 +602,7 @@ export default function Match({ navigation, route }: any) {
     return (
       <View style={styles.feedCard}>
         <TouchableOpacity style={styles.feedTopo} onPress={() => abrirPerfil(item.id)} activeOpacity={0.8}>
-          <Image source={{ uri: getImageUri(item.foto) }} style={styles.feedAvatar} />
+          <AvatarComCosmeticos foto={getImageUri(item.foto)} nome={item.nome_completo} tamanho={56} cosmeticosEquipados={item.cosmeticos_equipados} style={styles.avatarComFolga} />
           <View style={{ flex: 1 }}>
             <Text style={styles.feedNome} numberOfLines={1}>{item.nome_completo}</Text>
             <Text style={styles.feedTurma} numberOfLines={1}>{item.turma || item.ra || ''}</Text>
@@ -713,7 +714,7 @@ export default function Match({ navigation, route }: any) {
   const renderSolicitacao = ({ item }: any) => (
     <View style={[styles.solCard, { backgroundColor: C.branco }]}>
       <TouchableOpacity onPress={() => abrirPerfil(item.deUid)} activeOpacity={0.8}>
-        <Image source={{ uri: getImageUri(item.remetente?.foto) }} style={styles.solAvatar} />
+        <AvatarComCosmeticos foto={getImageUri(item.remetente?.foto)} nome={item.remetente?.nome_completo} tamanho={52} cosmeticosEquipados={item.remetente?.cosmeticos_equipados} />
       </TouchableOpacity>
       <View style={styles.solInfo}>
         <Text style={[styles.solNome, { color: C.azulEscuro, fontFamily: F.bold }]}>{item.remetente?.nome_completo || 'Usuário'}</Text>
@@ -773,7 +774,7 @@ export default function Match({ navigation, route }: any) {
         activeOpacity={0.75}
       >
         <TouchableOpacity style={styles.avatarWrap} onPress={() => abrirPerfil(outroUid)} activeOpacity={0.8}>
-          <Image source={{ uri: getImageUri(item.outro?.foto) }} style={styles.solAvatar} />
+          <AvatarComCosmeticos foto={getImageUri(item.outro?.foto)} nome={item.outro?.nome_completo} tamanho={52} cosmeticosEquipados={item.outro?.cosmeticos_equipados} />
           {/* Bolinha verde = online, separada do indicador de não lida */}
           {estaOnline && <View style={styles.bolinhaOnline} />}
         </TouchableOpacity>
@@ -1188,6 +1189,8 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
   },
   feedTopo:      { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  // Chapéu sai pra cima da foto no card do Descobrir.
+  avatarComFolga: { marginTop: 10 },
   feedAvatar:    { width: 56, height: 56, borderRadius: 28, backgroundColor: CORES_SYMBIUS.fundoSuave },
   feedNome:      { fontSize: 16, fontFamily: F.bold, color: CORES_SYMBIUS.texto },
   feedTurma:     { fontSize: 12, fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 1 },

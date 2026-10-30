@@ -1,11 +1,13 @@
 import { db } from '../config/firebaseConfig';
-import { doc, updateDoc, getDoc, increment, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, increment, serverTimestamp, arrayUnion, runTransaction, deleteField } from 'firebase/firestore';
 import {
   GAMIFICATION_CONFIG,
   podeGanharXpMatch,
   verificarResetDiario,
   calcularNivel,
+  atingiuAnimal,
 } from '../utils/gamification';
+import { AncoraCosmetico, getCosmetico } from '../constants/cosmeticos';
 
 
 // ─ Helpers de data ──────────────────────────────────────────────────
@@ -366,64 +368,49 @@ export const aplicarDecaimentoInatividade = async (meuUid: string): Promise<Deca
   }
 };
 
-export const comprarCosmetico = async (
-  meuUid: string,
-  idCosmetico: string,
-  precoCosmetico: number
-): Promise<boolean> => {
+// Compra em transação: saldo e posse são relidos no servidor, então dois
+// toques rápidos não descontam duas vezes nem compram o mesmo item de novo.
+export type ResultadoCompra = 'comprado' | 'ja_possui' | 'sem_saldo' | 'bloqueado' | 'erro';
+
+export const comprarCosmetico = async (meuUid: string, idCosmetico: string): Promise<ResultadoCompra> => {
+  const item = getCosmetico(idCosmetico);
+  if (!meuUid || !item) return 'erro';
   try {
-    if (!meuUid) throw new Error('UID não fornecido');
-
-    const userRef = doc(db, 'usuarios', meuUid);
-    const userSnap = await getDoc(userRef);
-
-    if (!userSnap.exists()) throw new Error('Usuário não encontrado');
-
-    const userData = userSnap.data();
-    const moedas = userData?.moedas_saldo || 0;
-
-    // ─ Validar moedas suficientes ─
-    if (moedas < precoCosmetico) {
-      console.warn(`⚠️ Moedas insuficientes. Tem ${moedas}, precisa ${precoCosmetico}`);
-      return false;
-    }
-
-    // ─ Verificar se já tem ─
-    const itensAdquiridos = userData?.itens_adquiridos || [];
-    if (itensAdquiridos.includes(idCosmetico)) {
-      console.warn('⚠️ Você já possui este cosmético');
-      return false;
-    }
-
-    // ─ Fazer compra ─
-    await updateDoc(userRef, {
-      moedas_saldo: increment(-precoCosmetico),
-      itens_adquiridos: [...itensAdquiridos, idCosmetico],
+    return await runTransaction(db, async tx => {
+      const ref = doc(db, 'usuarios', meuUid);
+      const snap = await tx.get(ref);
+      if (!snap.exists()) return 'erro';
+      const dados: any = snap.data();
+      const itens: string[] = dados?.itens_adquiridos || [];
+      if (itens.includes(item.id)) return 'ja_possui';
+      if (item.prestigio && item.animalMinimo && !atingiuAnimal(dados?.xp_total || 0, item.animalMinimo)) return 'bloqueado';
+      if ((dados?.moedas_saldo || 0) < item.preco) return 'sem_saldo';
+      tx.update(ref, { moedas_saldo: increment(-item.preco), itens_adquiridos: arrayUnion(item.id) });
+      return 'comprado';
     });
-
-    console.log(`✅ Cosmético comprado! -${precoCosmetico} Moedas`);
-    return true;
   } catch (error) {
     console.error('❌ Erro ao comprar cosmético:', error);
-    return false;
+    return 'erro';
   }
 };
 
-
+// Equipa (ou remove, com idCosmetico null) o item na âncora dele. Limpa o
+// slot antigo por categoria se ele apontava pra mesma âncora, pra não
+// "ressuscitar" um item removido.
 export const equiparCosmetico = async (
   meuUid: string,
-  categoria: 'chapeu' | 'acessorio' | 'moldura',
-  idCosmetico: string | null
+  ancora: AncoraCosmetico,
+  idCosmetico: string | null,
+  equipadosAtuais: any,
 ): Promise<boolean> => {
   try {
     if (!meuUid) throw new Error('UID não fornecido');
-
-    const userRef = doc(db, 'usuarios', meuUid);
-    await updateDoc(userRef, {
-      [`cosmeticos_equipados.${categoria}`]: idCosmetico,
-    });
-
-    console.log(idCosmetico ? '✅ Cosmético equipado!' : '✅ Cosmético removido!');
+    const patch: Record<string, any> = { [`cosmeticos_equipados.${ancora}`]: idCosmetico };
+    for (const legado of ['chapeu', 'acessorio']) {
+      const antigo = getCosmetico(equipadosAtuais?.[legado]);
+      if (antigo?.ancora === ancora) patch[`cosmeticos_equipados.${legado}`] = deleteField();
+    }
+    await updateDoc(doc(db, 'usuarios', meuUid), patch);
     return true;
   } catch (error) {
     console.error('❌ Erro ao equipar cosmético:', error);
