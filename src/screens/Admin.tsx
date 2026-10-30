@@ -368,13 +368,15 @@ export default function Admin({ navigation, route }: any) {
         >
           <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
+        {/* Título no fluxo normal (não absoluto): um Text absoluto por cima
+            do header engolia os toques de voltar/atualizar no Android/iOS. */}
         <Text
-          style={[styles.headerTitulo, styles.headerTituloCentro, { top: insets.top + 28, fontSize: fs(17) }]}
-          pointerEvents="none"
+          style={[styles.headerTitulo, styles.headerTituloFlex, { fontSize: fs(17) }]}
+          numberOfLines={1}
+          accessibilityRole="header"
         >
           Dashboard Admin
         </Text>
-        <View style={{ flex: 1 }} />
         <TouchableOpacity onPress={carregar} style={styles.btnRefresh} accessibilityLabel="Atualizar">
           <Ionicons name="refresh" size={20} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
@@ -960,7 +962,7 @@ const styles = StyleSheet.create({
   headerDot:       { width: 6, height: 6, borderRadius: 3, backgroundColor: CORES.amarelo },
   headerEyebrow:   { color: 'rgba(255,255,255,0.7)', fontFamily: F.black, letterSpacing: 1.6 },
   headerTitulo:    { color: CORES_SYMBIUS.texto, fontFamily: F.black, letterSpacing: -0.3 },
-  headerTituloCentro: { position: 'absolute', left: 0, right: 0, height: 44, lineHeight: 44, textAlign: 'center' },
+  headerTituloFlex: { flex: 1, textAlign: 'center' },
   btnRefresh:      { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
 
   // ABAS com indicador animado

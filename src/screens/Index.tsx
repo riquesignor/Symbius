@@ -14,8 +14,8 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { calcularNivel, calcularProgressoXp } from '../utils/gamification';
-import { awardDailyCheckIn, CheckInResult, LevelUpInfo } from '../services/gamificationService';
+import { calcularNivel, calcularProgressoXp, GAMIFICATION_CONFIG } from '../utils/gamification';
+import { awardDailyCheckIn, CheckInResult, LevelUpInfo, diaEscolar } from '../services/gamificationService';
 import { useNotificacao } from '../contexts/NotificacaoProvider';
 import { NIVEL_NUMERO } from '../constants/temaSymbius';
 import { useAppSettings } from '../contexts/AppSettingsContext';
@@ -100,6 +100,10 @@ export default function Index({ navigation, route }: any) {
   const [busca, setBusca] = useState('');
   const [checkIn, setCheckIn] = useState<CheckInResult | null>(null);
   const [processandoCheckIn, setProcessandoCheckIn] = useState(false);
+  // Último dia (horário de Brasília) em que o desafio foi concluído neste
+  // aparelho. Espelha `ultimo_checkin_dia` do Firestore pra esconder o card
+  // na hora e na reabertura, antes do getDoc voltar.
+  const [checkInDiaLocal, setCheckInDiaLocal] = useState<string | null>(null);
   const [levelUpInfo, setLevelUpInfo] = useState<LevelUpInfo | null>(null);
 
   // ── Mural / posts (coleção `posts` do app original) ──
@@ -296,14 +300,13 @@ export default function Index({ navigation, route }: any) {
   const matchesHoje = userData?.matches_bonificados_hoje || 0;
   const buscando = busca.trim().length > 0;
 
-  // ── Desafio do dia só aparece se fizer 24h reais desde o último check-in
-  // (não é reset de meia-noite — usa o timestamp exato salvo pelo backend) ──
-  const checkInDisponivel = useMemo(() => {
-    const ts = userData?.ultimo_checkin_ts;
-    if (!ts) return true;
-    const ultimoMs = typeof ts === 'number' ? ts : (ts?.toMillis ? ts.toMillis() : new Date(ts).getTime());
-    return Date.now() - ultimoMs >= 24 * 60 * 60 * 1000;
-  }, [userData?.ultimo_checkin_ts]);
+  // ── Desafio do dia: uma conclusão por dia (horário de Brasília). Mesma
+  // regra do awardDailyCheckIn — a tela e o serviço leem `ultimo_checkin_dia`,
+  // então o card nunca aparece num dia em que a recompensa já foi dada. ──
+  const hojeEscolar = diaEscolar();
+  const checkInDisponivel = !!userData
+    && userData.ultimo_checkin_dia !== hojeEscolar
+    && checkInDiaLocal !== hojeEscolar;
 
   // Próximo estágio (próxima fase, ou o próximo animal quando está na última fase)
   const proximoEstagio = useMemo(() => {
@@ -393,9 +396,29 @@ export default function Index({ navigation, route }: any) {
     const resultado = await awardDailyCheckIn(uid);
     setCheckIn(resultado);
     setProcessandoCheckIn(false);
+    if (resultado.erro) return; // card continua visível pra tentar de novo
+
+    // Concluído agora ou já concluído hoje em outro aparelho: some na hora.
+    const hoje = diaEscolar();
+    setCheckInDiaLocal(hoje);
+    setUserData((prev: any) => prev ? { ...prev, ultimo_checkin_dia: hoje } : prev);
+    AsyncStorage.setItem(`checkin_dia:${uid}`, hoje).catch(() => {});
+
     if (resultado.levelUp) setLevelUpInfo(resultado.levelUp);
     if (resultado.ganhou) await carregar(); // atualiza XP/nível na tela
   };
+
+  // Recompensa recém-coletada: aviso curto, já que o card some na hora.
+  useEffect(() => {
+    if (!checkIn?.ganhou) return;
+    const t = setTimeout(() => setCheckIn(null), 3500);
+    return () => clearTimeout(t);
+  }, [checkIn]);
+
+  useEffect(() => {
+    if (!uid) return;
+    AsyncStorage.getItem(`checkin_dia:${uid}`).then(setCheckInDiaLocal).catch(() => {});
+  }, [uid]);
 
   // ── Card de destaque (capa real + categoria como badge) ──
   // `opts` permite reusar o mesmo card no grid de "publicações antigas"
@@ -586,9 +609,8 @@ export default function Index({ navigation, route }: any) {
               </View>
             </View>
 
-            {/* DESAFIO DO DIA (check-in real, via gamificationService) — só
-                aparece se já passaram 24h reais desde o último check-in;
-                some sozinho depois de coletado e só volta no dia seguinte. */}
+            {/* DESAFIO DO DIA (check-in real, via gamificationService) — um por
+                dia (horário de Brasília); some assim que é concluído. */}
             {checkInDisponivel && (
               <TouchableOpacity
                 style={styles.cardDesafio}
@@ -596,7 +618,7 @@ export default function Index({ navigation, route }: any) {
                 onPress={fazerCheckIn}
                 disabled={processandoCheckIn}
                 accessibilityRole="button"
-                accessibilityLabel="Desafio do dia. Toque para coletar a recompensa."
+                accessibilityLabel={`Desafio do dia. Toque para coletar ${GAMIFICATION_CONFIG.DAILY_CHECKIN.xp} XP e ${GAMIFICATION_CONFIG.DAILY_CHECKIN.moedas} Sementes.`}
               >
                 <View style={styles.desafioIcone}>
                   <Ionicons name="checkmark" size={20} color={CORES_SYMBIUS.semente} />
@@ -604,21 +626,27 @@ export default function Index({ navigation, route }: any) {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.desafioLabel}>Desafio do dia</Text>
                   <Text style={styles.desafioTitulo}>
-                    {checkIn?.ganhou
-                      ? `Feito! +${checkIn.xp} XP e +${checkIn.moedas} Sementes`
-                      : 'Conecte-se com 1 novo elo'}
+                    {checkIn?.erro ? 'Não deu pra salvar. Toque para tentar de novo.' : 'Conecte-se com 1 novo elo'}
                   </Text>
                 </View>
                 {processandoCheckIn
                   ? <ActivityIndicator color={CORES_SYMBIUS.tinta} />
                   : (
                     <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={styles.desafioXp}>+10 XP</Text>
-                      <Text style={styles.desafioMoedas}>+5 Sementes</Text>
+                      <Text style={styles.desafioXp}>+{GAMIFICATION_CONFIG.DAILY_CHECKIN.xp} XP</Text>
+                      <Text style={styles.desafioMoedas}>+{GAMIFICATION_CONFIG.DAILY_CHECKIN.moedas} Sementes</Text>
                     </View>
                   )
                 }
               </TouchableOpacity>
+            )}
+            {checkIn?.ganhou && (
+              <View style={styles.desafioFeito} accessibilityLiveRegion="polite">
+                <Ionicons name="checkmark-circle" size={18} color={CORES_SYMBIUS.verdeEscuro} />
+                <Text style={styles.desafioFeitoTxt}>
+                  Desafio concluído: +{checkIn.xp} XP e +{checkIn.moedas} Sementes. Volte amanhã!
+                </Text>
+              </View>
             )}
 
             {/* VÍNCULO: quem ensina o quê (o mais recente) */}
@@ -1139,6 +1167,12 @@ const styles = StyleSheet.create({
   heroiDivisor: { width: 1, height: 32, backgroundColor: CORES_SYMBIUS.heroiElevado },
 
   // ── Desafio do dia ──
+  desafioFeito: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12,
+    paddingVertical: 10, paddingHorizontal: 14, borderRadius: 14,
+    backgroundColor: CORES_SYMBIUS.fundoSuave,
+  },
+  desafioFeitoTxt: { flex: 1, color: CORES_SYMBIUS.verdeEscuro, fontSize: 13, fontFamily: F.semibold },
   cardDesafio: {
     flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 68, marginTop: 14,
     backgroundColor: CORES_SYMBIUS.semente, borderRadius: 22, paddingVertical: 14, paddingHorizontal: 16,

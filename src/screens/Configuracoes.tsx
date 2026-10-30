@@ -1,5 +1,5 @@
 import { voltar } from '../navegacao';
-  import React, { useState, useEffect, useRef } from 'react';
+  import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
   import {
     StyleSheet, Text, View, TouchableOpacity, ScrollView,
     SafeAreaView, StatusBar, Switch, Modal, TextInput,
@@ -71,6 +71,78 @@ import { voltar } from '../navegacao';
       ]}>
         {children}
       </Animated.View>
+    );
+  };
+
+  const EscalaFonte = createContext(1);
+
+  // ════ ROW COMPONENT ════
+  // Fora da tela de propósito: definido dentro do render, o React via um
+  // tipo novo a cada re-render e remontava as linhas, cancelando toques.
+  const SettingRow = ({ icon, iconCor, label, descricao, toggle, onToggle, valor, onPress, perigo, ultimo }: any) => {
+    const cores = CORES;
+    const fonteScale = useContext(EscalaFonte);
+    return (
+      <TouchableOpacity
+        style={[
+          styles.row,
+          { borderBottomColor: cores.cinzaClaro, borderBottomWidth: ultimo ? 0 : 0.5 },
+        ]}
+        onPress={onPress}
+        disabled={onToggle != null && onPress == null}
+        activeOpacity={onPress ? 0.6 : 1}
+      >
+        <View style={[styles.rowIcon, { backgroundColor: (iconCor || cores.azulEscuro) + '15' }]}>
+          <Ionicons name={icon} size={16} color={iconCor || cores.azulEscuro} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.rowLabel, { color: perigo ? CORES.vermelho : cores.preto, fontSize: 14 * fonteScale }]}>
+            {label}
+          </Text>
+          {descricao && (
+            <Text style={[styles.rowDesc, { color: cores.textoSec, fontSize: 11 * fonteScale }]}>
+              {descricao}
+            </Text>
+          )}
+        </View>
+        {onToggle != null ? (
+          <Switch
+            value={toggle}
+            onValueChange={onToggle}
+            trackColor={{ false: cores.cinzaClaro, true: cores.azulEscuro }}
+            thumbColor={toggle ? cores.amarelo : '#FFF'}
+            ios_backgroundColor={cores.cinzaClaro}
+          />
+        ) : valor ? (
+          <View style={styles.rowValor}>
+            <Text style={[styles.rowValorText, { color: cores.textoSec, fontSize: 12 * fonteScale }]}>
+              {valor}
+            </Text>
+            <Ionicons name="chevron-forward" size={15} color={cores.textoSec} />
+          </View>
+        ) : (
+          <Ionicons name="chevron-forward" size={15} color={cores.textoSec} />
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  // ════ SECTION COMPONENT ════
+  const Section = ({ eyebrow, titulo, children }: any) => {
+    const cores = CORES;
+    const fonteScale = useContext(EscalaFonte);
+    return (
+      <View style={styles.section}>
+        <Text style={[styles.sectionEyebrow, { color: cores.rosa, fontSize: 9 * fonteScale }]}>
+          {eyebrow}
+        </Text>
+        <Text style={[styles.sectionTitulo, { color: cores.azulEscuro, fontSize: 16 * fonteScale }]}>
+          {titulo}
+        </Text>
+        <View style={[styles.sectionCard, { backgroundColor: cores.branco }]}>
+          {children}
+        </View>
+      </View>
     );
   };
 
@@ -414,72 +486,6 @@ import { voltar } from '../navegacao';
       abrirURL('mailto:contato@anchieta.br?subject=Feedback Simbio&body=Olá, gostaria de enviar um feedback sobre o app...');
     };
 
-    // ════ ROW COMPONENT ════
-    const SettingRow = ({ icon, iconCor, label, descricao, toggle, onToggle, valor, onPress, perigo, ultimo }: any) => {
-      const cores = CORES;
-      return (
-        <TouchableOpacity
-          style={[
-            styles.row,
-            { borderBottomColor: cores.cinzaClaro, borderBottomWidth: ultimo ? 0 : 0.5 },
-          ]}
-          onPress={onPress}
-          disabled={onToggle != null && onPress == null}
-          activeOpacity={onPress ? 0.6 : 1}
-        >
-          <View style={[styles.rowIcon, { backgroundColor: (iconCor || cores.azulEscuro) + '15' }]}>
-            <Ionicons name={icon} size={16} color={iconCor || cores.azulEscuro} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.rowLabel, { color: perigo ? CORES.vermelho : cores.preto, fontSize: 14 * fonteScale }]}>
-              {label}
-            </Text>
-            {descricao && (
-              <Text style={[styles.rowDesc, { color: cores.textoSec, fontSize: 11 * fonteScale }]}>
-                {descricao}
-              </Text>
-            )}
-          </View>
-          {onToggle != null ? (
-            <Switch
-              value={toggle}
-              onValueChange={onToggle}
-              trackColor={{ false: cores.cinzaClaro, true: cores.azulEscuro }}
-              thumbColor={toggle ? cores.amarelo : '#FFF'}
-              ios_backgroundColor={cores.cinzaClaro}
-            />
-          ) : valor ? (
-            <View style={styles.rowValor}>
-              <Text style={[styles.rowValorText, { color: cores.textoSec, fontSize: 12 * fonteScale }]}>
-                {valor}
-              </Text>
-              <Ionicons name="chevron-forward" size={15} color={cores.textoSec} />
-            </View>
-          ) : (
-            <Ionicons name="chevron-forward" size={15} color={cores.textoSec} />
-          )}
-        </TouchableOpacity>
-      );
-    };
-
-    // ════ SECTION COMPONENT ════
-    const Section = ({ eyebrow, titulo, children }: any) => {
-      const cores = CORES;
-      return (
-        <View style={styles.section}>
-          <Text style={[styles.sectionEyebrow, { color: cores.rosa, fontSize: 9 * fonteScale }]}>
-            {eyebrow}
-          </Text>
-          <Text style={[styles.sectionTitulo, { color: cores.azulEscuro, fontSize: 16 * fonteScale }]}>
-            {titulo}
-          </Text>
-          <View style={[styles.sectionCard, { backgroundColor: cores.branco }]}>
-            {children}
-          </View>
-        </View>
-      );
-    };
-
     if (carregando) {
       return (
         <View style={[styles.centro, { backgroundColor: C.fundo }]}>
@@ -505,12 +511,15 @@ import { voltar } from '../navegacao';
           <TouchableOpacity onPress={() => voltar(navigation)} style={styles.btnVoltar} accessibilityLabel="Voltar">
             <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitulo, styles.headerTituloCentro, { top: insets.top + 28 }]} pointerEvents="none">
+          {/* Título no fluxo normal (não absoluto): um Text absoluto por cima
+              do header engolia os toques do botão de voltar no Android/iOS. */}
+          <Text style={[styles.headerTitulo, styles.headerTituloFlex]} numberOfLines={1} accessibilityRole="header">
             Configurações
           </Text>
-          <View style={{ flex: 1 }} />
+          <View style={styles.headerEspaco} />
         </View>
 
+        <EscalaFonte.Provider value={fonteScale}>
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 60 }}
@@ -733,6 +742,7 @@ import { voltar } from '../navegacao';
             </View>
           </FadeInView>
         </ScrollView>
+        </EscalaFonte.Provider>
 
         {/* ── MODAL TAMANHO FONTE ── */}
         <Modal visible={modalFonte} transparent animationType="slide">
@@ -1030,7 +1040,8 @@ import { voltar } from '../navegacao';
     headerDot:           { width: 6, height: 6, borderRadius: 3, backgroundColor: CORES.amarelo },
     headerEyebrow:       { color: 'rgba(255,255,255,0.7)', fontSize: 9, fontFamily: F.black, letterSpacing: 1.6 },
     headerTitulo:        { color: CORES_SYMBIUS.texto, fontSize: 17, fontFamily: F.black, letterSpacing: -0.3 },
-    headerTituloCentro:  { position: 'absolute', left: 0, right: 0, height: 44, lineHeight: 44, textAlign: 'center' },
+    headerTituloFlex:    { flex: 1, textAlign: 'center' },
+    headerEspaco:        { width: 44, height: 44 },
     headerIconWrap:      { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
 
     // SECTION

@@ -19,6 +19,7 @@ import { useAppSettings } from '../contexts/AppSettingsContext';
 import { dispararPush } from '../services/pushNotificationsService';
 import { Grupo, criarGrupo, MAX_MEMBROS_GRUPO } from '../services/gruposService';
 import { conversaNaoLida, ocultaParaMim, apagarConversaParaMim, msDe } from '../utils/conversas';
+import { alunoDoElo } from '../utils/elos';
 
 // ── Fonte Poppins ──
 import { F } from '../constants/theme';
@@ -368,6 +369,11 @@ export default function Match({ navigation, route }: any) {
     );
     const unsub = onSnapshot(q, async snap => {
       const parVistos = new Map<string, any>();
+      const solicitacoesPorPar = new Map<string, any[]>();
+      snap.docs.forEach(d => {
+        const outro = d.data().membros?.find((id: string) => id !== meuUid);
+        if (outro) solicitacoesPorPar.set(outro, [...(solicitacoesPorPar.get(outro) || []), d.data()]);
+      });
       await Promise.all(snap.docs.map(async d => {
         const data     = d.data();
         const outroUid = data.membros?.find((id: string) => id !== meuUid);
@@ -381,6 +387,7 @@ export default function Match({ navigation, route }: any) {
           parVistos.set(outroUid, {
             id: d.id, ...data, _ts: ts,
             outro: { ...oSnap.data(), uid: outroUid },
+            souAluno: alunoDoElo(solicitacoesPorPar.get(outroUid) || []) === meuUid,
           });
         }
       }));
@@ -511,7 +518,7 @@ export default function Match({ navigation, route }: any) {
     ]);
   };
 
-  const abrirChat = (outroUid: string, outroNome: string, outraFoto: string) => {
+  const abrirChat = (outroUid: string, outroNome: string, outraFoto: string, extras: Record<string, any> = {}) => {
     const conversaId = [meuUid, outroUid].sort().join('_');
     navigation.navigate('Chat', {
       room: conversaId, meuUid,
@@ -519,6 +526,7 @@ export default function Match({ navigation, route }: any) {
       minhaFoto: meusDados?.foto || null,
       outroUid, outroNome,
       outraFoto: outraFoto || null,
+      ...extras,
     });
   };
 
@@ -772,6 +780,21 @@ export default function Match({ navigation, route }: any) {
 
         {/* Badge de não lida */}
         {naoLida && <View style={styles.badgeNaoLida} />}
+
+        {/* Finalizar: só quem pediu ajuda (aluno) avalia e encerra o elo —
+            abre o Chat direto no fluxo de avaliação já existente. */}
+        {!finalizado && item.souAluno && (
+          <TouchableOpacity
+            style={styles.btnFinalizarElo}
+            onPress={() => abrirChat(outroUid, item.outro?.nome_completo, item.outro?.foto, { abrirAvaliacao: true })}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Finalizar elo com ${item.outro?.nome_completo || 'este usuário'}`}
+          >
+            <Ionicons name="flag-outline" size={15} color={CORES_SYMBIUS.verdeEscuro} />
+            <Text style={styles.btnFinalizarEloTxt}>Finalizar</Text>
+          </TouchableOpacity>
+        )}
       </TouchableOpacity>
     );
   };
@@ -1237,6 +1260,11 @@ const styles = StyleSheet.create({
   // Avatar com bolinha online (canto inferior direito — igual Instagram)
   avatarWrap:    { position: 'relative' },
   bolinhaOnline: { position: 'absolute', bottom: 1, right: 1, width: 13, height: 13, borderRadius: 7, backgroundColor: CORES.verde, borderWidth: 2, borderColor: CORES.branco },
+  btnFinalizarElo: {
+    flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 32,
+    paddingHorizontal: 10, borderRadius: 16, backgroundColor: CORES_SYMBIUS.verdeEscuro + '18',
+  },
+  btnFinalizarEloTxt: { fontSize: 12, fontFamily: F.bold, color: CORES_SYMBIUS.verdeEscuro },
   pillFinalizado: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', marginTop: 5, backgroundColor: CORES_SYMBIUS.fundoSuave, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
   pillFinalizadoTxt: { fontSize: 10, fontFamily: F.semibold, color: CORES_SYMBIUS.textoSec },
   badgeNaoLida:  { width: 10, height: 10, borderRadius: 5, backgroundColor: CORES.rosa, marginLeft: 8, alignSelf: 'center' },

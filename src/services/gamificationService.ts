@@ -9,16 +9,15 @@ import {
 
 
 // ─ Helpers de data ──────────────────────────────────────────────────
-const hojeStr = (): string => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+// "Dia" do check-in sempre no horário de Brasília (UTC-3, sem horário de
+// verão desde 2019), não no fuso do aparelho: web e celular precisam
+// concordar sobre qual é o dia, senão o desafio some num e volta no outro.
+const FUSO_ESCOLA_MS = 3 * 60 * 60 * 1000;
+export const diaEscolar = (deslocamentoDias = 0): string =>
+  new Date(Date.now() - FUSO_ESCOLA_MS + deslocamentoDias * 86400000).toISOString().slice(0, 10);
 
-const ontemStr = (): string => {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+export const checkInFeitoHoje = (userData: any): boolean =>
+  userData?.ultimo_checkin_dia === diaEscolar();
 
 export interface LevelUpInfo {
   nomeAnimal:   string;
@@ -34,6 +33,7 @@ export interface CheckInResult {
   xp:       number;
   moedas:   number;
   levelUp:  LevelUpInfo | null; // null = sem mudança de nível
+  erro?:    boolean;       // true = não gravou (sem rede, sem permissão...)
 }
 
 // ─ Resultado genérico de premiação de XP (match / pedir ajuda) ─
@@ -107,7 +107,7 @@ export const awardXpMatch = async (meuUid: string): Promise<AwardResult> => {
 
 
 export const awardDailyCheckIn = async (meuUid: string): Promise<CheckInResult> => {
-  const fallback: CheckInResult = { ganhou: false, streak: 0, xp: 0, moedas: 0, levelUp: null };
+  const fallback: CheckInResult = { ganhou: false, streak: 0, xp: 0, moedas: 0, levelUp: null, erro: true };
   try {
     if (!meuUid) return fallback;
 
@@ -118,8 +118,8 @@ export const awardDailyCheckIn = async (meuUid: string): Promise<CheckInResult> 
     const userData       = userSnap.data();
     const ultimoDia      = userData?.ultimo_checkin_dia as string | undefined;
     const streakAtual    = (userData?.streak_dias as number) || 0;
-    const hoje           = hojeStr();
-    const ontem          = ontemStr();
+    const hoje           = diaEscolar();
+    const ontem          = diaEscolar(-1);
 
     // ─ Já fez check-in hoje ─
     if (ultimoDia === hoje) {

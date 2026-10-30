@@ -26,6 +26,7 @@ import {
 import { F, CORES } from '../constants/theme';
 import { CORES_SYMBIUS } from '../constants/temaSymbius';
 import { awardXpFinalizarMatch, AwardResult, LevelUpInfo } from '../services/gamificationService';
+import { alunoDoElo } from '../utils/elos';
 import NivelUpSymbiusModal from '../components/NivelUpSymbiusModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -861,14 +862,13 @@ export default function Chat({ route, navigation }: any) {
     if (!uidAtual || !outroUid) return;
     (async () => {
       try {
-        const [souAlunoSnap, souProfessorSnap] = await Promise.all([
-          getDocs(query(collection(db, "match_solicitacoes"),
-            where("deUid", "==", uidAtual), where("paraUid", "==", outroUid), where("status", "==", "aceito"))),
-          getDocs(query(collection(db, "match_solicitacoes"),
-            where("deUid", "==", outroUid), where("paraUid", "==", uidAtual), where("status", "==", "aceito"))),
-        ]);
-        if (!souAlunoSnap.empty) setSouAluno(true);
-        else if (!souProfessorSnap.empty) setSouAluno(false);
+        // Mesmo formato de consulta da lista de elos (status + membros), que
+        // não depende de índice composto; o par é filtrado aqui.
+        const snap = await getDocs(query(collection(db, "match_solicitacoes"),
+          where("status", "==", "aceito"), where("membros", "array-contains", uidAtual)));
+        const doPar = snap.docs.map(d => d.data()).filter((d: any) => d.membros?.includes(outroUid));
+        const aluno = alunoDoElo(doPar as any);
+        if (aluno) setSouAluno(aluno === uidAtual);
       } catch (e) { console.log("Erro ao checar papel aluno/professor:", e); }
     })();
   }, [uidAtual, outroUid]);
@@ -1049,6 +1049,15 @@ export default function Chat({ route, navigation }: any) {
     setComentarioPriv('');
     setAvaliacaoVisible(true);
   };
+
+  // Aberto pelo botão "Finalizar" da lista de elos: abre a avaliação assim
+  // que o papel (aluno) e o estado do match estiverem carregados.
+  const pediuAvaliacaoRef = useRef(!!route.params?.abrirAvaliacao);
+  useEffect(() => {
+    if (!pediuAvaliacaoRef.current || souAluno === null || !conversaId) return;
+    pediuAvaliacaoRef.current = false;
+    abrirAvaliacao();
+  }, [souAluno, conversaId, matchFinalizado]);
 
   // ── Passo 1: responde se a dúvida foi resolvida, avança pro passo das estrelas ──
   const responderPergunta = (resolveu: boolean) => {
