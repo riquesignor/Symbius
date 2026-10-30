@@ -27,6 +27,7 @@ import { F, CORES } from '../constants/theme';
 import { CORES_SYMBIUS } from '../constants/temaSymbius';
 import { awardXpFinalizarMatch, AwardResult, LevelUpInfo } from '../services/gamificationService';
 import { alunoDoElo } from '../utils/elos';
+import ModalDenuncia from '../components/ModalDenuncia';
 import NivelUpSymbiusModal from '../components/NivelUpSymbiusModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -548,6 +549,7 @@ export default function Chat({ route, navigation }: any) {
   const [fullImageMsg,     setFullImageMsg]      = useState<any | null>(null);
   const [fullVideoMsg,     setFullVideoMsg]      = useState<any | null>(null);
   const [menuMsg,          setMenuMsg]           = useState<any | null>(null);
+  const [denunciaMsg,      setDenunciaMsg]       = useState<any | null>(null);
   const [editandoId,       setEditandoId]        = useState<string | null>(null);
   const [citando,          setCitando]           = useState<any | null>(null);
   const [outraFoto,        setOutraFoto]         = useState<string | null>(null);
@@ -1435,12 +1437,29 @@ export default function Chat({ route, navigation }: any) {
                 <Ionicons name="trash-outline" size={20} color="#ff4d6d" style={{ marginRight: 12 }} /><Text style={[styles.menuItemText, { color: "#ff4d6d" }]}>Apagar</Text>
               </TouchableOpacity>
             )}
+            {menuMsg.remetenteUid!==uidAtual && (
+              <TouchableOpacity
+                style={[styles.menuItem, { borderBottomColor: CC.menuBorder }]}
+                onPress={() => { setDenunciaMsg({ ...menuMsg, id: resolverDocId(menuMsg) }); setMenuMsg(null); }}
+                accessibilityRole="button"
+              >
+                <Ionicons name="flag-outline" size={20} color="#ff4d6d" style={{ marginRight: 12 }} /><Text style={[styles.menuItemText, { color: "#ff4d6d" }]}>Denunciar</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={[styles.menuItem, { borderBottomWidth:0, marginTop:4 }]} onPress={() => setMenuMsg(null)}>
               <Text style={[styles.menuItemText, { color: CC.textoSec, textAlign:"center", width:"100%" }]}>Cancelar</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
+
+      <ModalDenuncia
+        mensagem={denunciaMsg}
+        conversaId={conversaId}
+        denuncianteUid={uidAtual}
+        tipoConversa="individual"
+        onFechar={() => setDenunciaMsg(null)}
+      />
 
       {/* ── PREVIEW UNIFICADO ── */}
       {previewVisible && (

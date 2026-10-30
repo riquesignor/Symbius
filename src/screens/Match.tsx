@@ -18,6 +18,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { dispararPush } from '../services/pushNotificationsService';
 import { Grupo, criarGrupo, MAX_MEMBROS_GRUPO } from '../services/gruposService';
+import { enviarConviteGrupo } from '../services/convitesService';
+import SeletorPessoas, { Pessoa } from '../components/SeletorPessoas';
 import { conversaNaoLida, ocultaParaMim, apagarConversaParaMim, msDe } from '../utils/conversas';
 import { alunoDoElo } from '../utils/elos';
 
@@ -179,6 +181,7 @@ export default function Match({ navigation, route }: any) {
   const [grupoNome,      setGrupoNome]      = useState('');
   const [grupoMateria,   setGrupoMateria]   = useState('');
   const [grupoMembros,   setGrupoMembros]   = useState<string[]>([]);
+  const [grupoConvidados, setGrupoConvidados] = useState<Pessoa[]>([]);
   const [criandoGrupo,   setCriandoGrupo]   = useState(false);
 
   const meuUid = route?.params?.uid;
@@ -264,25 +267,44 @@ export default function Match({ navigation, route }: any) {
   };
 
   const abrirCriarGrupo = () => {
-    setGrupoNome(''); setGrupoMateria(''); setGrupoMembros([]);
+    setGrupoNome(''); setGrupoMateria(''); setGrupoMembros([]); setGrupoConvidados([]);
     setModalGrupo(true);
   };
+
+  const totalEscolhidos = grupoMembros.length + grupoConvidados.length;
+  const vagasGrupo = MAX_MEMBROS_GRUPO - 1 - totalEscolhidos;
+  const podeCriarGrupo = !!grupoNome.trim() && totalEscolhidos >= 2 && !criandoGrupo;
 
   const alternarMembroGrupo = (uid: string) => {
     setGrupoMembros(prev => prev.includes(uid)
       ? prev.filter(u => u !== uid)
-      : prev.length >= MAX_MEMBROS_GRUPO - 1 ? prev : [...prev, uid]);
+      : vagasGrupo <= 0 ? prev : [...prev, uid]);
+  };
+
+  const alternarConvidadoGrupo = (p: Pessoa) => {
+    setGrupoConvidados(prev => prev.some(c => c.uid === p.uid)
+      ? prev.filter(c => c.uid !== p.uid)
+      : vagasGrupo <= 0 ? prev : [...prev, p]);
   };
 
   const confirmarCriarGrupo = async () => {
-    if (!meuUid || !grupoNome.trim() || grupoMembros.length < 2 || criandoGrupo) return;
+    if (!meuUid || !podeCriarGrupo) return;
     setCriandoGrupo(true);
     try {
       const id = await criarGrupo({ criadorUid: meuUid, nome: grupoNome, materia: grupoMateria, membrosUids: grupoMembros });
+      const de = { uid: meuUid, nome: meusDados?.nome_completo || 'Alguém' };
+      const grupoBase = { id, nome: grupoNome.trim(), membros: [meuUid, ...grupoMembros], banidos: [] };
+      const falhas: string[] = [];
+      for (const p of grupoConvidados) {
+        try { await enviarConviteGrupo(grupoBase, de, p.uid); }
+        catch (e: any) { falhas.push(`${p.nome.split(' ')[0]}: ${e?.message || 'erro ao convidar'}`); }
+      }
       setModalGrupo(false);
+      if (falhas.length) Alert.alert('Alguns convites não foram enviados', falhas.join('\n'));
       navigation.navigate('GrupoChat', { grupoId: id, uid: meuUid });
     } catch (e) {
       console.log('Erro ao criar grupo:', e);
+      Alert.alert('Erro', 'Não foi possível criar o grupo. Tente de novo.');
     } finally {
       setCriandoGrupo(false);
     }
@@ -564,6 +586,11 @@ export default function Match({ navigation, route }: any) {
     const tb = cb?.data_postagem?.seconds ?? b._ts ?? 0;
     return tb - ta;
   });
+
+  // Criação de grupo: só elos ativos (não finalizados) entram direto.
+  const elosAtivosParaGrupo: Pessoa[] = matchesOrdenados
+    .filter(m => m.outro?.uid && !conversas[m.outro.uid]?.matchFinalizado)
+    .map(m => ({ uid: m.outro.uid, nome: m.outro?.nome_completo || 'Usuário', foto: m.outro?.foto || null }));
 
   // ── FEED DE CANDIDATOS (lista vertical, estilo feed) ──
   const renderCandidato = ({ item }: any) => {
@@ -928,16 +955,16 @@ export default function Match({ navigation, route }: any) {
               ListHeaderComponent={
                 <View style={{ marginBottom: 6 }}>
                   <TouchableOpacity
-                    style={[styles.btnCriarGrupo, matches.length < 2 && { opacity: 0.55 }]}
+                    style={styles.btnCriarGrupo}
                     onPress={abrirCriarGrupo}
-                    disabled={matches.length < 2}
                     activeOpacity={0.85}
+                    accessibilityRole="button"
                   >
                     <Ionicons name="people" size={18} color={CORES_SYMBIUS.creme} />
                     <Text style={styles.btnCriarGrupoTxt}>Criar grupo de estudo</Text>
                   </TouchableOpacity>
                   {matches.length < 2 && (
-                    <Text style={styles.dicaGrupo}>Você precisa de pelo menos 2 elos para montar um grupo.</Text>
+                    <Text style={styles.dicaGrupo}>Você pode chamar seus elos e convidar outras pessoas pelo nome.</Text>
                   )}
 
                   {grupos.length > 0 && <Text style={styles.secaoLista}>GRUPOS</Text>}
@@ -950,9 +977,13 @@ export default function Match({ navigation, route }: any) {
                         onPress={() => navigation.navigate('GrupoChat', { grupoId: g.id, uid: meuUid })}
                         activeOpacity={0.8}
                       >
-                        <View style={[styles.solAvatar, styles.grupoAvatar]}>
-                          <Ionicons name="people" size={22} color={CORES_SYMBIUS.creme} />
-                        </View>
+                        {g.foto
+                          ? <Image source={{ uri: getImageUri(g.foto) }} style={styles.solAvatar} />
+                          : (
+                            <View style={[styles.solAvatar, styles.grupoAvatar]}>
+                              <Ionicons name="people" size={22} color={CORES_SYMBIUS.creme} />
+                            </View>
+                          )}
                         <View style={styles.solInfo}>
                           <Text style={[styles.solNome, { color: C.azulEscuro, fontFamily: F.bold }]} numberOfLines={1}>{g.nome}</Text>
                           <Text style={[styles.ultimaMsg, { color: naoLida ? C.azulEscuro : C.textoSec, fontFamily: naoLida ? F.semibold : F.regular }]} numberOfLines={1}>
@@ -992,37 +1023,34 @@ export default function Match({ navigation, route }: any) {
               maxLength={30}
             />
             <Text style={styles.secaoLista}>
-              QUEM VAI PARTICIPAR ({grupoMembros.length}/{MAX_MEMBROS_GRUPO - 1})
+              QUEM VAI PARTICIPAR ({totalEscolhidos}/{MAX_MEMBROS_GRUPO - 1})
             </Text>
-            <ScrollView style={{ maxHeight: 260 }}>
-              {matchesOrdenados.map(m => {
-                const uid = m.outro?.uid;
-                if (!uid) return null;
-                const marcado = grupoMembros.includes(uid);
-                return (
-                  <TouchableOpacity key={uid} style={styles.grupoOpcao} onPress={() => alternarMembroGrupo(uid)}>
-                    <Image source={{ uri: getImageUri(m.outro?.foto) }} style={styles.grupoOpcaoFoto} />
-                    <Text style={styles.grupoOpcaoNome} numberOfLines={1}>{m.outro?.nome_completo || 'Usuário'}</Text>
-                    <Ionicons name={marcado ? 'checkbox' : 'square-outline'} size={22} color={marcado ? CORES_SYMBIUS.verdeEscuro : CORES_SYMBIUS.textoTerciario} />
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+            <SeletorPessoas
+              meuUid={meuUid}
+              matches={elosAtivosParaGrupo}
+              selecionados={grupoMembros}
+              convidados={grupoConvidados}
+              onAlternarMatch={alternarMembroGrupo}
+              onAlternarConvidado={alternarConvidadoGrupo}
+              vagas={vagasGrupo}
+              alturaMax={260}
+            />
             <View style={styles.grupoBotoes}>
               <TouchableOpacity style={[styles.grupoBtn, { backgroundColor: CORES_SYMBIUS.fundoSuave }]} onPress={() => setModalGrupo(false)}>
                 <Text style={[styles.grupoBtnTxt, { color: CORES_SYMBIUS.texto }]}>Cancelar</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.grupoBtn, { backgroundColor: CORES_SYMBIUS.verdeEscuro }, (!grupoNome.trim() || grupoMembros.length < 2 || criandoGrupo) && { opacity: 0.5 }]}
+                style={[styles.grupoBtn, { backgroundColor: CORES_SYMBIUS.verdeEscuro }, !podeCriarGrupo && { opacity: 0.5 }]}
                 onPress={confirmarCriarGrupo}
-                disabled={!grupoNome.trim() || grupoMembros.length < 2 || criandoGrupo}
+                disabled={!podeCriarGrupo}
+                accessibilityState={{ disabled: !podeCriarGrupo }}
               >
                 {criandoGrupo
                   ? <ActivityIndicator color={CORES_SYMBIUS.creme} />
                   : <Text style={styles.grupoBtnTxt}>Criar grupo</Text>}
               </TouchableOpacity>
             </View>
-            {grupoMembros.length < 2 && <Text style={[styles.dicaGrupo, { textAlign: 'center' }]}>Escolha pelo menos 2 pessoas.</Text>}
+            {totalEscolhidos < 2 && <Text style={[styles.dicaGrupo, { textAlign: 'center' }]}>Escolha pelo menos 2 pessoas. Quem não é seu elo recebe um convite e entra se aceitar.</Text>}
           </View>
         </View>
       </Modal>

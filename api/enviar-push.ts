@@ -36,6 +36,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    // Convite: só quem criou o convite pendente pra essa pessoa pode avisá-la.
+    if (dados.tipo === 'convite_grupo') {
+      const convite = (await dbAdmin.collection('convites_grupo').doc(destinatarioUid).get()).data();
+      if (convite?.status !== 'pendente' || convite?.deUid !== remetenteUid || convite?.grupoId !== String(dados.conviteGrupoId)) {
+        return res.status(403).json({ erro: 'Convite inexistente' });
+      }
+    }
+
     const snap = await dbAdmin.collection('usuarios').doc(destinatarioUid).get();
     const usuario = snap.data();
     if (!usuario?.fcmToken) return res.status(200).json({ enviado: false, motivo: 'Destinatário sem token FCM' });
@@ -58,6 +66,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       tag = `grupo_${dados.grupoId}`;
     } else if (dados.tipo === 'solicitacao_match' || dados.tipo === 'match_aceito') {
       tag = `${dados.tipo}_${remetenteUid}`;
+    } else if (dados.tipo === 'convite_grupo') {
+      tag = `convite_grupo_${destinatarioUid}`;
     } else if (dados.resumoId) {
       tag = `${dados.tipo}_${dados.resumoId}`;
     }

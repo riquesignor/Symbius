@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView, RefreshControl,
-  StatusBar, TextInput, ActivityIndicator, Switch,
+  StatusBar, TextInput, ActivityIndicator, Switch, Alert,
   Image, FlatList, Dimensions, Modal, useWindowDimensions,
 } from 'react-native';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
@@ -121,7 +121,8 @@ export default function Index({ navigation, route }: any) {
   const [notifDescartadas, setNotifDescartadas] = useState<Set<string>>(new Set());
   const [miniMenuAberto, setMiniMenuAberto] = useState(false);
 
-  const { notificacoesChat, limparNotificacoesChat } = useNotificacao();
+  const { notificacoesChat, limparNotificacoesChat, conviteGrupo, responderConvite } = useNotificacao();
+  const [respondendoConvite, setRespondendoConvite] = useState(false);
   const { modoEscuro, setModoEscuro } = useAppSettings();
 
   const { width: larguraTela } = useWindowDimensions();
@@ -273,8 +274,31 @@ export default function Index({ navigation, route }: any) {
     })();
   }, [uid, userData?.ra, userData?.turma, userData?.tipo, tickAtualizar]);
 
-  const totalNotificacoesAtivas =
+  const totalNotificacoesAtivas = (conviteGrupo ? 1 : 0) +
     notificacoesChat.length + notificacoesAgenda.filter(n => !notifDescartadas.has(n.id)).length;
+
+  const responderConviteGrupo = async (aceitar: boolean) => {
+    if (respondendoConvite) return;
+    setRespondendoConvite(true);
+    try {
+      const { grupoId } = await responderConvite(aceitar);
+      if (aceitar && grupoId) {
+        setModalNotif(false);
+        navigation.navigate('GrupoChat', { grupoId, uid });
+      }
+    } catch (e: any) {
+      Alert.alert('Não foi possível entrar', e?.message || 'Tente de novo.');
+    } finally {
+      setRespondendoConvite(false);
+    }
+  };
+
+  // Toque no push / banner do convite abre o sininho direto.
+  useEffect(() => {
+    if (!route?.params?.abrirNotificacoes) return;
+    setModalNotif(true);
+    navigation.setParams({ abrirNotificacoes: undefined });
+  }, [route?.params?.abrirNotificacoes]);
 
   const limparHistoricoNotificacoes = () => {
     limparNotificacoesChat();
@@ -913,6 +937,43 @@ export default function Index({ navigation, route }: any) {
               </View>
             ) : (
               <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+                {conviteGrupo && (
+                  <>
+                    <Text style={styles.notifGrupoLabel}>CONVITE</Text>
+                    <View style={styles.conviteCard}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <View style={[styles.notifIconWrap, { backgroundColor: CORES_SYMBIUS.verdeEscuro + '18' }]}>
+                          <Ionicons name="people" size={16} color={CORES_SYMBIUS.verdeEscuro} />
+                        </View>
+                        <Text style={[styles.notifCardTitulo, { flex: 1 }]}>
+                          {conviteGrupo.deNome} te convidou para o grupo "{conviteGrupo.grupoNome}". Quer entrar?
+                        </Text>
+                      </View>
+                      <View style={styles.conviteBotoes}>
+                        <TouchableOpacity
+                          style={[styles.conviteBtn, styles.conviteBtnNao]}
+                          onPress={() => responderConviteGrupo(false)}
+                          disabled={respondendoConvite}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Recusar convite para ${conviteGrupo.grupoNome}`}
+                        >
+                          <Text style={styles.conviteBtnNaoTxt}>Não</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.conviteBtn, styles.conviteBtnSim]}
+                          onPress={() => responderConviteGrupo(true)}
+                          disabled={respondendoConvite}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Aceitar convite para ${conviteGrupo.grupoNome}`}
+                        >
+                          {respondendoConvite
+                            ? <ActivityIndicator color={CORES_SYMBIUS.creme} />
+                            : <Text style={styles.conviteBtnSimTxt}>Sim</Text>}
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </>
+                )}
                 {notificacoesChat.length > 0 && (
                   <>
                     <Text style={styles.notifGrupoLabel}>MENSAGENS</Text>
@@ -1323,6 +1384,16 @@ const styles = StyleSheet.create({
   notifLimparTxt: { fontSize: 13, fontFamily: F.bold, color: CORES_SYMBIUS.laranjaTexto },
   notifVaziaTxt: { color: CORES_SYMBIUS.textoMuted, fontSize: 13, fontFamily: F.medium, marginTop: 10 },
   notifGrupoLabel: { fontSize: 10, fontFamily: F.bold, letterSpacing: 0.6, color: CORES_SYMBIUS.textoSec, marginBottom: 8 },
+  conviteCard: {
+    borderWidth: 1, borderColor: CORES_SYMBIUS.verdeEscuro + '40', borderRadius: 14,
+    padding: 12, marginBottom: 8, backgroundColor: CORES_SYMBIUS.fundoSuave,
+  },
+  conviteBotoes: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  conviteBtn: { flex: 1, minHeight: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  conviteBtnNao: { borderWidth: 1, borderColor: CORES_SYMBIUS.borda2 },
+  conviteBtnNaoTxt: { fontFamily: F.bold, fontSize: 14, color: CORES_SYMBIUS.texto },
+  conviteBtnSim: { backgroundColor: CORES_SYMBIUS.verdeEscuro },
+  conviteBtnSimTxt: { fontFamily: F.bold, fontSize: 14, color: CORES_SYMBIUS.creme },
   notifCard: {
     flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: CORES_SYMBIUS.fundoSuave,
     borderRadius: 14, padding: 10, marginBottom: 8,

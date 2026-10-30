@@ -16,6 +16,7 @@ import { CORES_SYMBIUS } from '../constants/coresSymbius';
 import { F } from '../constants/theme';
 import { navegarGlobal, navegacaoRef } from '../navegacao';
 import { sairDaConta } from '../services/authService';
+import { ConviteGrupo, COLECAO_CONVITES, responderConviteGrupo } from '../services/convitesService';
 import {
   configurarPushParaUsuario,
   registrarListenerForeground,
@@ -82,6 +83,9 @@ interface NotificacaoContextType {
   setConversaAtiva: (id: string | null) => void;
   notificacoesChat: ChatNotif[];
   limparNotificacoesChat: () => void;
+  // Convite pendente para grupo de estudo (um por vez) — aparece no sininho.
+  conviteGrupo: ConviteGrupo | null;
+  responderConvite: (aceitar: boolean) => Promise<{ grupoId: string | null }>;
 }
 const NotificacaoContext = createContext<NotificacaoContextType>({
   uidAtual: null,
@@ -89,6 +93,8 @@ const NotificacaoContext = createContext<NotificacaoContextType>({
   setConversaAtiva: () => {},
   notificacoesChat: [],
   limparNotificacoesChat: () => {},
+  conviteGrupo: null,
+  responderConvite: async () => ({ grupoId: null }),
 });
 export const useNotificacao = () => useContext(NotificacaoContext);
 
@@ -114,6 +120,7 @@ export const rotaDoPush = (data: any, uid: string | null): { rota: string; param
     case 'resumo_comentario': return { rota: 'Resumos', params: { uid, resumoId: data.resumoId } };
     case 'mensagem_grupo':
     case 'grupo_adicionado':  return { rota: 'GrupoChat', params: { uid, grupoId: data.grupoId } };
+    case 'convite_grupo':     return { rota: 'Index', params: { uid, abrirNotificacoes: true } };
     case 'novo_post':         return { rota: 'Index', params: { uid, abrirPostId: data.postId } };
     case 'checkin':
     case 'conta_reativada':   return { rota: 'Index', params: { uid } };
@@ -136,6 +143,7 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
   const [conversaAtiva, setConversaAtiva] = useState<string | null>(null);
   const [notificacoesChat, setNotificacoesChat] = useState<ChatNotif[]>([]);
   const limparNotificacoesChat = () => setNotificacoesChat([]);
+  const [conviteGrupo, setConviteGrupo] = useState<ConviteGrupo | null>(null);
 
   // ── Refs (listeners do Firestore não enxergam state novo) ──
   const prefsRef = useRef({ notifGeral, notifMatch, notifEventos, notifAvisos, notifMensagens, vibracao, somNotif });
@@ -324,6 +332,32 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
     }, (err) => console.log('Erro listener conversas:', err.message));
   }, [uidAtual]);
 
+  // ════ CONVITE PARA GRUPO (um documento por pessoa: convites_grupo/{uid}) ════
+  useEffect(() => {
+    if (!uidAtual) { setConviteGrupo(null); return; }
+    let primeiraCarga = true;
+    return onSnapshot(firestoreDoc(db, COLECAO_CONVITES, uidAtual), (snap) => {
+      const c = snap.exists() ? (snap.data() as ConviteGrupo) : null;
+      const pendente = c?.status === 'pendente' ? c : null;
+      setConviteGrupo(pendente);
+      if (!primeiraCarga && pendente && snap.metadata.hasPendingWrites === false) {
+        mostrarBannerRef.current({
+          titulo: 'Convite para grupo de estudo',
+          corpo: `${pendente.deNome} te convidou para "${pendente.grupoNome}"`,
+          icone: 'people',
+          rota: 'Index', params: { uid: uidAtual, abrirNotificacoes: true },
+        });
+      }
+      primeiraCarga = false;
+    }, (err) => console.log('Erro listener convite de grupo:', err.message));
+  }, [uidAtual]);
+
+  const responderConvite = async (aceitar: boolean) => {
+    if (!uidAtual) return { grupoId: null };
+    const eu: any = (await getDoc(firestoreDoc(db, 'usuarios', uidAtual))).data() || {};
+    return responderConviteGrupo({ uid: uidAtual, nome: eu.nome_completo || 'Alguém', foto: eu.foto || null }, aceitar);
+  };
+
   // ════ SOLICITAÇÕES DE MATCH ════
   useEffect(() => {
     if (!uidAtual) return;
@@ -382,7 +416,7 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
   const fotoUri = fotoParaUri(banner?.foto);
 
   return (
-    <NotificacaoContext.Provider value={{ uidAtual, conversaAtiva, setConversaAtiva, notificacoesChat, limparNotificacoesChat }}>
+    <NotificacaoContext.Provider value={{ uidAtual, conversaAtiva, setConversaAtiva, notificacoesChat, limparNotificacoesChat, conviteGrupo, responderConvite }}>
       {children}
 
       <Modal visible={bannerVisivel} transparent animationType="none" statusBarTranslucent onRequestClose={esconderBanner}>

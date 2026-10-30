@@ -107,7 +107,7 @@ const chamarBackend = async (rota: string, corpo: object) => {
 export type TipoPush =
   | 'mensagem' | 'solicitacao_match' | 'match_aceito' | 'evento_admin'
   | 'resumo_curtida' | 'resumo_comentario'
-  | 'mensagem_grupo' | 'grupo_adicionado'
+  | 'mensagem_grupo' | 'grupo_adicionado' | 'convite_grupo'
   | 'conta_suspensa' | 'conta_reativada';
 
 interface DispararPushParams {

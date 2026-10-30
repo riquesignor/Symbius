@@ -38,6 +38,7 @@ const PREF_POR_TIPO: Record<string, string> = {
   resumo_comentario: 'geral',
   mensagem_grupo: 'mensagens',
   grupo_adicionado: 'match',
+  convite_grupo: 'match',
   novo_post: 'avisos',
   checkin: 'diario',
 };
