@@ -1,4 +1,4 @@
-import { voltar } from '../navegacao';
+import { voltar, HIT_VOLTAR, AREA_VOLTAR } from '../navegacao';
 import React from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, StatusBar,
@@ -26,7 +26,7 @@ export default function EscolhaPapel({ navigation }: any) {
       <StatusBar barStyle={CORES_SYMBIUS.barStyle} />
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => voltar(navigation)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity hitSlop={HIT_VOLTAR} style={AREA_VOLTAR} onPress={() => voltar(navigation)}>
           <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
       </View>

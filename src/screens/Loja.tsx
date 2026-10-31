@@ -1,4 +1,4 @@
-import { voltar } from '../navegacao';
+import { voltar, HIT_VOLTAR } from '../navegacao';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import SymbiusTabBar from '../components/SymbiusTabBar';
 import {
@@ -126,10 +126,9 @@ export default function Loja({ navigation, route }: any) {
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: (insets.top || 12) + 16 }]}>
-        <TouchableOpacity
+        <TouchableOpacity hitSlop={HIT_VOLTAR}
           onPress={() => voltar(navigation)}
           style={styles.btnVoltar}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityRole="button"
           accessibilityLabel="Voltar"
         >

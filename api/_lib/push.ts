@@ -1,3 +1,4 @@
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { messagingAdmin, dbAdmin, authAdmin } from './firebaseAdmin';
 
@@ -88,6 +89,8 @@ export interface OpcoesEnvio {
   // Notificações com a mesma tag SUBSTITUEM a anterior (Android: tag; iOS: collapse-id).
   // É o que impede a pilha de avisos repetidos da mesma conversa.
   tag?: string;
+  // Link https de uma imagem (foto de quem mandou / do grupo). Android mostra na notificação.
+  imagem?: string;
 }
 
 export const enviarParaTokens = async (
@@ -106,7 +109,7 @@ export const enviarParaTokens = async (
     const lote = destinos.slice(i, i + 500);
     const resp = await messagingAdmin.sendEach(lote.map(d => ({
       token: d.token,
-      notification: { title: titulo, body: corpo },
+      notification: { title: titulo, body: corpo, ...(opcoes.imagem ? { imageUrl: opcoes.imagem } : {}) },
       data: stringificar(dados),
       android: {
         priority: 'high' as const,
@@ -114,7 +117,8 @@ export const enviarParaTokens = async (
       },
       apns: {
         ...(opcoes.tag ? { headers: { 'apns-collapse-id': opcoes.tag.slice(0, 64) } } : {}),
-        payload: { aps: { sound: 'default', ...(opcoes.tag ? { 'thread-id': opcoes.tag.slice(0, 64) } : {}) } },
+        payload: { aps: { sound: 'default', ...(opcoes.imagem ? { 'mutable-content': 1 } : {}), ...(opcoes.tag ? { 'thread-id': opcoes.tag.slice(0, 64) } : {}) } },
+        ...(opcoes.imagem ? { fcmOptions: { imageUrl: opcoes.imagem } } : {}),
       },
     })));
     enviados += resp.successCount;
@@ -181,4 +185,27 @@ export const montarBloco = (tituloBase: string, bloco: BlocoMensagens, fallbackC
   const corpo = (anteriores > 0 ? `+${anteriores} anterior${anteriores > 1 ? 'es' : ''}\n` : '') + ultimas.join('\n');
   const titulo = bloco.total > 1 ? `${tituloBase} · ${bloco.total} mensagens` : tituloBase;
   return { titulo, corpo: corpo.slice(0, 400) };
+};
+
+// ── Foto na notificação ─────────────────────────────────────────────────
+// As fotos ficam em base64 no Firestore, mas a notificação só aceita um link
+// https. /api/foto entrega a imagem; o link é assinado pra ninguém conseguir
+// baixar a foto de qualquer uid só trocando o parâmetro.
+const chaveFoto = () => createHash('sha256').update(`foto:${process.env.FIREBASE_PRIVATE_KEY || ''}`).digest();
+
+export const assinaturaFoto = (tipo: string, id: string) =>
+  createHmac('sha256', chaveFoto()).update(`${tipo}:${id}`).digest('hex').slice(0, 32);
+
+export const assinaturaFotoValida = (tipo: string, id: string, s: string) => {
+  const esperado = Buffer.from(assinaturaFoto(tipo, id));
+  const recebido = Buffer.from(String(s || ''));
+  return esperado.length === recebido.length && timingSafeEqual(esperado, recebido);
+};
+
+// tipo 'u' = foto do usuário, 'g' = foto do grupo. A versão muda quando a foto
+// muda, então o celular não reaproveita uma foto antiga do cache.
+export const urlFoto = (host: string | undefined, tipo: 'u' | 'g', id: string, foto: string | null | undefined) => {
+  if (!host || !foto) return undefined;
+  const v = createHash('sha1').update(String(foto)).digest('hex').slice(0, 10);
+  return `https://${host}/api/foto?t=${tipo}&id=${encodeURIComponent(id)}&v=${v}&s=${assinaturaFoto(tipo, id)}`;
 };

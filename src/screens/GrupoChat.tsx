@@ -1,4 +1,4 @@
-import { voltar } from '../navegacao';
+import { voltar, HIT_VOLTAR } from '../navegacao';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, Image, StyleSheet,
@@ -329,7 +329,7 @@ export default function GrupoChat({ navigation, route }: any) {
       <View style={[styles.container, styles.centro]}>
         <Ionicons name="people-outline" size={48} color={CORES_SYMBIUS.textoTerciario} />
         <Text style={styles.vazio}>Este grupo não existe mais.</Text>
-        <TouchableOpacity onPress={() => voltar(navigation)} style={styles.linkBtn}><Text style={styles.link}>Voltar</Text></TouchableOpacity>
+        <TouchableOpacity hitSlop={HIT_VOLTAR} onPress={() => voltar(navigation)} style={styles.linkBtn}><Text style={styles.link}>Voltar</Text></TouchableOpacity>
       </View>
     );
   }
@@ -392,7 +392,7 @@ export default function GrupoChat({ navigation, route }: any) {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundoCard} />
       <View style={[styles.header, { paddingTop: insets.top + 24 }]}>
-        <TouchableOpacity onPress={() => voltar(navigation)} style={styles.headerBtn} hitSlop={HIT} accessibilityRole="button" accessibilityLabel="Voltar">
+        <TouchableOpacity hitSlop={HIT_VOLTAR} onPress={() => voltar(navigation)} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Voltar">
           <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.headerCentro} onPress={() => setInfoAberta(true)} activeOpacity={0.7} accessibilityRole="button" accessibilityHint="Abre os detalhes do grupo">

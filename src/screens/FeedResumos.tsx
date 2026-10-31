@@ -1,4 +1,4 @@
-import { voltar } from '../navegacao';
+import { voltar, HIT_VOLTAR } from '../navegacao';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, FlatList,
@@ -446,7 +446,7 @@ export default function FeedResumos({ navigation, route }: any) {
       <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
 
       <View style={[styles.header, { paddingTop: insets.top + 24 }]}>
-        <TouchableOpacity onPress={() => voltar(navigation)} style={styles.headerBtnEsq} accessibilityRole="button" accessibilityLabel="Voltar">
+        <TouchableOpacity hitSlop={HIT_VOLTAR} onPress={() => voltar(navigation)} style={styles.headerBtnEsq} accessibilityRole="button" accessibilityLabel="Voltar">
           <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
         <Text style={[styles.headerTitulo, { fontSize: fs(17) }]}>Resumos</Text>

@@ -1,4 +1,4 @@
-import { voltar } from '../navegacao';
+import { voltar, HIT_VOLTAR } from '../navegacao';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
@@ -549,9 +549,8 @@ export default function Perfil({ navigation, route }: any) {
                 sobrepor nada: antes ele era um Text absoluto por cima do
                 botão de voltar e roubava os toques no Android/iOS. */}
             <View style={heroStyles.topHeaderLado}>
-              <TouchableOpacity
+              <TouchableOpacity hitSlop={HIT_VOLTAR}
                 onPress={() => (navigation.canGoBack() ? voltar(navigation) : navigation.navigate('Index', { uid }))}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 style={heroStyles.btnBanner}
                 accessibilityRole="button"
                 accessibilityLabel="Voltar"

@@ -1,4 +1,4 @@
-import { voltar } from '../navegacao';
+import { voltar, HIT_VOLTAR } from '../navegacao';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
@@ -741,7 +741,7 @@ useEffect(() => {
 
       {/* HEADER */}
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <TouchableOpacity onPress={() => voltar(navigation)} style={styles.btnVoltar} accessibilityLabel="Voltar">
+        <TouchableOpacity hitSlop={HIT_VOLTAR} onPress={() => voltar(navigation)} style={styles.btnVoltar} accessibilityLabel="Voltar">
           <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
         <Text style={[styles.headerTitulo, { flex: 1, textAlign: 'center', fontSize: fs(17) }]} numberOfLines={1}>Calendário</Text>

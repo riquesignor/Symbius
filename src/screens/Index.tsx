@@ -6,11 +6,13 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { db } from '../config/firebaseConfig';
+import { db, auth } from '../config/firebaseConfig';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   doc, getDoc, getDocs, collection, query, where, orderBy, onSnapshot,
-  updateDoc, increment, arrayUnion,
+  updateDoc, increment, arrayUnion, writeBatch,
 } from 'firebase/firestore';
+import { confirmar } from '../utils/confirmar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -180,15 +182,18 @@ export default function Index({ navigation, route }: any) {
     });
   };
 
+  // Quem está logado: parâmetro da rota, senão sessão salva, senão o Auth.
+  // Voltar pra Home por outra tela pode chegar sem o parâmetro.
+  const resolverUid = useCallback(async (): Promise<string | null> => {
+    const atual = uid || route?.params?.uid || (await AsyncStorage.getItem('uid').catch(() => null)) || auth.currentUser?.uid || null;
+    if (atual && atual !== uid) setUid(atual);
+    return atual;
+  }, [uid, route?.params?.uid]);
+
   const carregar = useCallback(async () => {
     try {
-      let uidAtual = uid;
-      if (!uidAtual) {
-        uidAtual = await AsyncStorage.getItem('uid');
-        if (uidAtual) setUid(uidAtual);
-      }
+      const uidAtual = await resolverUid();
       if (!uidAtual) { setLoading(false); return; }
-
       const snap = await getDoc(doc(db, 'usuarios', uidAtual));
       if (snap.exists()) setUserData(snap.data());
     } catch (e) {
@@ -196,9 +201,24 @@ export default function Index({ navigation, route }: any) {
     } finally {
       setLoading(false);
     }
+  }, [resolverUid]);
+
+  // Perfil ao vivo: o nome/XP/foto aparecem assim que chegam e se atualizam sozinhos
+  // (antes era uma leitura única que, se falhasse, deixava "Olá, colega" até puxar a tela).
+  useEffect(() => {
+    if (!uid) { carregar(); return; }
+    const unsub = onSnapshot(doc(db, 'usuarios', uid), (snap) => {
+      if (snap.exists()) setUserData(snap.data());
+      setLoading(false);
+    }, () => { carregar(); });
+    return () => unsub();
   }, [uid]);
 
-  useEffect(() => { carregar(); }, [carregar]);
+  // Toda vez que a Home volta a ficar visível: garante os dados e refaz os avisos da agenda
+  useFocusEffect(useCallback(() => {
+    carregar();
+    setTickAtualizar(t => t + 1);
+  }, [carregar]));
 
   // Puxar a tela pra baixo: recarrega perfil/XP e refaz a lista de avisos da agenda
   // (os posts do mural já são ao vivo, via onSnapshot).
@@ -355,11 +375,61 @@ export default function Index({ navigation, route }: any) {
     [notificacoesAgenda, notifDescartadas],
   );
 
-  const postsValidos = useMemo(() => posts.filter(postValido), [posts]);
+  const postsValidos = useMemo(() => posts.filter(p => postValido(p) && !p.oculto), [posts]);
   // Posts fora da janela de 30 dias — hoje eram "perdidos pra sempre" no
   // mural; ficam disponíveis aqui pra quem quiser ver via "Ver publicações
   // antigas" (já vêm ordenados por data desc, mesma ordem de `posts`).
   const postsAntigos = useMemo(() => posts.filter(p => !postValido(p)), [posts]);
+
+  // ── "Ver tudo" no modo editor: segurar um post seleciona; depois toca pra marcar outros ──
+  const editandoPosts = modoEdicao && isSuperAdmin;
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [processandoSelecao, setProcessandoSelecao] = useState(false);
+  const modoSelecao = editandoPosts && selecionados.size > 0;
+  const postsDoModal = editandoPosts ? posts : posts.filter(p => !p.oculto);
+  const alternarSelecao = (id: string) => setSelecionados(prev => {
+    const n = new Set(prev);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
+  const limparSelecao = () => setSelecionados(new Set());
+  const todosSelecionadosOcultos = posts.filter(p => selecionados.has(p.id)).every(p => p.oculto);
+
+  const ocultarSelecionados = async () => {
+    const ocultar = !todosSelecionadosOcultos;
+    setProcessandoSelecao(true);
+    try {
+      const lote = writeBatch(db);
+      selecionados.forEach(id => lote.update(doc(db, 'posts', id), { oculto: ocultar }));
+      await lote.commit();
+      limparSelecao();
+    } catch (e) {
+      console.log('Erro ao ocultar posts:', e);
+    } finally {
+      setProcessandoSelecao(false);
+    }
+  };
+
+  const apagarSelecionados = async () => {
+    const n = selecionados.size;
+    const ok = await confirmar(
+      n === 1 ? 'Apagar 1 publicação?' : `Apagar ${n} publicações?`,
+      'Elas somem para todos e não dá para desfazer. Se quiser só tirar do mural, use "Ocultar".',
+      'Apagar', true,
+    );
+    if (!ok) return;
+    setProcessandoSelecao(true);
+    try {
+      const lote = writeBatch(db);
+      selecionados.forEach(id => lote.delete(doc(db, 'posts', id)));
+      await lote.commit();
+      limparSelecao();
+    } catch (e) {
+      console.log('Erro ao apagar posts:', e);
+    } finally {
+      setProcessandoSelecao(false);
+    }
+  };
 
   const postsFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -447,7 +517,7 @@ export default function Index({ navigation, route }: any) {
   // ── Card de destaque (capa real + categoria como badge) ──
   // `opts` permite reusar o mesmo card no grid de "publicações antigas"
   // (largura diferente + fecha o modal de antigas antes de abrir o post).
-  const renderDestaqueCard = (post: any, opts?: { largura?: number; onAbrir?: () => void }) => {
+  const renderDestaqueCard = (post: any, opts?: { largura?: number; onAbrir?: () => void; selecionavel?: boolean }) => {
     const config = CATEGORIA_CONFIG[post.categoria] || CATEGORIA_CONFIG.avisos;
     const novo = ehNovo(post);
     const largura = opts?.largura ?? DESTAQUE_W;
@@ -455,11 +525,20 @@ export default function Index({ navigation, route }: any) {
     return (
       <TouchableOpacity
         key={post.id}
-        style={[styles.destCard, { width: largura }]}
-        onPress={() => modoEdicao && isSuperAdmin
-          ? navigation.navigate('EditorPost', { postId: post.id, categoria: post.categoria, current: post })
-          : (opts?.onAbrir ? opts.onAbrir() : visualizarPost(post))
+        style={[
+          styles.destCard,
+          { width: largura },
+          post.oculto && styles.destCardOculto,
+          opts?.selecionavel && selecionados.has(post.id) && styles.destCardSelecionado,
+        ]}
+        onPress={() => opts?.selecionavel && modoSelecao
+          ? alternarSelecao(post.id)
+          : modoEdicao && isSuperAdmin
+            ? navigation.navigate('EditorPost', { postId: post.id, categoria: post.categoria, current: post })
+            : (opts?.onAbrir ? opts.onAbrir() : visualizarPost(post))
         }
+        onLongPress={opts?.selecionavel && editandoPosts ? () => alternarSelecao(post.id) : undefined}
+        delayLongPress={350}
         activeOpacity={0.85}
         accessibilityRole="button"
         accessibilityLabel={`${config.label}. ${post.titulo}. ${post.visualizacoes || 0} visualizações.${novo ? ' Publicação nova.' : ''}`}
@@ -495,7 +574,18 @@ export default function Index({ navigation, route }: any) {
           </View>
         </View>
 
-        {modoEdicao && isSuperAdmin && (
+        {post.oculto && (
+          <View style={styles.destOcultoBadge}>
+            <Ionicons name="eye-off" size={10} color="#FFF" />
+            <Text style={styles.destOcultoTxt}>OCULTO</Text>
+          </View>
+        )}
+
+        {opts?.selecionavel && modoSelecao ? (
+          <View style={[styles.destCheck, selecionados.has(post.id) && styles.destCheckAtivo]}>
+            {selecionados.has(post.id) && <Ionicons name="checkmark" size={14} color="#FFF" />}
+          </View>
+        ) : modoEdicao && isSuperAdmin && (
           <View style={styles.destEditBadge}>
             <MaterialIcons name="edit" size={11} color="#FFF" />
           </View>
@@ -1041,7 +1131,7 @@ export default function Index({ navigation, route }: any) {
       </Modal>
 
       {/* MODAL — publicações antigas (fora da janela de 30 dias) */}
-      <Modal visible={modalAntigos} transparent animationType="slide" onRequestClose={() => setModalAntigos(false)}>
+      <Modal visible={modalAntigos} transparent animationType="slide" onRequestClose={() => (modoSelecao ? limparSelecao() : setModalAntigos(false))}>
         <View style={styles.notifOverlay}>
           <View style={[styles.notifSheet, { maxHeight: '85%' }]}>
             <View style={styles.notifHandle} />
@@ -1049,20 +1139,24 @@ export default function Index({ navigation, route }: any) {
               <View style={{ flex: 1 }}>
                 <Text style={styles.secaoEyebrow}>MURAL</Text>
                 <Text style={styles.notifTitulo}>Todas as publicações</Text>
+                {editandoPosts && !modoSelecao && (
+                  <Text style={styles.dicaSelecao}>Segure uma publicação para selecionar</Text>
+                )}
               </View>
-              <TouchableOpacity onPress={() => setModalAntigos(false)} hitSlop={HIT_SLOP_SM}>
+              <TouchableOpacity onPress={() => { limparSelecao(); setModalAntigos(false); }} hitSlop={HIT_SLOP_SM}>
                 <Ionicons name="close" size={22} color={CORES_SYMBIUS.textoSec} />
               </TouchableOpacity>
             </View>
 
-            {posts.length === 0 ? (
+            {postsDoModal.length === 0 ? (
               <View style={{ alignItems: 'center', paddingVertical: 36 }}>
                 <Ionicons name="archive-outline" size={36} color={CORES_SYMBIUS.borda2} />
                 <Text style={styles.notifVaziaTxt}>Nenhuma publicação ainda</Text>
               </View>
             ) : (
               <FlatList
-                data={posts}
+                data={postsDoModal}
+                extraData={selecionados}
                 keyExtractor={(p) => p.id}
                 numColumns={2}
                 columnWrapperStyle={{ gap: 12 }}
@@ -1071,8 +1165,34 @@ export default function Index({ navigation, route }: any) {
                 renderItem={({ item }) => renderDestaqueCard(item, {
                   largura: LARGURA_ANTIGO,
                   onAbrir: () => abrirPostAntigo(item),
+                  selecionavel: true,
                 })}
               />
+            )}
+
+            {modoSelecao && (
+              <View style={styles.barraSelecao}>
+                <TouchableOpacity onPress={limparSelecao} hitSlop={HIT_SLOP_SM} accessibilityLabel="Cancelar seleção">
+                  <Ionicons name="close" size={20} color={CORES_SYMBIUS.texto} />
+                </TouchableOpacity>
+                <Text style={styles.barraSelecaoTxt}>
+                  {selecionados.size} {selecionados.size === 1 ? 'selecionada' : 'selecionadas'}
+                </Text>
+                {processandoSelecao ? (
+                  <ActivityIndicator color={CORES_SYMBIUS.verdeEscuro} />
+                ) : (
+                  <>
+                    <TouchableOpacity style={styles.barraSelecaoBtn} onPress={ocultarSelecionados} accessibilityRole="button">
+                      <Ionicons name={todosSelecionadosOcultos ? 'eye-outline' : 'eye-off-outline'} size={16} color={CORES_SYMBIUS.verdeEscuro} />
+                      <Text style={styles.barraSelecaoBtnTxt}>{todosSelecionadosOcultos ? 'Mostrar' : 'Ocultar'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.barraSelecaoBtn, styles.barraSelecaoBtnPerigo]} onPress={apagarSelecionados} accessibilityRole="button">
+                      <Ionicons name="trash-outline" size={16} color="#D64545" />
+                      <Text style={[styles.barraSelecaoBtnTxt, { color: '#D64545' }]}>Apagar</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
             )}
           </View>
         </View>
@@ -1380,6 +1500,18 @@ const styles = StyleSheet.create({
     padding: 22, paddingBottom: 36, maxHeight: '80%',
   },
   notifHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16, backgroundColor: CORES_SYMBIUS.borda2 },
+  destCardOculto: { opacity: 0.55 },
+  destCardSelecionado: { borderWidth: 3, borderColor: CORES_SYMBIUS.laranja },
+  destOcultoBadge: { position: 'absolute', bottom: 8, right: 8, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3 },
+  destOcultoTxt: { color: '#FFF', fontSize: 8, fontFamily: F.bold, letterSpacing: 0.3 },
+  destCheck: { position: 'absolute', top: 8, right: 8, width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#FFF', backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'center', alignItems: 'center' },
+  destCheckAtivo: { backgroundColor: CORES_SYMBIUS.laranja, borderColor: CORES_SYMBIUS.laranja },
+  dicaSelecao: { fontSize: 11.5, fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 2 },
+  barraSelecao: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: CORES_SYMBIUS.borda },
+  barraSelecaoTxt: { flex: 1, fontSize: 14, fontFamily: F.bold, color: CORES_SYMBIUS.texto },
+  barraSelecaoBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: CORES_SYMBIUS.fundoSuave },
+  barraSelecaoBtnPerigo: { backgroundColor: 'rgba(214,69,69,0.1)' },
+  barraSelecaoBtnTxt: { fontSize: 13, fontFamily: F.semibold, color: CORES_SYMBIUS.verdeEscuro },
   notifTitulo: { fontSize: 17, fontFamily: F.black, color: CORES_SYMBIUS.texto },
   notifLimparTxt: { fontSize: 13, fontFamily: F.bold, color: CORES_SYMBIUS.laranjaTexto },
   notifVaziaTxt: { color: CORES_SYMBIUS.textoMuted, fontSize: 13, fontFamily: F.medium, marginTop: 10 },

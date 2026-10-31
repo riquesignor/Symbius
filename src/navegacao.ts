@@ -11,6 +11,11 @@ export const irParaAba = (navigation: any, destino: string, params?: any) =>
 
 // Seta de voltar das telas: volta se der; se a tela foi aberta direto
 // (notificação, link) cai na Home em vez de não fazer nada.
+// Área de toque dos botões de voltar: a seta é pequena (22px), então o toque
+// vale bem além dela. AREA_VOLTAR garante 44×44 nos botões que não têm tamanho.
+export const HIT_VOLTAR = { top: 16, bottom: 16, left: 16, right: 16 };
+export const AREA_VOLTAR = { minWidth: 44, minHeight: 44, justifyContent: 'center' as const };
+
 export const voltar = (navigation: any) => {
   if (navigation.canGoBack()) navigation.goBack();
   else navigation.navigate({ name: 'Index', pop: true });

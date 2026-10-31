@@ -1,4 +1,4 @@
-import { voltar } from '../navegacao';
+import { voltar, HIT_VOLTAR } from '../navegacao';
 import React, { useRef, useEffect } from 'react';
 import SymbiusTabBar from '../components/SymbiusTabBar';
 import {
@@ -177,10 +177,9 @@ export default function Contato({ navigation, route }: any) {
           borderBottomColor: C.cinzaClaro,
         },
       ]}>
-        <TouchableOpacity
+        <TouchableOpacity hitSlop={HIT_VOLTAR}
           onPress={() => voltar(navigation)}
           style={styles.backBtn}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           accessibilityRole="button"
           accessibilityLabel="Voltar"
         >

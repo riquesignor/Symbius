@@ -1,4 +1,4 @@
-import { voltar } from '../navegacao';
+import { voltar, HIT_VOLTAR, AREA_VOLTAR } from '../navegacao';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity,
@@ -839,7 +839,7 @@ export default function Match({ navigation, route }: any) {
 
       {/* NAVBAR */}
       <View style={[styles.navbar, { paddingTop: insets.top + 16, minHeight: 60 + insets.top + 16, backgroundColor: CORES_SYMBIUS.fundo, borderBottomColor: CORES_SYMBIUS.borda }]}>
-        <TouchableOpacity onPress={() => voltar(navigation)}>
+        <TouchableOpacity hitSlop={HIT_VOLTAR} style={AREA_VOLTAR} onPress={() => voltar(navigation)}>
           <Ionicons name="arrow-back" size={22} color={C.azulEscuro} />
         </TouchableOpacity>
         <View style={styles.logoWrap}>

@@ -1,4 +1,4 @@
-import { voltar } from '../navegacao';
+import { voltar, HIT_VOLTAR, AREA_VOLTAR } from '../navegacao';
 import React, { useState, useEffect } from 'react';
 import {
   StyleSheet, Text, View, TextInput, TouchableOpacity,
@@ -188,7 +188,7 @@ export default function Cadastro({ navigation, route }: any) {
         )}
 
         <View style={[styles.header, { paddingTop: insets.top + 22 }]}>
-          <TouchableOpacity onPress={() => voltar(navigation)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <TouchableOpacity hitSlop={HIT_VOLTAR} style={AREA_VOLTAR} onPress={() => voltar(navigation)}>
             <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
           </TouchableOpacity>
         </View>

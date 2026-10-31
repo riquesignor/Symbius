@@ -1,4 +1,4 @@
-import { voltar } from '../navegacao';
+import { voltar, HIT_VOLTAR, AREA_VOLTAR } from '../navegacao';
 import React, { useState, useEffect, useCallback } from 'react';
 import SymbiusTabBar from '../components/SymbiusTabBar';
 import AvatarComCosmeticos from '../components/AvatarComCosmeticos';
@@ -296,7 +296,7 @@ export default function Leaderboard({ navigation, route }: any) {
       <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
 
       <View style={[styles.header, { paddingTop: (insets.top || 12) + 16 }]}>
-        <TouchableOpacity onPress={() => voltar(navigation)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} accessibilityLabel="Voltar">
+        <TouchableOpacity hitSlop={HIT_VOLTAR} style={AREA_VOLTAR} onPress={() => voltar(navigation)} accessibilityLabel="Voltar">
           <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
         <Text style={[styles.headerTitulo, { fontSize: fs(17) }]}>Ranking</Text>

@@ -1,4 +1,4 @@
-import { voltar } from '../navegacao';
+import { voltar, HIT_VOLTAR } from '../navegacao';
 import React, { useEffect, useRef, useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
@@ -1157,7 +1157,7 @@ export default function Chat({ route, navigation }: any) {
 
       {/* ── HEADER ── */}
       <View style={[styles.header, { paddingTop: insets.top + 24, backgroundColor: CC.headerBg, borderBottomColor: CC.headerBorder }]}>
-        <TouchableOpacity onPress={() => voltar(navigation)} style={[styles.backBtn, { backgroundColor: CC.backBtn }]}>
+        <TouchableOpacity hitSlop={HIT_VOLTAR} onPress={() => voltar(navigation)} style={[styles.backBtn, { backgroundColor: CC.backBtn }]}>
           <Ionicons name="arrow-back" size={22} color={CC.backIcon} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.headerCenter} onPress={() => setPerfilVisible(true)} activeOpacity={0.7}>

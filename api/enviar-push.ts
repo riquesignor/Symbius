@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { dbAdmin } from './_lib/firebaseAdmin';
 import {
   liberarCors, uidDoToken, permitePush, enviarParaTokens, TIPOS_SO_ADMIN, ehAdmin,
-  mensagensNaoLidas, montarBloco,
+  mensagensNaoLidas, montarBloco, urlFoto,
 } from './_lib/push';
 
 // POST /api/enviar-push
@@ -52,6 +52,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let tituloFinal = String(titulo).slice(0, 120);
     let corpoFinal = String(corpo).slice(0, 240);
     let tag: string | undefined;
+    let imagem: string | undefined;
+    const host = req.headers.host;
+    const fotoDoRemetente = async () =>
+      urlFoto(host, 'u', remetenteUid, (await dbAdmin.collection('usuarios').doc(remetenteUid).get()).data()?.foto);
 
     if (dados.tipo === 'mensagem') {
       // Várias mensagens da mesma pessoa viram UMA notificação com a lista das
@@ -60,10 +64,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const bloco = await mensagensNaoLidas({ conversaId, destinatarioUid, remetenteUid });
       ({ titulo: tituloFinal, corpo: corpoFinal } = montarBloco(tituloFinal, bloco, corpoFinal));
       tag = `chat_${conversaId}`;
+      imagem = await fotoDoRemetente();
     } else if (dados.tipo === 'mensagem_grupo' && dados.grupoId) {
       const bloco = await mensagensNaoLidas({ conversaId: String(dados.grupoId), destinatarioUid, comNome: true });
       ({ titulo: tituloFinal, corpo: corpoFinal } = montarBloco(tituloFinal, bloco, corpoFinal));
       tag = `grupo_${dados.grupoId}`;
+      // foto do grupo; se o grupo não tiver, a de quem mandou
+      const grupoFoto = (await dbAdmin.collection('conversas').doc(String(dados.grupoId)).get()).data()?.foto;
+      imagem = urlFoto(host, 'g', String(dados.grupoId), grupoFoto) || await fotoDoRemetente();
     } else if (dados.tipo === 'solicitacao_match' || dados.tipo === 'match_aceito') {
       tag = `${dados.tipo}_${remetenteUid}`;
     } else if (dados.tipo === 'convite_grupo') {
@@ -79,7 +87,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       tituloFinal,
       corpoFinal,
       { ...dados, remetenteUid, ...(dados.tipo === 'mensagem' ? { outroUid: remetenteUid } : {}) },
-      { tag },
+      { tag, imagem },
     );
     return res.status(200).json(enviados > 0 ? { enviado: true } : { enviado: false, motivo: erros[0] || 'falha no FCM' });
   } catch (e: any) {

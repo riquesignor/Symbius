@@ -1,4 +1,4 @@
-import { voltar } from '../navegacao';
+import { voltar, HIT_VOLTAR } from '../navegacao';
   import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
   import {
     StyleSheet, Text, View, TouchableOpacity, ScrollView,
@@ -477,7 +477,7 @@ import { voltar } from '../navegacao';
 
         {/* HEADER */}
         <View style={[styles.header, { paddingTop: insets.top + 28 }]}>
-          <TouchableOpacity onPress={() => voltar(navigation)} style={styles.btnVoltar} accessibilityLabel="Voltar">
+          <TouchableOpacity hitSlop={HIT_VOLTAR} onPress={() => voltar(navigation)} style={styles.btnVoltar} accessibilityLabel="Voltar">
             <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
           </TouchableOpacity>
           {/* Título no fluxo normal (não absoluto): um Text absoluto por cima
