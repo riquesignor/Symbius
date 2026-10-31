@@ -231,7 +231,8 @@ export interface FinalizarMatchResult {
 }
 
 // ─ Aluno avalia o professor ao finalizar o match ──────────────────
-// estrelas de 1 a 5 (sempre as 5 na tela). entendeu = nota máxima (5 = entendeu tudo).
+// entendeu=true  → estrelas deve ser 4 ou 5 (dúvida resolvida)
+// entendeu=false → estrelas deve ser 0 a 3 (dúvida não resolvida)
 export const awardXpFinalizarMatch = async (
   alunoUid: string,
   professorUid: string,
@@ -276,10 +277,9 @@ export const awardXpFinalizarMatch = async (
     await updateDoc(profRef, profUpdates);
     const resultadoProfessor = construirAwardResult(xpProfessorAtual, tierProfessor.xp, tierProfessor.moedas);
 
-    // ── Aluno: ganha ao finalizar o elo, qualquer que seja a nota (assim a nota
-    // fica honesta: ninguém precisa dar 5 estrelas pra ganhar XP). Limite diário. ──
+    // ── Aluno: só ganha se a dúvida foi resolvida, com limite diário ──
     let resultadoAluno: AwardResult = AWARD_FALHA;
-    {
+    if (entendeu) {
       const matchesBonificadosHoje = alunoData?.matches_bonificados_hoje || 0;
       const ultimoReset = alunoData?.ultimo_reset_diario;
       const deveReset = verificarResetDiario(ultimoReset);
