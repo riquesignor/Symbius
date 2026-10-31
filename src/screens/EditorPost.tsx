@@ -1,3 +1,4 @@
+import { voltar, HIT_VOLTAR } from '../navegacao';
 import React, { useState } from 'react';
 import {
   StyleSheet, View, Text, TextInput, TouchableOpacity,
@@ -11,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CORES_SYMBIUS } from '../constants/coresSymbius';
 import { F } from '../constants/theme';
 import { escolherImagemBase64 } from '../utils/midiaNativa';
+import { dispararPushTodos } from '../services/pushNotificationsService';
 
 const CATEGORIAS_OPCOES = [
   { label: 'Avisos',        value: 'avisos',        icon: 'campaign'     },
@@ -61,14 +63,14 @@ export default function EditorPost({ route, navigation }: any) {
         conteudo:          conteudo.trim(),
         capa,
         categoria,
-        autor:             autor.trim() || 'Gestão Symbius',
+        autor:             autor.trim() || 'Gestão Simbio',
         tags:              tagsArray,
         ultimaAtualizacao: serverTimestamp(),
       };
 
       if (postId) {
         await updateDoc(doc(db, 'posts', postId), postData);
-        Alert.alert('Pronto!', 'Post atualizado.', [{ text: 'OK', onPress: () => navigation.goBack() }]);
+        Alert.alert('Pronto!', 'Post atualizado.', [{ text: 'OK', onPress: () => voltar(navigation) }]);
       } else {
         // ID legível (slug do título + sufixo curto) facilita achar o post no Firestore.
         const idPost = gerarIdLegivel(postData.titulo);
@@ -78,7 +80,13 @@ export default function EditorPost({ route, navigation }: any) {
           leitores:        [],
           data_publicacao: serverTimestamp(),
         });
-        Alert.alert('Pronto!', 'Post publicado.', [{ text: 'OK', onPress: () => navigation.goBack() }]);
+        const cat = CATEGORIAS_OPCOES.find(c => c.value === categoria)?.label || 'Mural';
+        dispararPushTodos({
+          titulo: `Novo post: ${cat}`,
+          corpo: postData.titulo,
+          dados: { tipo: 'novo_post', postId: idPost },
+        });
+        Alert.alert('Pronto!', 'Post publicado.', [{ text: 'OK', onPress: () => voltar(navigation) }]);
       }
     } catch (e: any) {
       console.error(e);
@@ -108,7 +116,7 @@ export default function EditorPost({ route, navigation }: any) {
               return;
             }
             setLoading(false);
-            navigation.goBack();
+            voltar(navigation);
           },
         },
       ],
@@ -119,9 +127,9 @@ export default function EditorPost({ route, navigation }: any) {
     <View style={styles.container}>
       <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
 
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Ionicons name="arrow-back" size={20} color={CORES_SYMBIUS.texto} />
+      <View style={[styles.header, { paddingTop: insets.top + 24 }]}>
+        <TouchableOpacity hitSlop={HIT_VOLTAR} onPress={() => voltar(navigation)} style={styles.headerBtn}>
+          <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
         <View style={{ alignItems: 'center' }}>
           <Text style={styles.headerEyebrow}>MURAL</Text>

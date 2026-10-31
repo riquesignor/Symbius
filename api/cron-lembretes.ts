@@ -1,12 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { dbAdmin } from './_lib/firebaseAdmin';
-import { permitePush, enviarParaTokens, Destino } from './_lib/push';
+import { permitePush, enviarParaTokens, Destino, ehAdmin } from './_lib/push';
 
 // Roda 1x por dia (vercel.json → crons). Avisa 3 dias e 1 dia antes de:
 //  • eventos do admin (eventos_admin/tipos/{provas|feriados|avisos|eventos}), pra série de cada um
 //  • lembretes pessoais (lembretes/{RA ou uid}/lembretes/{id}), pro dono
 const SUBS: Record<string, string> = { provas: 'Prova', feriados: 'Feriado', avisos: 'Aviso', eventos: 'Evento' };
-const ANTECEDENCIAS = [3, 1];
+const ANTECEDENCIAS = [3, 1, 0];
 
 const dataBrasilia = (somaDias: number) => {
   const agora = new Date(Date.now() + somaDias * 86400000);
@@ -18,7 +18,7 @@ const extrairSerie = (turma: string): string | null => {
   return m ? `${m[1]}º` : null;
 };
 
-const textoAntecedencia = (dias: number) => (dias === 1 ? 'É amanhã' : `Faltam ${dias} dias`);
+const textoAntecedencia = (dias: number) => (dias === 0 ? 'É hoje' : dias === 1 ? 'É amanhã' : `Faltam ${dias} dias`);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const segredo = process.env.CRON_SECRET;
@@ -61,6 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           `${textoAntecedencia(dias)}: ${tipoEvento.toLowerCase()}`,
           ev.titulo || 'Evento na agenda',
           { tipo: 'evento_admin', eventoId: evDoc.id, tipoEvento },
+          { tag: `agenda_${evDoc.id}` },
         );
         enviados += r.enviados;
       }
@@ -81,6 +82,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         `${textoAntecedencia(dias)}: seu lembrete`,
         l.titulo,
         { tipo: 'lembrete', lembreteId: lDoc.id },
+        { tag: `lembrete_${lDoc.id}` },
+      );
+      enviados += r.enviados;
+    }
+
+    // ── Lembrete do desafio diário (XP) ──
+    // Só pra quem não fez check-in nas últimas 24h; ultimo_checkin_ts é Date.now().
+    const DIA_MS = 24 * 60 * 60 * 1000;
+    const pendentesCheckin: Destino[] = [];
+    usuarios.forEach((u, uid) => {
+      if (!u.fcmToken || u.status !== 1) return;
+      const ultimo = typeof u.ultimo_checkin_ts === 'number' ? u.ultimo_checkin_ts : 0;
+      if (Date.now() - ultimo < DIA_MS) return;
+      if (!permitePush(u, 'checkin')) return;
+      pendentesCheckin.push({ uid, token: u.fcmToken });
+    });
+    const rCheckin = await enviarParaTokens(
+      pendentesCheckin,
+      '🌱 Seu desafio diário está liberado',
+      'Entre no Symbius e ganhe +10 XP e 5 Sementes hoje.',
+      { tipo: 'checkin' },
+    );
+    enviados += rCheckin.enviados;
+
+    // ── Resumo pros administradores (só quando tem algo pra fazer) ──
+    let pendentes = 0;
+    let suspensos = 0;
+    usuarios.forEach(u => { if (u.status === 0) pendentes++; if (u.status === 2) suspensos++; });
+    if (pendentes > 0) {
+      const admins: Destino[] = [];
+      usuarios.forEach((u, uid) => {
+        if (u.fcmToken && ehAdmin(u) && permitePush(u, 'admin_resumo')) admins.push({ uid, token: u.fcmToken });
+      });
+      const r = await enviarParaTokens(
+        admins,
+        '📋 Resumo do dia',
+        `${pendentes} conta(s) aguardando confirmação${suspensos ? ` · ${suspensos} suspensa(s)` : ''}. Toque para abrir o painel.`,
+        { tipo: 'admin_resumo' },
       );
       enviados += r.enviados;
     }

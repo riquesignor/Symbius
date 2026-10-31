@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Symbius",
+    "name": "Simbio",
     "slug": "JUMO",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -16,7 +16,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -45,8 +45,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "O Symbius precisa acessar suas fotos para você enviar imagens no chat e trocar sua foto de perfil.",
-          "cameraPermission": "O Symbius precisa acessar a câmera para você tirar fotos e enviar no chat ou no perfil."
+          "photosPermission": "O Simbio precisa acessar suas fotos para você enviar imagens no chat e trocar sua foto de perfil.",
+          "cameraPermission": "O Simbio precisa acessar a câmera para você tirar fotos e enviar no chat ou no perfil."
         }
       ]
     ]

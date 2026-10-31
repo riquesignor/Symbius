@@ -1,3 +1,4 @@
+import { voltar, HIT_VOLTAR, AREA_VOLTAR } from '../navegacao';
 import React, { useState, useEffect } from 'react';
 import {
   StyleSheet, Text, View, TextInput, TouchableOpacity,
@@ -10,6 +11,7 @@ import { auth, db } from '../config/firebaseConfig';
 import { createUserWithEmailAndPassword, sendEmailVerification, signOut } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { CORES_SYMBIUS } from './Boasvindas';
+import { notificarAdmins } from '../services/pushNotificationsService';
 import { F } from '../constants/theme';
 
 type Papel = 'aprender' | 'ensinar';
@@ -128,6 +130,9 @@ export default function Cadastro({ navigation, route }: any) {
         visibilidade: true,
       });
 
+      // Ainda logado aqui (createUser loga sozinho), então dá pra chamar o backend.
+      await notificarAdmins('nova_conta');
+
       // createUser já deixa a pessoa logada; o acesso de verdade é pelo Login.
       await signOut(auth);
 
@@ -182,8 +187,8 @@ export default function Cadastro({ navigation, route }: any) {
           </View>
         )}
 
-        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <View style={[styles.header, { paddingTop: insets.top + 22 }]}>
+          <TouchableOpacity hitSlop={HIT_VOLTAR} style={AREA_VOLTAR} onPress={() => voltar(navigation)}>
             <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
           </TouchableOpacity>
         </View>
@@ -194,7 +199,7 @@ export default function Cadastro({ navigation, route }: any) {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.logoWrap}>
-            <Text style={styles.logoText}>Symbius</Text>
+            <Text style={styles.logoText}>Simbio</Text>
             <Text style={styles.logoSlogan}>crie sua conta</Text>
           </View>
 

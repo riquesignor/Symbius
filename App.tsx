@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { doc, getDoc } from 'firebase/firestore';
@@ -20,6 +20,14 @@ import {
   Poppins_800ExtraBold,
 } from '@expo-google-fonts/poppins';
 
+import {
+  PlusJakartaSans_400Regular,
+  PlusJakartaSans_500Medium,
+  PlusJakartaSans_600SemiBold,
+  PlusJakartaSans_700Bold,
+  PlusJakartaSans_800ExtraBold,
+} from '@expo-google-fonts/plus-jakarta-sans';
+
 import Boasvindas      from './src/screens/Boasvindas';
 import EscolhaPapel    from './src/screens/EscolhaPapel';
 import FeedResumos     from './src/screens/FeedResumos';
@@ -29,6 +37,7 @@ import Index           from './src/screens/Index';
 import Perfil          from './src/screens/Perfil';
 import EditorPost      from './src/screens/EditorPost';
 import Chat            from './src/screens/Chat';
+import GrupoChat       from './src/screens/GrupoChat';
 import Calendario      from './src/screens/Calendario';
 import Admin           from './src/screens/Admin';
 import Match           from './src/screens/Match';
@@ -38,8 +47,30 @@ import Contato         from 'src/screens/Contato';
 import Ajuda           from 'src/screens/Ajuda';
 import Leaderboard     from 'src/screens/Leaderboard';
 import Loja            from './src/screens/Loja';
+import TesteNivelUp    from './src/screens/TesteNivelUp';
+
+import comEntradaAnimada from './src/components/comEntradaAnimada';
+import { marcarAppPronto, transicaoEmAndamento } from './src/components/TransicaoTema';
 
 const Stack = createStackNavigator();
+
+// Mesma animação de entrada do Perfil nas demais telas (Perfil, Perfil público,
+// Admin, Calendário e Configurações já têm a sua própria).
+const BoasvindasA   = comEntradaAnimada(Boasvindas);
+const EscolhaPapelA = comEntradaAnimada(EscolhaPapel);
+const LoginA        = comEntradaAnimada(Login);
+const CadastroA     = comEntradaAnimada(Cadastro);
+const IndexA        = comEntradaAnimada(Index);
+const EditorPostA   = comEntradaAnimada(EditorPost);
+const ChatA         = comEntradaAnimada(Chat);
+const GrupoChatA    = comEntradaAnimada(GrupoChat);
+const MatchA        = comEntradaAnimada(Match);
+const ContatoA      = comEntradaAnimada(Contato);
+const AjudaA        = comEntradaAnimada(Ajuda);
+const LeaderboardA  = comEntradaAnimada(Leaderboard);
+const LojaA         = comEntradaAnimada(Loja);
+const TesteNivelUpA = comEntradaAnimada(TesteNivelUp);
+const FeedResumosA  = comEntradaAnimada(FeedResumos);
 
 export default function App() {
   const [initialRoute, setInitialRoute] = useState<string | null>(null);
@@ -51,6 +82,11 @@ export default function App() {
     Poppins_600SemiBold,
     Poppins_700Bold,
     Poppins_800ExtraBold,
+    PlusJakartaSans_400Regular,
+    PlusJakartaSans_500Medium,
+    PlusJakartaSans_600SemiBold,
+    PlusJakartaSans_700Bold,
+    PlusJakartaSans_800ExtraBold,
   });
 
   useEffect(() => {
@@ -80,10 +116,15 @@ export default function App() {
     verificarSessao();
   }, []);
 
+  // avisa a onda da troca de tema que já dá pra mostrar o app de verdade
+  useEffect(() => {
+    if (initialRoute !== null && fontsLoaded) marcarAppPronto();
+  }, [initialRoute, fontsLoaded]);
+
   if (initialRoute === null || !fontsLoaded) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: CORES_SYMBIUS.fundo }}>
-        <ActivityIndicator size="large" color={CORES_SYMBIUS.verdeEscuro} />
+        {!transicaoEmAndamento() && <ActivityIndicator size="large" color={CORES_SYMBIUS.verdeEscuro} />}
       </View>
     );
   }
@@ -94,30 +135,32 @@ export default function App() {
         <NavigationContainer ref={navegacaoRef}>
           <Stack.Navigator
             initialRouteName={initialRoute}
-            screenOptions={{ headerShown: false, cardStyle: { backgroundColor: CORES_SYMBIUS.fundo } }}
+            screenOptions={{ headerShown: false, cardStyle: { backgroundColor: CORES_SYMBIUS.fundo, ...(Platform.OS === 'web' ? ({ height: '100vh' } as any) : {}) } }}
           >
-            <Stack.Screen name="Boasvindas"     component={Boasvindas} />
-            <Stack.Screen name="EscolhaPapel"   component={EscolhaPapel} />
-            <Stack.Screen name="Login"           component={Login} />
-            <Stack.Screen name="Cadastro"        component={Cadastro} />
+            <Stack.Screen name="Boasvindas"     component={BoasvindasA} />
+            <Stack.Screen name="EscolhaPapel"   component={EscolhaPapelA} />
+            <Stack.Screen name="Login"           component={LoginA} />
+            <Stack.Screen name="Cadastro"        component={CadastroA} />
             <Stack.Screen
               name="Index"
-              component={Index}
+              component={IndexA}
               initialParams={initialUid ? { uid: initialUid } : undefined}
             />
             <Stack.Screen name="Perfil"          component={Perfil} />
-            <Stack.Screen name="EditorPost"      component={EditorPost} />
-            <Stack.Screen name="Chat"            component={Chat} />
+            <Stack.Screen name="EditorPost"      component={EditorPostA} />
+            <Stack.Screen name="Chat"            component={ChatA} />
+            <Stack.Screen name="GrupoChat"       component={GrupoChatA} />
             <Stack.Screen name="Calendario"      component={Calendario} />
             <Stack.Screen name="Admin"           component={Admin} />
-            <Stack.Screen name="Match"           component={Match} />
+            <Stack.Screen name="Match"           component={MatchA} />
             <Stack.Screen name="Configuracoes"   component={Configuracoes} />
             <Stack.Screen name="PerfilPublico"   component={PerfilPublico} />
-            <Stack.Screen name="Contatos"        component={Contato}/>
-            <Stack.Screen name="Ajuda"           component={Ajuda} />
-            <Stack.Screen name="Leaderboard"     component={Leaderboard} />
-            <Stack.Screen name="Loja"            component={Loja} />
-            <Stack.Screen name="Resumos"         component={FeedResumos} />
+            <Stack.Screen name="Contatos"        component={ContatoA}/>
+            <Stack.Screen name="Ajuda"           component={AjudaA} />
+            <Stack.Screen name="Leaderboard"     component={LeaderboardA} />
+            <Stack.Screen name="Loja"            component={LojaA} />
+            <Stack.Screen name="TesteNivelUp"    component={TesteNivelUpA} />
+            <Stack.Screen name="Resumos"         component={FeedResumosA} />
           </Stack.Navigator>
         </NavigationContainer>
       </NotificacaoProvider>

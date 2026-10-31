@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
-  Platform, Vibration, AppState,
+  Platform, Vibration, AppState, Alert,
   Animated, TouchableOpacity, Image, Text, View, StyleSheet, Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,7 +14,9 @@ import { db, auth } from '../config/firebaseConfig';
 import { useAppSettings } from './AppSettingsContext';
 import { CORES_SYMBIUS } from '../constants/coresSymbius';
 import { F } from '../constants/theme';
-import { navegarGlobal } from '../navegacao';
+import { navegarGlobal, navegacaoRef } from '../navegacao';
+import { sairDaConta } from '../services/authService';
+import { ConviteGrupo, COLECAO_CONVITES, responderConviteGrupo } from '../services/convitesService';
 import {
   configurarPushParaUsuario,
   registrarListenerForeground,
@@ -40,6 +42,18 @@ Notifications.setNotificationHandler({
   }),
 });
 
+// Push que chega com o app aberto vira banner só pros tipos sem listener próprio
+// do Firestore abaixo (mensagens, solicitações e eventos já têm o deles).
+const TIPOS_BANNER_PUSH = [
+  'resumo_curtida', 'resumo_comentario', 'match_aceito', 'grupo_adicionado',
+  'novo_post', 'checkin', 'conta_reativada', 'admin_nova_conta', 'admin_resumo',
+];
+const ICONE_POR_TIPO: Record<string, keyof typeof Ionicons.glyphMap> = {
+  match_aceito: 'heart', resumo_curtida: 'thumbs-up', resumo_comentario: 'chatbubble-ellipses',
+  grupo_adicionado: 'people', novo_post: 'newspaper', checkin: 'leaf',
+  conta_reativada: 'checkmark-circle', admin_nova_conta: 'person-add', admin_resumo: 'clipboard',
+};
+
 const extrairSerie = (turma: string): string | null => {
   const match = (turma || '').match(/^(\d+)/);
   return match ? `${match[1]}º` : null;
@@ -59,6 +73,7 @@ export interface ChatNotif {
   corpo: string;
   outroUid: string;
   outroNome: string;
+  grupoId?: string;
   quando: Date;
 }
 
@@ -68,6 +83,9 @@ interface NotificacaoContextType {
   setConversaAtiva: (id: string | null) => void;
   notificacoesChat: ChatNotif[];
   limparNotificacoesChat: () => void;
+  // Convite pendente para grupo de estudo (um por vez) — aparece no sininho.
+  conviteGrupo: ConviteGrupo | null;
+  responderConvite: (aceitar: boolean) => Promise<{ grupoId: string | null }>;
 }
 const NotificacaoContext = createContext<NotificacaoContextType>({
   uidAtual: null,
@@ -75,6 +93,8 @@ const NotificacaoContext = createContext<NotificacaoContextType>({
   setConversaAtiva: () => {},
   notificacoesChat: [],
   limparNotificacoesChat: () => {},
+  conviteGrupo: null,
+  responderConvite: async () => ({ grupoId: null }),
 });
 export const useNotificacao = () => useContext(NotificacaoContext);
 
@@ -98,6 +118,14 @@ export const rotaDoPush = (data: any, uid: string | null): { rota: string; param
     case 'lembrete':          return { rota: 'Calendario', params: { uid } };
     case 'resumo_curtida':
     case 'resumo_comentario': return { rota: 'Resumos', params: { uid, resumoId: data.resumoId } };
+    case 'mensagem_grupo':
+    case 'grupo_adicionado':  return { rota: 'GrupoChat', params: { uid, grupoId: data.grupoId } };
+    case 'convite_grupo':     return { rota: 'Index', params: { uid, abrirNotificacoes: true } };
+    case 'novo_post':         return { rota: 'Index', params: { uid, abrirPostId: data.postId } };
+    case 'checkin':
+    case 'conta_reativada':   return { rota: 'Index', params: { uid } };
+    case 'admin_nova_conta':
+    case 'admin_resumo':      return { rota: 'Admin', params: { uid } };
     default:                  return null;
   }
 };
@@ -115,6 +143,7 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
   const [conversaAtiva, setConversaAtiva] = useState<string | null>(null);
   const [notificacoesChat, setNotificacoesChat] = useState<ChatNotif[]>([]);
   const limparNotificacoesChat = () => setNotificacoesChat([]);
+  const [conviteGrupo, setConviteGrupo] = useState<ConviteGrupo | null>(null);
 
   // ── Refs (listeners do Firestore não enxergam state novo) ──
   const prefsRef = useRef({ notifGeral, notifMatch, notifEventos, notifAvisos, notifMensagens, vibracao, somNotif });
@@ -198,14 +227,14 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
   useEffect(() => {
     return registrarListenerForeground((m) => {
       const data: any = m.data || {};
-      if (!['resumo_curtida', 'resumo_comentario', 'match_aceito'].includes(data.tipo)) return;
+      if (!TIPOS_BANNER_PUSH.includes(data.tipo)) return;
       if (data.tipo === 'match_aceito' && !prefsRef.current.notifMatch) return;
       const destino = rotaDoPush(data, uidRef.current);
       if (!destino) return;
       mostrarBannerRef.current({
-        titulo: m.notification?.title || 'Symbius',
+        titulo: m.notification?.title || 'Simbio',
         corpo: m.notification?.body || '',
-        icone: data.tipo === 'match_aceito' ? 'heart' : data.tipo === 'resumo_curtida' ? 'thumbs-up' : 'chatbubble-ellipses',
+        icone: ICONE_POR_TIPO[data.tipo] || 'notifications',
         rota: destino.rota,
         params: destino.params,
       });
@@ -226,12 +255,33 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
     return () => handler.remove();
   }, []);
 
+  // ════ BATIMENTO: sem isso, fechar o app à força deixava a pessoa "online" pra sempre ════
+  useEffect(() => {
+    if (!uidAtual) return;
+    const ref = firestoreDoc(db, 'usuarios', uidAtual);
+    const bater = () => {
+      if (AppState.currentState !== 'active') return;
+      setDoc(ref, { online: true, online_ping: serverTimestamp() }, { merge: true }).catch(() => {});
+    };
+    bater();
+    const id = setInterval(bater, 60000);
+    const sub = AppState.addEventListener('change', (st) => { if (st === 'active') bater(); });
+    return () => { clearInterval(id); sub.remove(); };
+  }, [uidAtual]);
+
   // ════ DADOS DO USUÁRIO (série + conversas silenciadas) ════
   useEffect(() => {
     if (!uidAtual) { setSerie(null); silenciadosRef.current = []; return; }
     setDoc(firestoreDoc(db, 'usuarios', uidAtual), { online: true }, { merge: true }).catch(() => {});
     return onSnapshot(firestoreDoc(db, 'usuarios', uidAtual), (snap) => {
       const d = snap.data() || {};
+      if (d.status === 2) {
+        sairDaConta(uidAtual).finally(() => {
+          if (navegacaoRef.isReady()) navegacaoRef.reset({ index: 0, routes: [{ name: 'Login' }] });
+          Alert.alert('Conta desativada', 'Sua conta foi desativada pela coordenação. Em caso de dúvida, procure a secretaria.');
+        });
+        return;
+      }
       setSerie(extrairSerie(d.turma || ''));
       silenciadosRef.current = Array.isArray(d.silenciados) ? d.silenciados : [];
     }, () => {});
@@ -252,29 +302,61 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
         const remetente = conversa.quemEnviou;
         if (!remetente || remetente === uidAtual) return;
         if (conversaAtivaRef.current === conversaId) return;
-        if (silenciadosRef.current.includes(remetente)) return;
+        const ehGrupo = !!conversa.isGrupo;
+        if (silenciadosRef.current.includes(ehGrupo ? conversaId : remetente)) return;
 
         const chave = `${conversaId}_${conversa.data_postagem?.seconds ?? ''}`;
         if (ultimas[conversaId] === chave) return;
         ultimas[conversaId] = chave;
 
-        const nome = conversa.dadosMembros?.[remetente]?.nome || 'Nova mensagem';
-        const foto = conversa.dadosMembros?.[remetente]?.foto || null;
+        const nomeRemetente = conversa.dadosMembros?.[remetente]?.nome || 'Nova mensagem';
+        const nome = ehGrupo ? (conversa.nome || 'Grupo') : nomeRemetente;
+        const foto = ehGrupo ? null : (conversa.dadosMembros?.[remetente]?.foto || null);
         const corpo = String(conversa.ultimaMensagem || '').substring(0, 120);
 
         setNotificacoesChat(prev => [{
           id: `${conversaId}_${Date.now()}`, nome, foto, corpo,
-          outroUid: remetente, outroNome: nome, quando: new Date(),
+          outroUid: remetente, outroNome: nomeRemetente,
+          grupoId: ehGrupo ? conversaId : undefined,
+          quando: new Date(),
         }, ...prev].slice(0, 20));
 
         if (!prefsRef.current.notifMensagens) return;
         mostrarBannerRef.current({
           titulo: nome, corpo, foto,
-          rota: 'Chat', params: { outroUid: remetente, outroNome: nome },
+          icone: ehGrupo ? 'people' : undefined,
+          rota: ehGrupo ? 'GrupoChat' : 'Chat',
+          params: ehGrupo ? { grupoId: conversaId, uid: uidAtual } : { outroUid: remetente, outroNome: nomeRemetente },
         });
       });
     }, (err) => console.log('Erro listener conversas:', err.message));
   }, [uidAtual]);
+
+  // ════ CONVITE PARA GRUPO (um documento por pessoa: convites_grupo/{uid}) ════
+  useEffect(() => {
+    if (!uidAtual) { setConviteGrupo(null); return; }
+    let primeiraCarga = true;
+    return onSnapshot(firestoreDoc(db, COLECAO_CONVITES, uidAtual), (snap) => {
+      const c = snap.exists() ? (snap.data() as ConviteGrupo) : null;
+      const pendente = c?.status === 'pendente' ? c : null;
+      setConviteGrupo(pendente);
+      if (!primeiraCarga && pendente && snap.metadata.hasPendingWrites === false) {
+        mostrarBannerRef.current({
+          titulo: 'Convite para grupo de estudo',
+          corpo: `${pendente.deNome} te convidou para "${pendente.grupoNome}"`,
+          icone: 'people',
+          rota: 'Index', params: { uid: uidAtual, abrirNotificacoes: true },
+        });
+      }
+      primeiraCarga = false;
+    }, (err) => console.log('Erro listener convite de grupo:', err.message));
+  }, [uidAtual]);
+
+  const responderConvite = async (aceitar: boolean) => {
+    if (!uidAtual) return { grupoId: null };
+    const eu: any = (await getDoc(firestoreDoc(db, 'usuarios', uidAtual))).data() || {};
+    return responderConviteGrupo({ uid: uidAtual, nome: eu.nome_completo || 'Alguém', foto: eu.foto || null }, aceitar);
+  };
 
   // ════ SOLICITAÇÕES DE MATCH ════
   useEffect(() => {
@@ -297,7 +379,7 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
           if (s.exists()) { nome = s.data().nome_completo || nome; foto = s.data().foto || null; }
         } catch {}
         mostrarBannerRef.current({
-          titulo: 'Nova solicitação de match',
+          titulo: 'Nova solicitação de elo',
           corpo: `${nome} quer estudar com você!`,
           foto, icone: 'heart',
           rota: 'Match', params: { uid: uidAtual, aba: 'solicitacoes' },
@@ -334,7 +416,7 @@ export const NotificacaoProvider = ({ children }: { children: React.ReactNode })
   const fotoUri = fotoParaUri(banner?.foto);
 
   return (
-    <NotificacaoContext.Provider value={{ uidAtual, conversaAtiva, setConversaAtiva, notificacoesChat, limparNotificacoesChat }}>
+    <NotificacaoContext.Provider value={{ uidAtual, conversaAtiva, setConversaAtiva, notificacoesChat, limparNotificacoesChat, conviteGrupo, responderConvite }}>
       {children}
 
       <Modal visible={bannerVisivel} transparent animationType="none" statusBarTranslucent onRequestClose={esconderBanner}>

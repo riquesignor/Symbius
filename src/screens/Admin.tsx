@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import SymbiusTabBar from '../components/SymbiusTabBar';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
   SafeAreaView, StatusBar, TextInput, ActivityIndicator,
   Modal, Animated, useWindowDimensions, Platform
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
+import { dispararPush } from '../services/pushNotificationsService';
 import {
   collection, query, orderBy, getDocs, updateDoc, doc
 } from 'firebase/firestore';
@@ -260,10 +262,28 @@ export default function Admin({ navigation, route }: any) {
     try { await carregar(); } catch (e) { console.error(e); } finally { setRefreshing(false); }
   };
 
+  // Avisa a pessoa quando a conta é suspensa ou volta a ficar ativa.
+  const avisarMudancaStatus = (uid: string, antes: number, depois: number) => {
+    if (antes === depois) return;
+    if (depois === 2) dispararPush({
+      destinatarioUid: uid,
+      titulo: 'Conta desativada',
+      corpo: 'Sua conta no Simbio foi desativada pela coordenação.',
+      dados: { tipo: 'conta_suspensa' },
+    });
+    else if (antes === 2 && depois === 1) dispararPush({
+      destinatarioUid: uid,
+      titulo: 'Conta reativada',
+      corpo: 'Sua conta no Simbio foi reativada. Bem-vindo de volta!',
+      dados: { tipo: 'conta_reativada' },
+    });
+  };
+
   const salvarUsuario = async (uid: string) => {
     setSalvando(prev => ({ ...prev, [uid]: true }));
     try {
       await updateDoc(doc(db, 'usuarios', uid), { tipo: editTipo[uid], status: editStatus[uid] });
+      avisarMudancaStatus(uid, (usuarios.find((u: any) => u.uid === uid) as any)?.status, editStatus[uid]);
       setUsuarios(prev => prev.map((u: any) => u.uid === uid ? { ...u, tipo: editTipo[uid], status: editStatus[uid] } : u));
       setToast('Usuário atualizado');
     } catch { setToast('Falha ao salvar'); }
@@ -285,6 +305,7 @@ export default function Admin({ navigation, route }: any) {
     setSalvandoCartao(true);
     try {
       await updateDoc(doc(db, 'usuarios', usuarioBuscado.uid), { tipo: cartaoTipo, status: cartaoStatus });
+      avisarMudancaStatus(usuarioBuscado.uid, usuarioBuscado.status, cartaoStatus);
       setUsuarios(prev => prev.map((u: any) => u.uid === usuarioBuscado.uid ? { ...u, tipo: cartaoTipo, status: cartaoStatus } : u));
       setToast(`${usuarioBuscado.nome_completo.split(' ')[0]} atualizado`);
     } catch { setToast('Falha ao salvar'); }
@@ -328,7 +349,7 @@ export default function Admin({ navigation, route }: any) {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: C.fundo }]}>
-      <StatusBar barStyle="light-content" backgroundColor={CORES.azulEscuro} />
+      <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
 
       {/* TOAST */}
       {toast !== '' && (
@@ -339,22 +360,25 @@ export default function Admin({ navigation, route }: any) {
       )}
 
       {/* HEADER */}
-      <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 28 }]}>
         <TouchableOpacity
           onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Index', params: { uid } }] })}
           style={styles.btnVoltar}
+          accessibilityLabel="Voltar"
         >
-          <Ionicons name="arrow-back" size={20} color={CORES.branco} />
+          <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <View style={styles.headerEyebrowRow}>
-            <View style={styles.headerDot} />
-            <Text style={[styles.headerEyebrow, { fontSize: fs(9) }]}>PAINEL RESTRITO</Text>
-          </View>
-          <Text style={[styles.headerTitulo, { fontSize: fs(19) }]}>Dashboard Admin</Text>
-        </View>
-        <TouchableOpacity onPress={carregar} style={styles.btnRefresh}>
-          <Ionicons name="refresh" size={18} color={CORES.branco} />
+        {/* Título no fluxo normal (não absoluto): um Text absoluto por cima
+            do header engolia os toques de voltar/atualizar no Android/iOS. */}
+        <Text
+          style={[styles.headerTitulo, styles.headerTituloFlex, { fontSize: fs(17) }]}
+          numberOfLines={1}
+          accessibilityRole="header"
+        >
+          Dashboard Admin
+        </Text>
+        <TouchableOpacity onPress={carregar} style={styles.btnRefresh} accessibilityLabel="Atualizar">
+          <Ionicons name="refresh" size={20} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
       </View>
 
@@ -919,6 +943,7 @@ export default function Admin({ navigation, route }: any) {
           </View>
         </View>
       </Modal>
+      <SymbiusTabBar ativa="nenhuma" navigation={navigation} uid={uid ?? null} />
     </SafeAreaView>
   );
 }
@@ -931,13 +956,14 @@ const styles = StyleSheet.create({
   toast:     { position: 'absolute', alignSelf: 'center', backgroundColor: CORES.azulEscuro, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 24, zIndex: 9999, elevation: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
   toastText: { color: CORES.branco, fontFamily: F.bold },
 
-  header:          { backgroundColor: CORES.azulEscuro, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingBottom: 16, gap: 12 },
-  btnVoltar:       { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
+  header:          { backgroundColor: CORES_SYMBIUS.fundo, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingBottom: 10, gap: 8 },
+  btnVoltar:       { width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-start' },
   headerEyebrowRow:{ flexDirection: 'row', alignItems: 'center', gap: 6 },
   headerDot:       { width: 6, height: 6, borderRadius: 3, backgroundColor: CORES.amarelo },
   headerEyebrow:   { color: 'rgba(255,255,255,0.7)', fontFamily: F.black, letterSpacing: 1.6 },
-  headerTitulo:    { color: CORES.branco, fontFamily: F.black, letterSpacing: -0.4, marginTop: 2 },
-  btnRefresh:      { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
+  headerTitulo:    { color: CORES_SYMBIUS.texto, fontFamily: F.black, letterSpacing: -0.3 },
+  headerTituloFlex: { flex: 1, textAlign: 'center' },
+  btnRefresh:      { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
 
   // ABAS com indicador animado
   abas:             { flexDirection: 'row', paddingHorizontal: 4, borderBottomWidth: 1, position: 'relative' },

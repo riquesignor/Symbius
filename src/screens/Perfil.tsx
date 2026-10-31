@@ -1,3 +1,4 @@
+import { voltar, HIT_VOLTAR } from '../navegacao';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
@@ -11,13 +12,17 @@ import {
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Polygon, Circle, Line, Text as SvgText, G } from 'react-native-svg';
+import Svg, { Polygon, Circle, Line, Text as SvgText, G, Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
 import { useAppSettings } from '../contexts/AppSettingsContext';
-import { calcularFaseCoruja, calcularProgressoXp } from '../utils/gamification';
+import AnimalImagem from '../components/AnimalImagem';
+import { calcularNivel, calcularFaseCoruja, calcularProgressoXp, Animal } from '../utils/gamification';
 
 import { F } from '../constants/theme';
-import { TEMA_SYMBIUS as CORES, CORES_SYMBIUS } from '../constants/temaSymbius';
+import { TEMA_SYMBIUS as CORES, CORES_SYMBIUS, NIVEL_GRADIENTE, NIVEL_NUMERO } from '../constants/temaSymbius';
 import SymbiusTabBar from '../components/SymbiusTabBar';
+import PainelPrivacidade from '../components/PainelPrivacidade';
+import ModalAlterarSenha from '../components/ModalAlterarSenha';
+import AvatarComCosmeticos from '../components/AvatarComCosmeticos';
 import { escolherImagemBase64, OrigemImagem } from '../utils/midiaNativa';
 import { sairDaConta } from '../services/authService';
 
@@ -86,12 +91,36 @@ const FadeInView = ({ children, delay = 0, style }: any) => {
 };
 
 
+// ── Banner do topo: cores do animal do nível, com facetas low-poly ──
+const BANNER_H = 220;
+const FACETAS = [
+  '0,0 38,0 0,34', '38,0 78,0 58,26', '78,0 100,0 100,30', '0,34 26,60 0,60',
+  '26,60 60,60 44,38', '60,60 100,60 100,34', '58,26 100,30 70,48',
+];
+const BannerAnimal = ({ animal }: { animal: Animal }) => {
+  const g = NIVEL_GRADIENTE[animal];
+  return (
+    <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" viewBox="0 0 100 60" preserveAspectRatio="none">
+      <Defs>
+        <RadialGradient id={`banner-${animal}`} cx="72%" cy="24%" r="85%">
+          <Stop offset="0" stopColor={g.c1} />
+          <Stop offset="1" stopColor={g.c2} />
+        </RadialGradient>
+      </Defs>
+      <Rect x="0" y="0" width="100" height="60" fill={`url(#banner-${animal})`} />
+      {FACETAS.map((pts, i) => (
+        <Polygon key={i} points={pts} fill={i % 2 ? '#FFFFFF' : '#000000'} fillOpacity={i % 2 ? 0.06 : 0.1} />
+      ))}
+    </Svg>
+  );
+};
+
 const RadarChart = ({ scores, size, modoEscuro }: any) => {
   const cx = size / 2;
   const cy = size / 2;
-  const radius = size * 0.30;
+  const radius = size * 0.24;
   const N = AREAS.length;
-  const labelDist = radius + size * 0.16;
+  const labelDist = radius + size * 0.12;
 
   const getPoint = (i: number, dist: number) => {
     const angle = (i * 2 * Math.PI) / N - Math.PI / 2;
@@ -110,9 +139,9 @@ const RadarChart = ({ scores, size, modoEscuro }: any) => {
     })
     .join(' ');
 
-  const corLinhas = modoEscuro ? '#3A4048' : '#D8DEE6';
-  const corLabel  = modoEscuro ? '#B4BEC8' : CORES.textoSec;
-  const corPolig  = CORES.azulCeu;
+  const corLinhas = CORES_SYMBIUS.borda2;
+  const corLabel  = CORES_SYMBIUS.textoSec;
+  const corPolig  = CORES_SYMBIUS.verdeEscuro;
 
   return (
     <Svg width={size} height={size}>
@@ -165,7 +194,7 @@ const RadarChart = ({ scores, size, modoEscuro }: any) => {
             x={p.x}
             y={p.y}
             fill={corLabel}
-            fontSize={size * 0.075}
+            fontSize={size * 0.055}
             fontFamily={F.semibold}
             textAnchor="middle"
             alignmentBaseline="middle"
@@ -186,14 +215,38 @@ const heroStyles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 20, paddingBottom: 8, minHeight: 44,
   },
-  // Absoluto nas duas laterais: centraliza em relação à tela, independente
-  // dos botões que ficam só do lado direito.
-  topHeaderTituloCentro: { position: 'absolute', left: 0, right: 0, height: 36, lineHeight: 36, textAlign: 'center' },
+  topHeaderTituloFlex: { flex: 1, textAlign: 'center' },
+  topHeaderLado: { width: 96, flexDirection: 'row', alignItems: 'center', gap: 8 },
   topHeaderTitulo: { fontFamily: F.bold, color: CORES_SYMBIUS.texto },
 
+  banner: { width: '100%', overflow: 'hidden', borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
+  bannerAnimal: { position: 'absolute', right: 10, bottom: 8 },
+  topHeaderSobreBanner: { position: 'absolute', top: 0, left: 0, right: 0 },
+  btnBanner: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.22)' },
+  avatarRow: { paddingHorizontal: 20, marginTop: -48, flexDirection: 'row', alignItems: 'flex-end' },
+  identidade: { paddingHorizontal: 20, marginTop: 12 },
+  handleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 2 },
+  tutorChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: CORES_SYMBIUS.verdeEscuro + '1F' },
+  tutorChipTxt: { fontFamily: F.bold, color: CORES_SYMBIUS.verdeEscuro },
+  bloco: { marginHorizontal: 16 },
+  nivelTopo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  nivelNome: { fontFamily: F.black, letterSpacing: -0.3, color: CORES_SYMBIUS.texto },
+  nivelSub: { fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 1 },
+  nivelXp: { fontFamily: F.black, color: CORES_SYMBIUS.texto },
+  nivelXpSufixo: { fontFamily: F.semibold, fontSize: 12, color: CORES_SYMBIUS.textoSec },
+  barraTrilho: { height: 10, borderRadius: 5, backgroundColor: CORES_SYMBIUS.fundoSuave, overflow: 'hidden', marginTop: 16 },
+  barraFill: { height: 10, borderRadius: 5 },
+  barraTxt: { fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 8 },
+  statsCard: { flexDirection: 'row', alignItems: 'center', paddingVertical: 18, marginTop: 12 },
+  stat: { flex: 1, alignItems: 'center', gap: 3 },
+  statNum: { fontFamily: F.black, color: CORES_SYMBIUS.texto },
+  statLabel: { fontFamily: F.medium, color: CORES_SYMBIUS.textoSec },
+  statSep: { width: 1, height: 44, backgroundColor: CORES_SYMBIUS.borda2 },
+  btnEditarBio: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: CORES_SYMBIUS.borda2, backgroundColor: CORES_SYMBIUS.fundoCard },
   heroWrap: { alignItems: 'center', paddingHorizontal: 24, paddingTop: 8, paddingBottom: 4 },
-  avatarWrap: { position: 'relative' },
-  avatar: { width: 88, height: 88, borderRadius: 44 },
+  // Folga embaixo: colar/laço saem dos limites da foto.
+  avatarWrap: { position: 'relative', marginBottom: 14 },
+  avatar: { width: 96, height: 96, borderRadius: 48, borderWidth: 4, borderColor: CORES_SYMBIUS.fundo },
   avatarPlaceholder: {
     backgroundColor: CORES_SYMBIUS.fundoSuave, justifyContent: 'center', alignItems: 'center',
   },
@@ -204,12 +257,12 @@ const heroStyles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   fotoEditBtn: {
-    position: 'absolute', top: -2, right: -2, width: 22, height: 22, borderRadius: 11,
+    position: 'absolute', bottom: 2, right: 0, width: 28, height: 28, borderRadius: 14,
     backgroundColor: CORES_SYMBIUS.verdeEscuro, justifyContent: 'center', alignItems: 'center',
     borderWidth: 2, borderColor: CORES_SYMBIUS.fundo,
   },
 
-  nome: { fontFamily: F.black, color: CORES_SYMBIUS.texto, marginTop: 14, textAlign: 'center' },
+  nome: { fontFamily: F.black, letterSpacing: -0.5, color: CORES_SYMBIUS.texto },
   handle: { fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 2 },
 
   levelPill: {
@@ -225,9 +278,9 @@ const heroStyles = StyleSheet.create({
 
   papelTabs: {
     flexDirection: 'row', gap: 6, backgroundColor: CORES_SYMBIUS.fundoSuave,
-    padding: 4, borderRadius: 14, marginTop: 18, width: '100%', alignSelf: 'stretch',
+    padding: 4, borderRadius: 16, marginTop: 14, width: '100%', alignSelf: 'stretch',
   },
-  papelTab: { flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center' },
+  papelTab: { flex: 1, minHeight: 42, justifyContent: 'center', borderRadius: 12, alignItems: 'center' },
   papelTabAtivo: { backgroundColor: CORES_SYMBIUS.verdeEscuro },
   papelTabTxt: { fontFamily: F.semibold, color: CORES_SYMBIUS.textoSec },
   papelTabTxtAtivo: { fontFamily: F.bold, color: CORES_SYMBIUS.creme },
@@ -295,6 +348,7 @@ export default function Perfil({ navigation, route }: any) {
   ).current;
   const [salvandoPapel, setSalvandoPapel] = useState(false);
   const [modalConfirmSair, setModalConfirmSair] = useState(false);
+  const [modalSenha, setModalSenha] = useState(false);
   const [modalFoto,    setModalFoto]    = useState(false);
   const [salvandoFoto, setSalvandoFoto] = useState(false);
 
@@ -408,6 +462,18 @@ export default function Perfil({ navigation, route }: any) {
     } catch { setToast('Erro ao salvar'); }
   };
 
+  const alterarVisivelMatch = async (valor: boolean) => {
+    if (!uid) return;
+    setUsuario((prev: any) => prev ? { ...prev, visivel_match: valor } : prev);
+    try {
+      await updateDoc(doc(db, 'usuarios', uid), { visivel_match: valor });
+      setToast(valor ? 'Você aparece nos Elos' : 'Você está oculto nos Elos');
+    } catch {
+      setUsuario((prev: any) => prev ? { ...prev, visivel_match: !valor } : prev);
+      setToast('Erro ao salvar');
+    }
+  };
+
   const escolherPapel = async (papel: 'aprender' | 'ensinar') => {
     if (!uid || papel === papelAtivo) { setPapelAtivo(papel); return; }
     setPapelAtivo(papel);
@@ -449,6 +515,12 @@ export default function Perfil({ navigation, route }: any) {
   // Top matérias para mostrar no card de especialidades (max 3)
   const topMaterias = [...ensina].slice(0, 3);
 
+  // Nível atual: o animal manda nas cores do banner e da barra de XP
+  const xpAtual = usuario.xp_total || 0;
+  const nivelInfo = calcularNivel(xpAtual);
+  const progressoXp = calcularProgressoXp(xpAtual);
+  const gAnimal = NIVEL_GRADIENTE[nivelInfo.animal];
+
   return (
     <View style={[styles.container, { backgroundColor: C.fundo }]}>
       <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={C.fundo} />
@@ -462,171 +534,185 @@ export default function Perfil({ navigation, route }: any) {
       )}
 
      
-      <View style={[heroStyles.topHeader, { paddingTop: insets.top + 10 }]}>
-        <Text
-          style={[heroStyles.topHeaderTitulo, heroStyles.topHeaderTituloCentro, { top: insets.top + 10, fontSize: fs(15) }]}
-          pointerEvents="none"
-        >
-          Perfil
-        </Text>
-
-        <View style={{ flexDirection: 'row', gap: 8, marginLeft: 'auto' }}>
-          <TouchableOpacity
-            style={[styles.btnMenu, { backgroundColor: C.branco }]}
-            onPress={() => navigation.navigate('Loja', { uid })}
-          >
-            <Text style={{ fontSize: 15 }}>🛍️</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.btnMenu, { backgroundColor: C.branco }]}
-            onPress={() => navigation.navigate('Leaderboard', { uid })}
-          >
-            <FontAwesome5 name="trophy" size={15} color={CORES_SYMBIUS.laranja} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
       <ScrollView
+        style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 50, paddingTop: 6 }}
+        contentContainerStyle={{ paddingBottom: 32 }}
       >
-        
+        {/* BANNER na cor do animal */}
+        <View style={[heroStyles.banner, { height: BANNER_H + insets.top, backgroundColor: gAnimal.c1 }]}>
+          <BannerAnimal animal={nivelInfo.animal} />
+          <View style={heroStyles.bannerAnimal} pointerEvents="none">
+            <AnimalImagem animal={nivelInfo.animal} size={140} />
+          </View>
+
+          <View style={[heroStyles.topHeader, heroStyles.topHeaderSobreBanner, { paddingTop: insets.top + 24 }]}>
+            {/* Lados com a mesma largura pra centralizar o título sem
+                sobrepor nada: antes ele era um Text absoluto por cima do
+                botão de voltar e roubava os toques no Android/iOS. */}
+            <View style={heroStyles.topHeaderLado}>
+              <TouchableOpacity hitSlop={HIT_VOLTAR}
+                onPress={() => (navigation.canGoBack() ? voltar(navigation) : navigation.navigate('Index', { uid }))}
+                style={heroStyles.btnBanner}
+                accessibilityRole="button"
+                accessibilityLabel="Voltar"
+              >
+                <Ionicons name="arrow-back" size={22} color={gAnimal.labelTopo} />
+              </TouchableOpacity>
+            </View>
+            <Text
+              style={[heroStyles.topHeaderTitulo, heroStyles.topHeaderTituloFlex, { fontSize: fs(15), color: gAnimal.labelTopo }]}
+              numberOfLines={1}
+              accessibilityRole="header"
+            >
+              Perfil
+            </Text>
+            <View style={[heroStyles.topHeaderLado, { justifyContent: 'flex-end' }]}>
+              <TouchableOpacity style={heroStyles.btnBanner} onPress={() => navigation.navigate('Loja', { uid })} accessibilityLabel="Loja">
+                <Ionicons name="bag-outline" size={19} color={gAnimal.labelTopo} />
+              </TouchableOpacity>
+              <TouchableOpacity style={heroStyles.btnBanner} onPress={() => navigation.navigate('Leaderboard', { uid })} accessibilityLabel="Ranking">
+                <FontAwesome5 name="trophy" size={16} color={gAnimal.labelTopo} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
         <FadeInView delay={0}>
-          <View style={heroStyles.heroWrap}>
+          {/* FOTO + NOME (a foto sobe sobre o banner) */}
+          <View style={heroStyles.avatarRow}>
             <TouchableOpacity style={heroStyles.avatarWrap} onPress={() => setModalFoto(true)} activeOpacity={0.85} accessibilityLabel="Alterar foto de perfil">
-              {fotoUri(usuario.foto) ? (
-                <Image source={{ uri: fotoUri(usuario.foto)! }} style={heroStyles.avatar} />
-              ) : (
-                <View style={[heroStyles.avatar, heroStyles.avatarPlaceholder]}>
-                  <Text style={{ fontSize: fs(30), fontFamily: F.black, color: CORES_SYMBIUS.verdeEscuro }}>
-                    {iniciais(usuario.nome_completo)}
-                  </Text>
-                </View>
-              )}
+              <AvatarComCosmeticos
+                foto={usuario.foto}
+                nome={usuario.nome_completo}
+                tamanho={96}
+                cosmeticosEquipados={usuario.cosmeticos_equipados}
+                borda={{ cor: CORES_SYMBIUS.fundo, largura: 4 }}
+              />
               {salvandoFoto && (
                 <View style={[heroStyles.avatar, heroStyles.avatarCarregando]}>
                   <ActivityIndicator color="#FFF" />
                 </View>
               )}
-              <View style={heroStyles.avatarBadge}>
-                <Text style={{ fontSize: 16 }}>{calcularFaseCoruja(usuario.xp_total || 0).icone}</Text>
-              </View>
               <View style={heroStyles.fotoEditBtn}>
-                <Ionicons name="camera" size={11} color={CORES_SYMBIUS.creme} />
+                <Ionicons name="camera" size={13} color={CORES_SYMBIUS.creme} />
               </View>
             </TouchableOpacity>
+          </View>
 
-            <Text style={[heroStyles.nome, { fontSize: fs(19) }]} numberOfLines={2}>
+          <View style={heroStyles.identidade}>
+            <Text style={[heroStyles.nome, { fontSize: fs(24) }]} numberOfLines={2}>
               {usuario.nome_completo || 'Sem nome'}
             </Text>
-            <Text style={[heroStyles.handle, { fontSize: fs(13) }]}>
-              @{(usuario.nome_completo || 'usuario')
-                .normalize('NFD').replace(/[̀-ͯ]/g, '')
-                .toLowerCase().trim().replace(/[^a-z0-9]+/g, '.').replace(/^\.|\.$/g, '')}
-            </Text>
-
-            {isTutor && (
-              <View style={[styles.tutorBadge, { borderColor: CORES.verde + '60', marginTop: 6, alignSelf: 'center' }]}>
-                <FontAwesome5 name="graduation-cap" size={9} color={CORES.verde} />
-                <Text style={[styles.tutorBadgeText, { fontSize: fs(9) }]}>TUTOR</Text>
-              </View>
-            )}
-
-            <TouchableOpacity
-              style={heroStyles.levelPill}
-              activeOpacity={0.8}
-              onPress={() => navigation.navigate('Leaderboard', { uid })}
-            >
-              <Text style={{ fontSize: 14 }}>{calcularFaseCoruja(usuario.xp_total || 0).icone}</Text>
-              <Text style={[heroStyles.levelPillTxt, { fontSize: fs(12.5) }]}>
-                {calcularFaseCoruja(usuario.xp_total || 0).label}
+            <View style={heroStyles.handleRow}>
+              <Text style={[heroStyles.handle, { fontSize: fs(13) }]}>
+                @{(usuario.nome_completo || 'usuario')
+                  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+                  .toLowerCase().trim().replace(/[^a-z0-9]+/g, '.').replace(/^\.|\.$/g, '')}
               </Text>
-            </TouchableOpacity>
-
-            <View style={heroStyles.xpBarWrap}>
-              <Text style={[heroStyles.xpBarLabel, { fontSize: fs(11) }]}>
-                {usuario.xp_total || 0} XP · faltam {calcularProgressoXp(usuario.xp_total || 0).faltam}
-              </Text>
-              <View style={heroStyles.xpBarBg}>
-                <View style={[heroStyles.xpBarFill, { width: `${calcularProgressoXp(usuario.xp_total || 0).percentual}%` }]} />
-              </View>
+              {isTutor && (
+                <View style={heroStyles.tutorChip}>
+                  <FontAwesome5 name="graduation-cap" size={10} color={CORES_SYMBIUS.verdeEscuro} />
+                  <Text style={[heroStyles.tutorChipTxt, { fontSize: fs(12) }]}>Tutor</Text>
+                </View>
+              )}
             </View>
+          </View>
 
-            {/* Aprendiz / Mentor — front-end apenas: grava a tag em
-                `papel_comunidade` (mesmo campo do cadastro / filtro do
-                Leaderboard). Nenhuma lógica de contagem nova aqui ainda. */}
+          {/* NÍVEL: animal, fase e barra de XP na cor do animal */}
+          <TouchableOpacity
+            style={[styles.cardN, heroStyles.bloco, { marginTop: 20 }]}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('Leaderboard', { uid })}
+            accessibilityRole="button"
+            accessibilityLabel={`${nivelInfo.nomeAnimal} ${nivelInfo.nomeSubfase}, ${xpAtual} de experiência. Abrir ranking.`}
+          >
+            <View style={heroStyles.nivelTopo}>
+              <AnimalImagem animal={nivelInfo.animal} size={52} />
+              <View style={{ flex: 1 }}>
+                <Text style={[heroStyles.nivelNome, { fontSize: fs(17) }]}>{nivelInfo.nomeAnimal} · {nivelInfo.nomeSubfase}</Text>
+                <Text style={[heroStyles.nivelSub, { fontSize: fs(12) }]}>Nível {NIVEL_NUMERO[nivelInfo.animal]}</Text>
+              </View>
+              <Text style={[heroStyles.nivelXp, { fontSize: fs(18) }]}>{xpAtual}<Text style={heroStyles.nivelXpSufixo}> XP</Text></Text>
+              <Ionicons name="chevron-forward" size={18} color={CORES_SYMBIUS.textoSec} />
+            </View>
+            <View style={heroStyles.barraTrilho}>
+              <View style={[heroStyles.barraFill, { width: `${Math.max(progressoXp.percentual, 3)}%`, backgroundColor: gAnimal.c1 }]} />
+            </View>
+            <Text style={[heroStyles.barraTxt, { fontSize: fs(12) }]}>faltam {progressoXp.faltam} XP para evoluir</Text>
+          </TouchableOpacity>
+
+          {/* Aprendiz / Mentor — front-end apenas: grava a tag em
+              `papel_comunidade` (mesmo campo do cadastro / filtro do Ranking). */}
+          <View style={heroStyles.bloco}>
             <Animated.View style={[heroStyles.papelTabs, { transform: [{ translateX: papelSwipeX }] }]} {...papelSwipeResponder.panHandlers}>
               <TouchableOpacity
                 style={[heroStyles.papelTab, papelAtivo === 'aprender' && heroStyles.papelTabAtivo]}
                 onPress={() => escolherPapel('aprender')}
                 disabled={salvandoPapel}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: papelAtivo === 'aprender' }}
               >
-                <Text style={[heroStyles.papelTabTxt, papelAtivo === 'aprender' && heroStyles.papelTabTxtAtivo, { fontSize: fs(12.5) }]}>
-                  Aprendiz
-                </Text>
+                <Text style={[heroStyles.papelTabTxt, papelAtivo === 'aprender' && heroStyles.papelTabTxtAtivo, { fontSize: fs(13) }]}>Aprendiz</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[heroStyles.papelTab, papelAtivo === 'ensinar' && heroStyles.papelTabAtivo]}
                 onPress={() => escolherPapel('ensinar')}
                 disabled={salvandoPapel}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: papelAtivo === 'ensinar' }}
               >
-                <Text style={[heroStyles.papelTabTxt, papelAtivo === 'ensinar' && heroStyles.papelTabTxtAtivo, { fontSize: fs(12.5) }]}>
-                  Mentor
-                </Text>
+                <Text style={[heroStyles.papelTabTxt, papelAtivo === 'ensinar' && heroStyles.papelTabTxtAtivo, { fontSize: fs(13) }]}>Mentor</Text>
               </TouchableOpacity>
             </Animated.View>
+          </View>
 
-            {/* Conquistas — reaproveita só campos reais já carregados
-                (nenhum contador novo/fake). */}
-            <View style={heroStyles.conquistasRow}>
-              <View style={heroStyles.conquistaItem}>
-                <View style={heroStyles.conquistaCirculo}><Text style={{ fontSize: 20 }}>🤝</Text></View>
-                <Text style={[heroStyles.conquistaNum, { fontSize: fs(13) }]}>{usuario.matches_bonificados_hoje || 0}</Text>
-                <Text style={[heroStyles.conquistaLabel, { fontSize: fs(10) }]}>Matches hoje</Text>
-              </View>
-              <View style={heroStyles.conquistaItem}>
-                <View style={heroStyles.conquistaCirculo}><Text style={{ fontSize: 20 }}>🏅</Text></View>
-                <Text style={[heroStyles.conquistaNum, { fontSize: fs(13) }]}>{medalhas.length}</Text>
-                <Text style={[heroStyles.conquistaLabel, { fontSize: fs(10) }]}>Medalhas</Text>
-              </View>
-              <View style={heroStyles.conquistaItem}>
-                <View style={heroStyles.conquistaCirculo}><Text style={{ fontSize: 20 }}>🌱</Text></View>
-                <Text style={[heroStyles.conquistaNum, { fontSize: fs(13) }]}>{usuario.moedas_saldo || 0}</Text>
-                <Text style={[heroStyles.conquistaLabel, { fontSize: fs(10) }]}>Sementes</Text>
-              </View>
+          {/* Números reais já carregados (nenhum contador novo/fake) */}
+          <View style={[styles.cardN, heroStyles.bloco, heroStyles.statsCard]}>
+            <View style={heroStyles.stat}>
+              <Ionicons name="leaf" size={22} color={CORES_SYMBIUS.verdeEscuro} />
+              <Text style={[heroStyles.statNum, { fontSize: fs(20) }]}>{usuario.moedas_saldo || 0}</Text>
+              <Text style={[heroStyles.statLabel, { fontSize: fs(12) }]}>Sementes</Text>
             </View>
-
-            <TouchableOpacity style={heroStyles.btnEditarPerfil} activeOpacity={0.85} onPress={abrirEdicaoBio}>
-              <Text style={[heroStyles.btnEditarPerfilTxt, { fontSize: fs(14) }]}>Editar perfil</Text>
-            </TouchableOpacity>
+            <View style={heroStyles.statSep} />
+            <View style={heroStyles.stat}>
+              <Ionicons name="infinite" size={22} color={CORES_SYMBIUS.verdeEscuro} />
+              <Text style={[heroStyles.statNum, { fontSize: fs(20) }]}>{usuario.matches_bonificados_hoje || 0}/3</Text>
+              <Text style={[heroStyles.statLabel, { fontSize: fs(12) }]}>Elos hoje</Text>
+            </View>
+            <View style={heroStyles.statSep} />
+            <View style={heroStyles.stat}>
+              <Ionicons name="ribbon" size={22} color={CORES_SYMBIUS.verdeEscuro} />
+              <Text style={[heroStyles.statNum, { fontSize: fs(20) }]}>{medalhas.length}</Text>
+              <Text style={[heroStyles.statLabel, { fontSize: fs(12) }]}>Medalhas</Text>
+            </View>
+            {usuario.avaliacao_contagem > 0 && (
+              <>
+                <View style={heroStyles.statSep} />
+                <View style={heroStyles.stat}>
+                  <Ionicons name="star" size={22} color={CORES_SYMBIUS.verdeEscuro} />
+                  <Text style={[heroStyles.statNum, { fontSize: fs(20) }]}>{usuario.avaliacao_media.toFixed(1)}</Text>
+                  <Text style={[heroStyles.statLabel, { fontSize: fs(12) }]}>{usuario.avaliacao_contagem} aval.</Text>
+                </View>
+              </>
+            )}
           </View>
         </FadeInView>
 
-        {/*SOBRE MIM*/}
+        {/* SOBRE MIM */}
         <FadeInView delay={60}>
-          <View style={styles.secao}>
-            <View style={styles.secaoHeaderRow}>
-              <View style={styles.secaoTituloComIcon}>
-                <Ionicons name="reader-outline" size={14} color={C.textoSec} />
-                <Text style={[styles.secaoTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
-                  Sobre mim
-                </Text>
-              </View>
-              <TouchableOpacity onPress={abrirEdicaoBio}>
-                <Ionicons name="create-outline" size={16} color={CORES.rosa} />
+          <View style={styles.secaoN}>
+            <View style={styles.secaoTopoN}>
+              <Text style={[styles.tituloN, { fontSize: fs(18) }]}>Sobre mim</Text>
+              <TouchableOpacity style={heroStyles.btnEditarBio} onPress={abrirEdicaoBio} accessibilityRole="button" accessibilityLabel="Editar descrição">
+                <Ionicons name="create-outline" size={18} color={CORES_SYMBIUS.verdeEscuro} />
               </TouchableOpacity>
             </View>
-
-            <TouchableOpacity
-              style={[styles.bioCard, { backgroundColor: C.branco }]}
-              activeOpacity={0.75}
-              onPress={abrirEdicaoBio}
-            >
+            <TouchableOpacity style={styles.cardN} activeOpacity={0.75} onPress={abrirEdicaoBio}>
               <Text
                 style={[styles.bioText, {
-                  color: usuario.bio ? C.azulEscuro : C.textoSec,
-                  fontSize: fs(13),
+                  color: usuario.bio ? CORES_SYMBIUS.texto : CORES_SYMBIUS.textoSec,
+                  fontSize: fs(14),
                   fontStyle: usuario.bio ? 'normal' : 'italic',
                 }]}
               >
@@ -636,109 +722,10 @@ export default function Perfil({ navigation, route }: any) {
           </View>
         </FadeInView>
 
-
-
-        
-        <FadeInView delay={100}>
-          <View style={styles.secao}>
-            <Text style={[styles.secaoTituloPrincipal, { color: C.azulEscuro, fontSize: fs(15) }]}>
-              Progresso
-            </Text>
-
-            {usuario ? (
-              <View style={[styles.xpCard, { backgroundColor: C.branco }]}>
-                <View style={styles.xpCardTop}>
-                  <View style={styles.corujhBox}>
-                    <Text style={[styles.corujaEmoji, { fontSize: fs(48) }]}>
-                      {calcularFaseCoruja(usuario.xp_total || 0).icone}
-                    </Text>
-                    <Text style={[styles.corujaLabel, { color: C.azulEscuro, fontSize: fs(12) }]}>
-                      {calcularFaseCoruja(usuario.xp_total || 0).label}
-                    </Text>
-                  </View>
-
-                  {/* XP Info */}
-                  <View style={styles.xpInfo}>
-                    <View style={styles.xpRow}>
-                      <Text style={[styles.xpLabel, { color: C.textoSec, fontSize: fs(11) }]}>
-                        EXPERIÊNCIA
-                      </Text>
-                      <Text style={[styles.xpNumero, { color: C.azulEscuro, fontSize: fs(16) }]}>
-                        {usuario.xp_total || 0}
-                      </Text>
-                    </View>
-
-                    {/* Progress Bar */}
-                    <View style={[styles.xpBarBg, { backgroundColor: C.fundo }]}>
-                      <View
-                        style={[
-                          styles.xpBarFill,
-                          {
-                            backgroundColor: CORES.amarelo,
-                            width: `${calcularProgressoXp(usuario.xp_total || 0).percentual}%`,
-                          },
-                        ]}
-                      />
-                    </View>
-
-                    <Text style={[styles.xpFaltam, { color: C.textoSec, fontSize: fs(10) }]}>
-                      {calcularProgressoXp(usuario.xp_total || 0).faltam} XP até próximo nível
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Moedas */}
-                <View style={[styles.xpCardDivisor, { backgroundColor: C.cinzaClaro }]} />
-                <View style={styles.xpCardBottom}>
-                  <View style={styles.moedaItem}>
-                    <Text style={{ fontSize: fs(24) }}>🌱</Text>
-                    <View>
-                      <Text style={[styles.moedaLabel, { color: C.textoSec, fontSize: fs(11) }]}>
-                        Sementes
-                      </Text>
-                      <Text style={[styles.moedaNumero, { color: C.azulEscuro, fontSize: fs(18) }]}>
-                        {usuario.moedas_saldo || 0}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.moedaItem}>
-                    <Text style={{ fontSize: fs(24) }}>📍</Text>
-                    <View>
-                      <Text style={[styles.moedaLabel, { color: C.textoSec, fontSize: fs(11) }]}>
-                        Matches Hoje
-                      </Text>
-                      <Text style={[styles.moedaNumero, { color: C.azulEscuro, fontSize: fs(18) }]}>
-                        {usuario.matches_bonificados_hoje || 0}/3
-                      </Text>
-                    </View>
-                  </View>
-
-                  {usuario.avaliacao_contagem > 0 && (
-                    <View style={styles.moedaItem}>
-                      <Text style={{ fontSize: fs(24) }}>⭐</Text>
-                      <View>
-                        <Text style={[styles.moedaLabel, { color: C.textoSec, fontSize: fs(11) }]}>
-                          Reputação
-                        </Text>
-                        <Text style={[styles.moedaNumero, { color: C.azulEscuro, fontSize: fs(18) }]}>
-                          {usuario.avaliacao_media.toFixed(1)} ({usuario.avaliacao_contagem})
-                        </Text>
-                      </View>
-                    </View>
-                  )}
-                </View>
-              </View>
-            ) : null}
-          </View>
-        </FadeInView>
-
-
-       
         {medalhas.length > 0 && (
           <FadeInView delay={150}>
-            <View style={styles.secao}>
-              <Text style={[styles.secaoTituloPrincipal, { color: C.azulEscuro, fontSize: fs(15) }]}>
+            <View style={styles.secaoN}>
+              <Text style={[styles.tituloN, { fontSize: fs(18), marginBottom: 6 }]}>
                 Medalhas
               </Text>
               <ScrollView
@@ -771,102 +758,61 @@ export default function Perfil({ navigation, route }: any) {
           </FadeInView>
         )}
 
-        {/*MINHAS ESPECIALIDADES (radar + matérias ao lado — fiel à imagem)*/}
+        {/* MINHAS ESPECIALIDADES */}
         <FadeInView delay={240}>
-          <View style={styles.secao}>
-            <Text style={[styles.secaoTituloPrincipal, { color: C.azulEscuro, fontSize: fs(15) }]}>
-              Minhas Especialidades
-            </Text>
-
-            <View style={[styles.especCard, { backgroundColor: C.branco }]}>
-              {/* Radar à esquerda */}
-              <View style={styles.especRadarBox}>
-                <RadarChart
-                  scores={radarScores}
-                  size={150}
-                  modoEscuro={modoEscuro}
-                />
-                <Text style={[styles.radarLegenda, { color: C.textoSec, fontSize: fs(9) }]}>
+          <View style={styles.secaoN}>
+            <Text style={[styles.tituloN, { fontSize: fs(18) }]}>Minhas especialidades</Text>
+            <View style={styles.cardN}>
+              <View style={{ alignItems: 'center' }}>
+                <RadarChart scores={radarScores} size={260} modoEscuro={modoEscuro} />
+                <Text style={[styles.radarLegenda, { color: CORES_SYMBIUS.textoSec, fontSize: fs(12) }]}>
                   Baseado nas suas matérias de tutoria
                 </Text>
               </View>
-
-              {/* Matérias à direita (cards individuais) */}
-              <View style={styles.especListaBox}>
-                {topMaterias.length === 0 ? (
-                  <View style={styles.especVazio}>
-                    <Ionicons name="add-circle-outline" size={22} color={C.textoSec} />
-                    <Text style={[styles.especVazioText, { color: C.textoSec, fontSize: fs(11) }]}>
-                      Adicione matérias abaixo
-                    </Text>
-                  </View>
-                ) : (
-                  topMaterias.map((m: string) => {
+              {topMaterias.length === 0 ? (
+                <View style={styles.especVazio}>
+                  <Ionicons name="add-circle-outline" size={22} color={CORES_SYMBIUS.textoSec} />
+                  <Text style={[styles.especVazioText, { color: CORES_SYMBIUS.textoSec, fontSize: fs(12) }]}>
+                    Adicione matérias abaixo
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.topMateriasN}>
+                  {topMaterias.map((m: string) => {
                     const area = MATERIA_AREA[m];
-                    const cor = AREAS.find(a => a.key === area)?.cor || CORES.azulEscuro;
+                    const cor = AREAS.find(a => a.key === area)?.cor || CORES_SYMBIUS.verdeEscuro;
                     return (
-                      <View
-                        key={m}
-                        style={[styles.materiaPill, { backgroundColor: C.fundo }]}
-                      >
+                      <View key={m} style={styles.materiaChipN}>
                         <View style={[styles.materiaDot, { backgroundColor: cor }]} />
-                        <Text
-                          style={[styles.materiaText, { color: C.azulEscuro, fontSize: fs(13) }]}
-                          numberOfLines={1}
-                        >
-                          {m}
-                        </Text>
+                        <Text style={[styles.chipNTxt, { color: CORES_SYMBIUS.texto, fontSize: fs(13) }]} numberOfLines={1}>{m}</Text>
                       </View>
                     );
-                  })
-                )}
-              </View>
+                  })}
+                </View>
+              )}
             </View>
           </View>
         </FadeInView>
 
-        {/* Quero ensinar*/}
+        {/* POSSO ENSINAR */}
         <FadeInView delay={360}>
-          <View style={styles.secao}>
-            <View style={styles.secaoHeaderRow}>
-              <View style={styles.secaoTituloComIcon}>
-                <FontAwesome5 name="graduation-cap" size={12} color={CORES.verde} />
-                <Text style={[styles.secaoTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
-                  Posso ensinar
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.btnAdicionar, { backgroundColor: CORES.verde + (modoEscuro ? '30' : '15') }]}
-                onPress={() => setModalSkill('ensina')}
-              >
-                <Ionicons name="add" size={13} color={CORES.verde} />
-                <Text style={[styles.btnAdicionarText, { color: CORES.verde, fontSize: fs(11) }]}>
-                  Adicionar
-                </Text>
+          <View style={styles.secaoN}>
+            <View style={styles.secaoTopoN}>
+              <Text style={[styles.tituloN, { fontSize: fs(18) }]}>Posso ensinar</Text>
+              <TouchableOpacity style={styles.btnAddN} onPress={() => setModalSkill('ensina')} accessibilityRole="button" accessibilityLabel="Adicionar matéria que posso ensinar">
+                <Ionicons name="add" size={16} color={CORES_SYMBIUS.verdeEscuro} />
+                <Text style={[styles.btnAddNTxt, { fontSize: fs(13) }]}>Adicionar</Text>
               </TouchableOpacity>
             </View>
-
-            <View style={[styles.skillsCard, { backgroundColor: C.branco }]}>
+            <View style={styles.cardN}>
               {ensina.length === 0 ? (
-                <Text style={[styles.skillsVazio, { color: C.textoSec, fontSize: fs(12) }]}>
-                  Nenhuma matéria adicionada
-                </Text>
+                <Text style={[styles.vazioN, { fontSize: fs(13) }]}>Nenhuma matéria adicionada</Text>
               ) : (
                 <View style={styles.chipsWrap}>
                   {ensina.map((m: string) => (
-                    <TouchableOpacity
-                      key={m}
-                      style={[styles.chipSkill, {
-                        backgroundColor: CORES.verde + (modoEscuro ? '25' : '12'),
-                        borderColor: CORES.verde + '50',
-                      }]}
-                      onPress={() => toggleSkill('ensina', m)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.chipSkillText, { color: CORES.verde, fontSize: fs(12) }]}>
-                        {m}
-                      </Text>
-                      <Ionicons name="close-circle" size={14} color={CORES.verde} />
+                    <TouchableOpacity key={m} style={[styles.chipN, styles.chipEnsina]} onPress={() => toggleSkill('ensina', m)} activeOpacity={0.7} accessibilityLabel={`Remover ${m}`}>
+                      <Text style={[styles.chipNTxt, { color: CORES_SYMBIUS.texto, fontSize: fs(13) }]}>{m}</Text>
+                      <Ionicons name="close" size={14} color={CORES_SYMBIUS.textoSec} />
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -875,48 +821,25 @@ export default function Perfil({ navigation, route }: any) {
           </View>
         </FadeInView>
 
-        {/* QUERO MELHORAR*/}
+        {/* QUERO MELHORAR */}
         <FadeInView delay={480}>
-          <View style={styles.secao}>
-            <View style={styles.secaoHeaderRow}>
-              <View style={styles.secaoTituloComIcon}>
-                <Ionicons name="trending-up" size={14} color={CORES.rosa} />
-                <Text style={[styles.secaoTitulo, { color: C.azulEscuro, fontSize: fs(15) }]}>
-                  Quero melhorar
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.btnAdicionar, { backgroundColor: CORES.rosa + (modoEscuro ? '30' : '15') }]}
-                onPress={() => setModalSkill('melhorar')}
-              >
-                <Ionicons name="add" size={13} color={CORES.rosa} />
-                <Text style={[styles.btnAdicionarText, { color: CORES.rosa, fontSize: fs(11) }]}>
-                  Adicionar
-                </Text>
+          <View style={styles.secaoN}>
+            <View style={styles.secaoTopoN}>
+              <Text style={[styles.tituloN, { fontSize: fs(18) }]}>Quero melhorar</Text>
+              <TouchableOpacity style={styles.btnAddN} onPress={() => setModalSkill('melhorar')} accessibilityRole="button" accessibilityLabel="Adicionar matéria que quero melhorar">
+                <Ionicons name="add" size={16} color={CORES_SYMBIUS.verdeEscuro} />
+                <Text style={[styles.btnAddNTxt, { fontSize: fs(13) }]}>Adicionar</Text>
               </TouchableOpacity>
             </View>
-
-            <View style={[styles.skillsCard, { backgroundColor: C.branco }]}>
+            <View style={styles.cardN}>
               {aprende.length === 0 ? (
-                <Text style={[styles.skillsVazio, { color: C.textoSec, fontSize: fs(12) }]}>
-                  Nenhuma matéria adicionada
-                </Text>
+                <Text style={[styles.vazioN, { fontSize: fs(13) }]}>Nenhuma matéria adicionada</Text>
               ) : (
                 <View style={styles.chipsWrap}>
                   {aprende.map((m: string) => (
-                    <TouchableOpacity
-                      key={m}
-                      style={[styles.chipSkill, {
-                        backgroundColor: CORES.rosa + (modoEscuro ? '25' : '12'),
-                        borderColor: CORES.rosa + '50',
-                      }]}
-                      onPress={() => toggleSkill('melhorar', m)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.chipSkillText, { color: CORES.rosa, fontSize: fs(12) }]}>
-                        {m}
-                      </Text>
-                      <Ionicons name="close-circle" size={14} color={CORES.rosa} />
+                    <TouchableOpacity key={m} style={[styles.chipN, styles.chipMelhorar]} onPress={() => toggleSkill('melhorar', m)} activeOpacity={0.7} accessibilityLabel={`Remover ${m}`}>
+                      <Text style={[styles.chipNTxt, { color: CORES_SYMBIUS.texto, fontSize: fs(13) }]}>{m}</Text>
+                      <Ionicons name="close" size={14} color={CORES_SYMBIUS.textoSec} />
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -925,59 +848,68 @@ export default function Perfil({ navigation, route }: any) {
           </View>
         </FadeInView>
 
-        {/* 
-            INFORMAÇÕES ACADÊMICAS*/}
-        <FadeInView delay={720}>
-          <View style={styles.secao}>
-            <Text style={[styles.secaoTituloPrincipal, { color: C.azulEscuro, fontSize: fs(15) }]}>
-              Informações Acadêmicas
-            </Text>
+        {/* PRIVACIDADE (antes ficava só em Configurações) */}
+        <FadeInView delay={600}>
+          <View style={styles.secaoN}>
+            <Text style={[styles.tituloN, { fontSize: fs(18) }]} accessibilityRole="header">Privacidade</Text>
+            <PainelPrivacidade
+              visivelMatch={usuario.visivel_match !== false}
+              onVisivelMatch={alterarVisivelMatch}
+              fs={fs}
+            />
+          </View>
+        </FadeInView>
 
-            <View style={[styles.infoCard, { backgroundColor: C.branco }]}>
+        {/* INFORMAÇÕES ACADÊMICAS */}
+        <FadeInView delay={720}>
+          <View style={styles.secaoN}>
+            <Text style={[styles.tituloN, { fontSize: fs(18) }]}>Informações acadêmicas</Text>
+            <View style={[styles.cardN, styles.infoRowN]}>
               <View style={styles.infoBox}>
-                <Text style={[styles.infoLabel, { color: C.textoSec, fontSize: fs(9) }]}>TURMA</Text>
-                <Text
-                  style={[styles.infoValor, { color: C.azulEscuro, fontSize: fs(15) }]}
-                  numberOfLines={1}
-                >
-                  {usuario.turma || '—'}
-                </Text>
+                <Text style={[styles.infoLabelN, { fontSize: fs(12) }]}>Turma</Text>
+                <Text style={[styles.infoValorN, { fontSize: fs(16) }]} numberOfLines={1}>{usuario.turma || '—'}</Text>
               </View>
-              <View style={[styles.infoSep, { backgroundColor: C.cinzaClaro }]} />
+              <View style={styles.infoSepN} />
               <View style={styles.infoBox}>
-                <Text style={[styles.infoLabel, { color: C.textoSec, fontSize: fs(9) }]}>RA</Text>
-                <Text
-                  style={[styles.infoValor, { color: C.azulEscuro, fontSize: fs(15) }]}
-                  numberOfLines={1}
-                >
-                  {usuario.ra || '—'}
-                </Text>
+                <Text style={[styles.infoLabelN, { fontSize: fs(12) }]}>RA</Text>
+                <Text style={[styles.infoValorN, { fontSize: fs(16) }]} numberOfLines={1}>{usuario.ra || '—'}</Text>
               </View>
-              <View style={[styles.infoSep, { backgroundColor: C.cinzaClaro }]} />
+              <View style={styles.infoSepN} />
               <View style={styles.infoBox}>
-                <Text style={[styles.infoLabel, { color: C.textoSec, fontSize: fs(9) }]}>AJUDAS</Text>
-                <Text style={[styles.infoValor, { color: C.azulEscuro, fontSize: fs(15) }]}>
-                  {usuario.ajudas || 0}
-                </Text>
+                <Text style={[styles.infoLabelN, { fontSize: fs(12) }]}>Ajudas</Text>
+                <Text style={[styles.infoValorN, { fontSize: fs(16) }]}>{usuario.ajudas || 0}</Text>
               </View>
             </View>
           </View>
         </FadeInView>
 
-        {/*SAIR DA CONTA*/}
+        {/* SAIR DA CONTA */}
+        <FadeInView delay={820}>
+          <TouchableOpacity
+            style={styles.btnSenhaN}
+            onPress={() => setModalSenha(true)}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+          >
+            <Ionicons name="lock-closed-outline" size={20} color={CORES_SYMBIUS.texto} />
+            <Text style={[styles.btnSenhaNTxt, { fontSize: fs(15) }]}>Alterar senha</Text>
+          </TouchableOpacity>
+        </FadeInView>
+
         <FadeInView delay={840}>
           <TouchableOpacity
-            style={styles.btnSair}
+            style={[styles.btnSairN, { marginTop: 12 }]}
             onPress={() => setModalConfirmSair(true)}
-            activeOpacity={0.7}
+            activeOpacity={0.8}
+            accessibilityRole="button"
           >
-            <Ionicons name="log-out-outline" size={18} color={CORES.rosa} />
-            <Text style={[styles.btnSairText, { color: CORES.rosa, fontSize: fs(15) }]}>
-              Sair da conta
-            </Text>
+            <Ionicons name="log-out-outline" size={20} color="#C84B2E" />
+            <Text style={[styles.btnSairNTxt, { fontSize: fs(15) }]}>Sair da conta</Text>
           </TouchableOpacity>
         </FadeInView>
       </ScrollView>
+
+      <ModalAlterarSenha visivel={modalSenha} onFechar={() => setModalSenha(false)} onSucesso={() => setToast('Senha alterada')} />
 
       {/* ════════════════════════════════════════════════
           MODAL EDITAR BIO
@@ -1191,7 +1123,7 @@ export default function Perfil({ navigation, route }: any) {
 //  STYLESHEET
 // ════════════════════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, overflow: 'hidden' },
   fotoOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   fotoSheet:   { backgroundColor: CORES_SYMBIUS.fundoCard, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 12 },
   fotoHandle:  { width: 40, height: 4, borderRadius: 2, backgroundColor: CORES_SYMBIUS.borda2, alignSelf: 'center', marginBottom: 12 },
@@ -1225,6 +1157,27 @@ const styles = StyleSheet.create({
   tutorBadgeText: { color: CORES.verde, fontFamily: F.black, letterSpacing: 1 },
 
   // SECAO
+  secaoN: { marginHorizontal: 16, marginTop: 24 },
+  tituloN: { fontFamily: F.black, letterSpacing: -0.3, color: CORES_SYMBIUS.texto },
+  secaoTopoN: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 0 },
+  cardN: { backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 22, borderWidth: 1, borderColor: CORES_SYMBIUS.borda2, padding: 16, marginTop: 10 },
+  btnAddN: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: CORES_SYMBIUS.borda2, backgroundColor: CORES_SYMBIUS.fundoCard },
+  btnAddNTxt: { fontFamily: F.bold, color: CORES_SYMBIUS.verdeEscuro },
+  chipN: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 38, paddingLeft: 14, paddingRight: 10, borderRadius: 19, borderWidth: 1 },
+  chipEnsina: { backgroundColor: CORES_SYMBIUS.verdeEscuro + '1F', borderColor: CORES_SYMBIUS.verdeEscuro + '66' },
+  chipMelhorar: { backgroundColor: CORES_SYMBIUS.semente + '33', borderColor: CORES_SYMBIUS.semente },
+  chipNTxt: { fontFamily: F.semibold },
+  topMateriasN: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 6 },
+  materiaChipN: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 38, paddingHorizontal: 14, borderRadius: 19, backgroundColor: CORES_SYMBIUS.fundoSuave },
+  vazioN: { fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, textAlign: 'center', paddingVertical: 6 },
+  infoRowN: { flexDirection: 'row', alignItems: 'center', paddingVertical: 18 },
+  infoLabelN: { fontFamily: F.medium, color: CORES_SYMBIUS.textoSec },
+  infoValorN: { fontFamily: F.black, letterSpacing: -0.3, color: CORES_SYMBIUS.texto },
+  infoSepN: { width: 1, height: 34, backgroundColor: CORES_SYMBIUS.borda2 },
+  btnSairN: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 52, marginHorizontal: 16, marginTop: 34, borderRadius: 18, borderWidth: 1.5, borderColor: '#C84B2E' },
+  btnSairNTxt: { fontFamily: F.bold, color: '#C84B2E' },
+  btnSenhaN: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 52, marginHorizontal: 16, marginTop: 34, borderRadius: 18, borderWidth: 1.5, borderColor: CORES_SYMBIUS.borda2 },
+  btnSenhaNTxt: { fontFamily: F.bold, color: CORES_SYMBIUS.texto },
   secao:     { marginHorizontal: 16, marginTop: 22 },
   secaoTituloPrincipal: { fontFamily: F.black, letterSpacing: -0.3, marginBottom: 4, paddingHorizontal: 2 },
   secaoSubtitulo:       { fontFamily: F.regular, marginBottom: 12, paddingHorizontal: 2 },
@@ -1252,13 +1205,13 @@ const styles = StyleSheet.create({
 
   // ESPECIALIDADES
   especCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 22, padding: 12, gap: 4, elevation: 1, shadowColor: CORES.azulEscuro, shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
-  especRadarBox: { width: 150, justifyContent: 'center', alignItems: 'center' },
-  radarLegenda:  { textAlign: 'center', marginTop: 4, fontFamily: 'Poppins_400Regular', opacity: 0.75 },
+  especRadarBox: { width: 260, justifyContent: 'center', alignItems: 'center' },
+  radarLegenda:  { textAlign: 'center', marginTop: 4, fontFamily: F.regular },
   especListaBox: { flex: 1, gap: 8, paddingLeft: 4 },
   materiaPill: { paddingHorizontal: 16, paddingVertical: 14, borderRadius: 18, flexDirection: 'row', alignItems: 'center', gap: 8 },
   materiaDot: { width: 6, height: 6, borderRadius: 3 },
   materiaText: { fontFamily: F.bold, flex: 1 },
-  especVazio: { paddingVertical: 30, alignItems: 'center', gap: 6 },
+  especVazio: { paddingVertical: 12, alignItems: 'center', gap: 6 },
   especVazioText: { fontFamily: F.medium, fontStyle: 'italic', textAlign: 'center' },
 
   // BTN ADICIONAR

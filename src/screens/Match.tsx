@@ -1,8 +1,9 @@
+import { voltar, HIT_VOLTAR, AREA_VOLTAR } from '../navegacao';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity,
   Image, StatusBar, Dimensions, Platform,
-  ActivityIndicator, FlatList, Vibration, Animated, PanResponder,
+  ActivityIndicator, FlatList, Vibration, Animated, PanResponder, Switch, Modal, TextInput, Alert,
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
 import {
@@ -10,11 +11,18 @@ import {
   addDoc, updateDoc, setDoc, serverTimestamp, onSnapshot
 } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
+import AnimalImagem from '../components/AnimalImagem';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { dispararPush } from '../services/pushNotificationsService';
+import { Grupo, criarGrupo, MAX_MEMBROS_GRUPO } from '../services/gruposService';
+import { enviarConviteGrupo } from '../services/convitesService';
+import SeletorPessoas, { Pessoa } from '../components/SeletorPessoas';
+import AvatarComCosmeticos from '../components/AvatarComCosmeticos';
+import { conversaNaoLida, ocultaParaMim, apagarConversaParaMim, msDe, previaLimpa } from '../utils/conversas';
+import { alunoDoElo } from '../utils/elos';
 
 // ── Fonte Poppins ──
 import { F } from '../constants/theme';
@@ -37,6 +45,14 @@ const getImageUri = (foto: any) => {
   }
   return padrao;
 };
+
+// O Perfil salva as matérias em posso_ensinar / quer_aprender. O Match lia só
+// `ensinar` (campo antigo), então qualquer conta criada depois nunca aparecia
+// no Descobrir. Lê os dois pra não perder quem ainda tem o campo antigo.
+const materiasQueEnsina = (u: any): string[] =>
+  [...new Set<string>([...(u?.posso_ensinar || []), ...(u?.ensinar || [])])];
+const materiasQueAprende = (u: any): string[] =>
+  [...new Set<string>([...(u?.quer_aprender || []), ...(u?.melhorar || [])])];
 
 const formatarHora = (data: any): string => {
   if (!data) return '';
@@ -115,7 +131,7 @@ function useOnlineStatus(uids: string[]) {
           setStatuses(prev => ({
             ...prev,
             [uid]: {
-              online:       d.online === true,
+              online:       d.online === true && (d.online_ping ? Date.now() - msDe(d.online_ping, Date.now()) < 150000 : true),
               ultimo_acesso: d.ultimo_acesso || null,
               statusOnline: d.statusOnline !== false,
             },
@@ -159,6 +175,15 @@ export default function Match({ navigation, route }: any) {
   const [enviandoPara,   setEnviandoPara]   = useState<string | null>(null);
   const [popupInfo,      setPopupInfo]      = useState(false);
   const [popupMateria,   setPopupMateria]   = useState(false);
+  const [salvandoVisivel, setSalvandoVisivel] = useState(false);
+  const [respondidas, setRespondidas] = useState<Set<string>>(new Set());
+  const [grupos,         setGrupos]         = useState<Grupo[]>([]);
+  const [modalGrupo,     setModalGrupo]     = useState(false);
+  const [grupoNome,      setGrupoNome]      = useState('');
+  const [grupoMateria,   setGrupoMateria]   = useState('');
+  const [grupoMembros,   setGrupoMembros]   = useState<string[]>([]);
+  const [grupoConvidados, setGrupoConvidados] = useState<Pessoa[]>([]);
+  const [criandoGrupo,   setCriandoGrupo]   = useState(false);
 
   const meuUid = route?.params?.uid;
 
@@ -213,10 +238,78 @@ export default function Match({ navigation, route }: any) {
   // ── Dados do usuário logado ──
   useEffect(() => {
     if (!meuUid) return;
-    getDoc(doc(db, 'usuarios', meuUid)).then(snap => {
+    return onSnapshot(doc(db, 'usuarios', meuUid), snap => {
       if (snap.exists()) setMeusDados({ ...snap.data(), uid: meuUid });
     });
   }, [meuUid]);
+
+  // ── Grupos de estudo em que participo ──
+  useEffect(() => {
+    if (!meuUid) return;
+    const q = query(collection(db, 'conversas'), where('membros', 'array-contains', meuUid));
+    return onSnapshot(q, snap => {
+      const lista = snap.docs
+        .map(d => ({ id: d.id, ...(d.data() as any) }))
+        .filter((c: any) => c.isGrupo) as Grupo[];
+      lista.sort((a, b) => (b.data_postagem?.seconds ?? 0) - (a.data_postagem?.seconds ?? 0));
+      setGrupos(lista);
+    }, e => console.log('Erro grupos:', e.message));
+  }, [meuUid]);
+
+  // Visível por padrão: campo ausente conta como ligado.
+  const perfilVisivel = meusDados?.visivel_match !== false;
+  const alternarVisibilidade = async (valor: boolean) => {
+    if (!meuUid) return;
+    setSalvandoVisivel(true);
+    try {
+      await updateDoc(doc(db, 'usuarios', meuUid), { visivel_match: valor });
+    } catch (e) { console.log(e); }
+    finally { setSalvandoVisivel(false); }
+  };
+
+  const abrirCriarGrupo = () => {
+    setGrupoNome(''); setGrupoMateria(''); setGrupoMembros([]); setGrupoConvidados([]);
+    setModalGrupo(true);
+  };
+
+  const totalEscolhidos = grupoMembros.length + grupoConvidados.length;
+  const vagasGrupo = MAX_MEMBROS_GRUPO - 1 - totalEscolhidos;
+  const podeCriarGrupo = !!grupoNome.trim() && totalEscolhidos >= 2 && !criandoGrupo;
+
+  const alternarMembroGrupo = (uid: string) => {
+    setGrupoMembros(prev => prev.includes(uid)
+      ? prev.filter(u => u !== uid)
+      : vagasGrupo <= 0 ? prev : [...prev, uid]);
+  };
+
+  const alternarConvidadoGrupo = (p: Pessoa) => {
+    setGrupoConvidados(prev => prev.some(c => c.uid === p.uid)
+      ? prev.filter(c => c.uid !== p.uid)
+      : vagasGrupo <= 0 ? prev : [...prev, p]);
+  };
+
+  const confirmarCriarGrupo = async () => {
+    if (!meuUid || !podeCriarGrupo) return;
+    setCriandoGrupo(true);
+    try {
+      const id = await criarGrupo({ criadorUid: meuUid, nome: grupoNome, materia: grupoMateria, membrosUids: grupoMembros });
+      const de = { uid: meuUid, nome: meusDados?.nome_completo || 'Alguém' };
+      const grupoBase = { id, nome: grupoNome.trim(), membros: [meuUid, ...grupoMembros], banidos: [] };
+      const falhas: string[] = [];
+      for (const p of grupoConvidados) {
+        try { await enviarConviteGrupo(grupoBase, de, p.uid); }
+        catch (e: any) { falhas.push(`${p.nome.split(' ')[0]}: ${e?.message || 'erro ao convidar'}`); }
+      }
+      setModalGrupo(false);
+      if (falhas.length) Alert.alert('Alguns convites não foram enviados', falhas.join('\n'));
+      navigation.navigate('GrupoChat', { grupoId: id, uid: meuUid });
+    } catch (e) {
+      console.log('Erro ao criar grupo:', e);
+      Alert.alert('Erro', 'Não foi possível criar o grupo. Tente de novo.');
+    } finally {
+      setCriandoGrupo(false);
+    }
+  };
 
   // ── Relação com cada pessoa (solicitações enviadas + recebidas) ──
   useEffect(() => {
@@ -266,7 +359,7 @@ export default function Match({ navigation, route }: any) {
   const solicitacoes = useMemo(() => {
     const porRemetente = new Map<string, any>();
     solicitacoesBrutas.forEach(sol => {
-      if (relacoes.get(sol.deUid)?.aceito) return;
+      if (relacoes.get(sol.deUid)?.aceito || respondidas.has(sol.deUid)) return;
       const atual = porRemetente.get(sol.deUid);
       if (!atual || tsMs(sol.criadoEm) > tsMs(atual.criadoEm)) porRemetente.set(sol.deUid, sol);
     });
@@ -274,7 +367,7 @@ export default function Match({ navigation, route }: any) {
       .map(sol => ({ ...sol, remetente: perfisRemetentes[sol.deUid] }))
       .filter(sol => sol.remetente)
       .sort((x, y) => tsMs(y.criadoEm) - tsMs(x.criadoEm));
-  }, [solicitacoesBrutas, relacoes, perfisRemetentes]);
+  }, [solicitacoesBrutas, relacoes, perfisRemetentes, respondidas]);
 
   useEffect(() => {
     const faltando = [...new Set(solicitacoesBrutas.map(sol => sol.deUid))].filter(uid => !perfisRemetentes[uid]);
@@ -299,8 +392,11 @@ export default function Match({ navigation, route }: any) {
     );
     const unsub = onSnapshot(q, async snap => {
       const parVistos = new Map<string, any>();
-      const UM_DIA_SEG = 24 * 60 * 60;
-      const agoraSeg = Date.now() / 1000;
+      const solicitacoesPorPar = new Map<string, any[]>();
+      snap.docs.forEach(d => {
+        const outro = d.data().membros?.find((id: string) => id !== meuUid);
+        if (outro) solicitacoesPorPar.set(outro, [...(solicitacoesPorPar.get(outro) || []), d.data()]);
+      });
       await Promise.all(snap.docs.map(async d => {
         const data     = d.data();
         const outroUid = data.membros?.find((id: string) => id !== meuUid);
@@ -308,23 +404,13 @@ export default function Match({ navigation, route }: any) {
         const oSnap = await getDoc(doc(db, 'usuarios', outroUid));
         if (!oSnap.exists()) return;
 
-        // Some da lista se o match já foi finalizado/avaliado há mais de 1 dia
-        const conversaId = [meuUid, outroUid].sort().join('_');
-        const cSnap = await getDoc(doc(db, 'conversas', conversaId));
-        if (cSnap.exists()) {
-          const cData = cSnap.data();
-          const finalizadoTs = cData?.finalizadoEm?.seconds;
-          if (cData?.matchFinalizado && finalizadoTs && (agoraSeg - finalizadoTs) > UM_DIA_SEG) {
-            return;
-          }
-        }
-
         const jaExiste = parVistos.get(outroUid);
         const ts = data.criadoEm?.seconds ?? 0;
         if (!jaExiste || ts > (jaExiste._ts ?? 0)) {
           parVistos.set(outroUid, {
             id: d.id, ...data, _ts: ts,
             outro: { ...oSnap.data(), uid: outroUid },
+            souAluno: alunoDoElo(solicitacoesPorPar.get(outroUid) || []) === meuUid,
           });
         }
       }));
@@ -349,14 +435,15 @@ export default function Match({ navigation, route }: any) {
     const agora = Date.now();
     return candidatosBrutos.filter((u: any) => {
       if (u.id === meuUid || u.status !== 1) return false;
+      if (u.visivel_match === false) return false;
       const r = relacoes.get(u.id);
       if (r && (r.aceito || r.pendenteEnviada || r.pendenteRecebida)) return false;
       if (r?.recusadoEm && agora - r.recusadoEm < QUINZE_DIAS_MS) return false;
       if (pulados[u.id]) return false;
-      const materias = u.ensinar || [];
-      if (materiasFiltro.length > 0) return materiasFiltro.some(m => materias.includes(m));
-      return materias.length > 0;
-    });
+      if (materiasFiltro.length === 0) return true;
+      const materias = materiasQueEnsina(u);
+      return materiasFiltro.some(m => materias.includes(m));
+    }).sort((a: any, b: any) => materiasQueEnsina(b).length - materiasQueEnsina(a).length);
   }, [candidatosBrutos, relacoes, pulados, materiasFiltro, meuUid]);
 
   const criarConversaDoMatch = async (outroUid: string) => {
@@ -370,7 +457,7 @@ export default function Match({ navigation, route }: any) {
     const outroData: any = outroSnap.exists() ? outroSnap.data() : {};
     await setDoc(doc(db, 'conversas', conversaId), {
       membros: [meuUid, outroUid],
-      ultimaMensagem: '🤝 Vocês fizeram match!',
+      ultimaMensagem: 'Vocês criaram um elo!',
       data_postagem: serverTimestamp(),
       quemEnviou: outroUid, visto: false, isMatch: true,
       dadosMembros: {
@@ -382,8 +469,13 @@ export default function Match({ navigation, route }: any) {
 
   const responderSolicitacao = async (solId: string, deUid: string, aceitar: boolean) => {
     if (!meuUid) return;
+    // A tela mostra só a solicitação mais recente de cada pessoa. Se a pessoa mandou
+    // mais de uma, fechar só a visível fazia a antiga aparecer no lugar ("não sai").
+    const ids = new Set<string>([solId, ...solicitacoesBrutas.filter(s => s.deUid === deUid).map(s => s.id)]);
+    setRespondidas(prev => new Set(prev).add(deUid));
     try {
-      await updateDoc(doc(db, 'match_solicitacoes', solId), { status: aceitar ? 'aceito' : 'recusado' });
+      await Promise.all([...ids].map(id =>
+        updateDoc(doc(db, 'match_solicitacoes', id), { status: aceitar ? 'aceito' : 'recusado' })));
       if (!aceitar) return;
 
       // Se eu também tinha mandado pra essa pessoa, fecha a minha junto —
@@ -394,11 +486,15 @@ export default function Match({ navigation, route }: any) {
       await criarConversaDoMatch(deUid);
       dispararPush({
         destinatarioUid: deUid,
-        titulo: '🤝 Deu match!',
+        titulo: 'Novo elo!',
         corpo: `${meusDados?.nome_completo || 'Alguém'} aceitou estudar com você. Bora conversar?`,
         dados: { tipo: 'match_aceito', deUid: meuUid },
       });
-    } catch (e) { console.log(e); }
+    } catch (e) {
+      console.log(e);
+      setRespondidas(prev => { const n = new Set(prev); n.delete(deUid); return n; });
+      Alert.alert('Erro', 'Não foi possível responder à solicitação. Tente de novo.');
+    }
   };
 
   const enviarSolicitacao = async (paraUid: string) => {
@@ -419,7 +515,7 @@ export default function Match({ navigation, route }: any) {
       });
       dispararPush({
         destinatarioUid: paraUid,
-        titulo: '🎓 Nova solicitação de match',
+        titulo: 'Nova solicitação de elo',
         corpo: `${meusDados?.nome_completo || 'Alguém'} quer estudar com você!`,
         dados: { tipo: 'solicitacao_match', deUid: meuUid },
       });
@@ -433,7 +529,19 @@ export default function Match({ navigation, route }: any) {
     AsyncStorage.setItem(CHAVE_PULADOS, JSON.stringify(novo)).catch(() => {});
   };
 
-  const abrirChat = (outroUid: string, outroNome: string, outraFoto: string) => {
+  const pedirApagarConversa = (outroUid: string, nome: string) => {
+    if (!meuUid) return;
+    const conversaId = [meuUid, outroUid].sort().join('_');
+    const executar = () => apagarConversaParaMim(conversaId, meuUid).catch(e => console.log('Erro ao apagar conversa:', e));
+    const msg = 'Ela some só pra você. Você continua com o match e, se chegar mensagem nova, ela reaparece.';
+    if (Platform.OS === 'web') { if (window.confirm(`Apagar a conversa com ${nome}?\n${msg}`)) executar(); return; }
+    Alert.alert(`Apagar a conversa com ${nome}?`, msg, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Apagar', style: 'destructive', onPress: executar },
+    ]);
+  };
+
+  const abrirChat = (outroUid: string, outroNome: string, outraFoto: string, extras: Record<string, any> = {}) => {
     const conversaId = [meuUid, outroUid].sort().join('_');
     navigation.navigate('Chat', {
       room: conversaId, meuUid,
@@ -441,6 +549,7 @@ export default function Match({ navigation, route }: any) {
       minhaFoto: meusDados?.foto || null,
       outroUid, outroNome,
       outraFoto: outraFoto || null,
+      ...extras,
     });
   };
 
@@ -453,9 +562,9 @@ export default function Match({ navigation, route }: any) {
   const getMateriaDoMatch = (item: any): { materias: string[]; tipo: 'te ensina' | 'você ensina' } => {
     const outro = item.outro || {};
     if (item.deUid === meuUid) {
-      return { materias: outro.ensinar || [], tipo: 'te ensina' };
+      return { materias: materiasQueEnsina(outro), tipo: 'te ensina' };
     } else {
-      return { materias: meusDados?.ensinar || [], tipo: 'você ensina' };
+      return { materias: materiasQueEnsina(meusDados), tipo: 'você ensina' };
     }
   };
 
@@ -468,10 +577,10 @@ export default function Match({ navigation, route }: any) {
   // ── Matches ordenados pela última mensagem ──
   const matchesNaoLidos = matches.filter(m => {
     const conversa = conversas[m.outro?.uid];
-    return conversa && !conversa.visto && conversa.quemEnviou !== meuUid;
+    return conversaNaoLida(conversa, meuUid) && !ocultaParaMim(conversa, meuUid);
   }).length;
 
-  const matchesOrdenados = [...matches].sort((a, b) => {
+  const matchesOrdenados = [...matches].filter(m => !ocultaParaMim(conversas[m.outro?.uid], meuUid)).sort((a, b) => {
     const ca = conversas[a.outro?.uid];
     const cb = conversas[b.outro?.uid];
     const ta = ca?.data_postagem?.seconds ?? a._ts ?? 0;
@@ -479,14 +588,21 @@ export default function Match({ navigation, route }: any) {
     return tb - ta;
   });
 
+  // Criação de grupo: só elos ativos (não finalizados) entram direto.
+  const elosAtivosParaGrupo: Pessoa[] = matchesOrdenados
+    .filter(m => m.outro?.uid && !conversas[m.outro.uid]?.matchFinalizado)
+    .map(m => ({ uid: m.outro.uid, nome: m.outro?.nome_completo || 'Usuário', foto: m.outro?.foto || null }));
+
   // ── FEED DE CANDIDATOS (lista vertical, estilo feed) ──
   const renderCandidato = ({ item }: any) => {
-    const materias: string[] = item.ensinar || [];
+    const ensina = materiasQueEnsina(item);
+    const materias: string[] = ensina.length > 0 ? ensina : materiasQueAprende(item);
+    const rotuloMaterias = ensina.length > 0 ? 'PODE TE AJUDAR EM' : 'TAMBÉM QUER APRENDER';
     const enviando = enviandoPara === item.id;
     return (
       <View style={styles.feedCard}>
         <TouchableOpacity style={styles.feedTopo} onPress={() => abrirPerfil(item.id)} activeOpacity={0.8}>
-          <Image source={{ uri: getImageUri(item.foto) }} style={styles.feedAvatar} />
+          <AvatarComCosmeticos foto={getImageUri(item.foto)} nome={item.nome_completo} tamanho={56} cosmeticosEquipados={item.cosmeticos_equipados} style={styles.avatarComFolga} />
           <View style={{ flex: 1 }}>
             <Text style={styles.feedNome} numberOfLines={1}>{item.nome_completo}</Text>
             <Text style={styles.feedTurma} numberOfLines={1}>{item.turma || item.ra || ''}</Text>
@@ -504,7 +620,7 @@ export default function Match({ navigation, route }: any) {
 
         {!!item.bio && <Text style={styles.feedBio} numberOfLines={3}>{item.bio}</Text>}
 
-        <Text style={styles.feedRotulo}>PODE TE AJUDAR EM</Text>
+        <Text style={styles.feedRotulo}>{materias.length > 0 ? rotuloMaterias : 'AINDA NÃO ESCOLHEU MATÉRIAS'}</Text>
         <View style={styles.feedMaterias}>
           {materias.slice(0, 6).map((m: string) => (
             <View key={m} style={[styles.feedMateria, materiasFiltro.includes(m) && styles.feedMateriaDestaque]}>
@@ -552,24 +668,27 @@ export default function Match({ navigation, route }: any) {
         contentContainerStyle={{ padding: 16, paddingBottom: 24, flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-        ListHeaderComponent={solicitacoes.length > 0 ? (
-          <TouchableOpacity style={styles.avisoSolic} onPress={() => setAbaAtiva('solicitacoes')} activeOpacity={0.85}>
-            <View style={styles.avisoSolicIcone}>
-              <Ionicons name="mail-unread" size={18} color={CORES_SYMBIUS.creme} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.avisoSolicTitulo}>
-                {solicitacoes.length === 1 ? '1 pessoa quer estudar com você' : `${solicitacoes.length} pessoas querem estudar com você`}
-              </Text>
-              <Text style={styles.avisoSolicSub}>Toque para responder</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={CORES_SYMBIUS.creme} />
-          </TouchableOpacity>
-        ) : null}
-        ListHeaderComponentStyle={{ marginBottom: 12 }}
+        ListHeaderComponent={<>
+          {!perfilVisivel && (
+            <TouchableOpacity
+              style={[styles.cardVisivel, styles.cardVisivelOff]}
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('Perfil', { uid: meuUid })}
+              accessibilityRole="button"
+            >
+              <Ionicons name="eye-off" size={20} color={CORES_SYMBIUS.laranjaTexto} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cardVisivelTitulo}>Seu perfil está oculto</Text>
+                <Text style={styles.cardVisivelSub}>Ninguém te encontra aqui. Mude no seu Perfil, em Privacidade.</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={CORES_SYMBIUS.textoSec} />
+            </TouchableOpacity>
+          )}
+        </>}
+        ListHeaderComponentStyle={{ marginBottom: 12, gap: 10 }}
         ListEmptyComponent={(
           <View style={[styles.centro, { paddingTop: 40 }]}>
-            <Text style={{ fontSize: 56 }}>🦉</Text>
+            <AnimalImagem animal="coruja" size={96} />
             <Text style={styles.txtVazio}>Ninguém novo por aqui!</Text>
             <Text style={[styles.txtVazio, { fontSize: 13, marginTop: 4 }]}>
               Tente mudar o filtro ou volte mais tarde.
@@ -595,7 +714,7 @@ export default function Match({ navigation, route }: any) {
   const renderSolicitacao = ({ item }: any) => (
     <View style={[styles.solCard, { backgroundColor: C.branco }]}>
       <TouchableOpacity onPress={() => abrirPerfil(item.deUid)} activeOpacity={0.8}>
-        <Image source={{ uri: getImageUri(item.remetente?.foto) }} style={styles.solAvatar} />
+        <AvatarComCosmeticos foto={getImageUri(item.remetente?.foto)} nome={item.remetente?.nome_completo} tamanho={52} cosmeticosEquipados={item.remetente?.cosmeticos_equipados} />
       </TouchableOpacity>
       <View style={styles.solInfo}>
         <Text style={[styles.solNome, { color: C.azulEscuro, fontFamily: F.bold }]}>{item.remetente?.nome_completo || 'Usuário'}</Text>
@@ -628,15 +747,16 @@ export default function Match({ navigation, route }: any) {
     // Online: respeita a config de privacidade statusOnline do outro
     const estaOnline = status?.online === true && status?.statusOnline !== false;
 
-    const ultimaMsg  = conversa?.ultimaMensagem || '';
+    const ultimaMsg  = previaLimpa(conversa, meuUid) ? '' : (conversa?.ultimaMensagem || '');
     const quemEnviou = conversa?.quemEnviou;
-    const naoLida    = conversa && !conversa.visto && quemEnviou !== meuUid;
+    const naoLida    = conversaNaoLida(conversa, meuUid);
+    const finalizado = !!conversa?.matchFinalizado;
     const prefixo    = quemEnviou === meuUid
       ? 'Você: '
       : (item.outro?.nome_completo?.split(' ')[0] + ': ' || '');
     const labelMsg   = ultimaMsg
       ? `${prefixo}${ultimaMsg}`
-      : 'Diga olá! 👋';
+      : 'Diga olá!';
 
     // Texto da direita: "online agora" se online, senão último acesso, senão hora da msg
     const labelDireita = estaOnline
@@ -649,10 +769,12 @@ export default function Match({ navigation, route }: any) {
       <TouchableOpacity
         style={[styles.solCard, { backgroundColor: C.branco }, naoLida && styles.solCardNaoLido]}
         onPress={() => abrirChat(outroUid, item.outro?.nome_completo, item.outro?.foto)}
+        onLongPress={() => pedirApagarConversa(outroUid, item.outro?.nome_completo || 'este usuário')}
+        delayLongPress={450}
         activeOpacity={0.75}
       >
         <TouchableOpacity style={styles.avatarWrap} onPress={() => abrirPerfil(outroUid)} activeOpacity={0.8}>
-          <Image source={{ uri: getImageUri(item.outro?.foto) }} style={styles.solAvatar} />
+          <AvatarComCosmeticos foto={getImageUri(item.outro?.foto)} nome={item.outro?.nome_completo} tamanho={52} cosmeticosEquipados={item.outro?.cosmeticos_equipados} />
           {/* Bolinha verde = online, separada do indicador de não lida */}
           {estaOnline && <View style={styles.bolinhaOnline} />}
         </TouchableOpacity>
@@ -676,10 +798,31 @@ export default function Match({ navigation, route }: any) {
           >
             {labelMsg}
           </Text>
+          {finalizado && (
+            <View style={styles.pillFinalizado}>
+              <Ionicons name="checkmark-circle" size={11} color={CORES_SYMBIUS.verdeEscuro} />
+              <Text style={styles.pillFinalizadoTxt}>Match finalizado · segure para apagar</Text>
+            </View>
+          )}
         </View>
 
         {/* Badge de não lida */}
         {naoLida && <View style={styles.badgeNaoLida} />}
+
+        {/* Finalizar: só quem pediu ajuda (aluno) avalia e encerra o elo —
+            abre o Chat direto no fluxo de avaliação já existente. */}
+        {!finalizado && item.souAluno && (
+          <TouchableOpacity
+            style={styles.btnFinalizarElo}
+            onPress={() => abrirChat(outroUid, item.outro?.nome_completo, item.outro?.foto, { abrirAvaliacao: true })}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Finalizar elo com ${item.outro?.nome_completo || 'este usuário'}`}
+          >
+            <Ionicons name="flag-outline" size={15} color={CORES_SYMBIUS.verdeEscuro} />
+            <Text style={styles.btnFinalizarEloTxt}>Finalizar</Text>
+          </TouchableOpacity>
+        )}
       </TouchableOpacity>
     );
   };
@@ -695,12 +838,12 @@ export default function Match({ navigation, route }: any) {
       />
 
       {/* NAVBAR */}
-      <View style={[styles.navbar, { paddingTop: insets.top, backgroundColor: CORES_SYMBIUS.fundo, borderBottomColor: CORES_SYMBIUS.borda }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={C.azulEscuro} />
+      <View style={[styles.navbar, { paddingTop: insets.top + 16, minHeight: 60 + insets.top + 16, backgroundColor: CORES_SYMBIUS.fundo, borderBottomColor: CORES_SYMBIUS.borda }]}>
+        <TouchableOpacity hitSlop={HIT_VOLTAR} style={AREA_VOLTAR} onPress={() => voltar(navigation)}>
+          <Ionicons name="arrow-back" size={22} color={C.azulEscuro} />
         </TouchableOpacity>
         <View style={styles.logoWrap}>
-          <Text style={[styles.logo, { color: C.azulEscuro, fontFamily: F.black }]}>Match de Estudos</Text>
+          <Text style={[styles.logo, { color: C.azulEscuro, fontFamily: F.black }]}>Elos de Estudos</Text>
         </View>
         <TouchableOpacity onPress={() => setPopupInfo(true)}>
           <Ionicons name="help-circle-outline" size={26} color={C.azulEscuro} />
@@ -714,15 +857,19 @@ export default function Match({ navigation, route }: any) {
           <TouchableOpacity
             key={aba}
             style={[styles.tab, abaAtiva === aba && styles.tabAtiva]}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: abaAtiva === aba }}
             onPress={() => setAbaAtiva(aba)}
           >
-            <Ionicons
-              name={aba === 'descobrir' ? 'search' : aba === 'solicitacoes' ? 'mail' : 'people'}
-              size={15}
-              color={abaAtiva === aba ? CORES.branco : C.textoSec}
-            />
-            <Text style={[styles.tabTxt, { color: abaAtiva === aba ? CORES.branco : C.textoSec, fontFamily: F.bold }, abaAtiva === aba && styles.tabTxtAtiva]}>
-              {aba === 'descobrir' ? 'Descobrir' : aba === 'solicitacoes' ? 'Solicitações' : 'Matches'}
+            {abaAtiva === aba && (
+              <Ionicons
+                name={aba === 'descobrir' ? 'search' : aba === 'solicitacoes' ? 'mail' : 'people'}
+                size={15}
+                color={CORES.branco}
+              />
+            )}
+            <Text numberOfLines={1} style={[styles.tabTxt, { color: abaAtiva === aba ? CORES.branco : C.textoSec, fontFamily: F.bold }, abaAtiva === aba && styles.tabTxtAtiva]}>
+              {aba === 'descobrir' ? 'Descobrir' : aba === 'solicitacoes' ? 'Pedidos' : 'Elos'}
             </Text>
             {aba === 'solicitacoes' && solicitacoes.length > 0 && (
               <View style={styles.badge}>
@@ -780,15 +927,23 @@ export default function Match({ navigation, route }: any) {
               keyExtractor={i => i.id}
               renderItem={renderSolicitacao}
               contentContainerStyle={{ padding: 16 }}
+              ListHeaderComponent={(
+                <View style={styles.solicTopo}>
+                  <Text style={styles.solicTitulo}>
+                    {solicitacoes.length === 1 ? '1 pessoa quer estudar com você' : `${solicitacoes.length} pessoas querem estudar com você`}
+                  </Text>
+                  <Text style={styles.solicSub}>Aceite para abrir o chat e criar um elo.</Text>
+                </View>
+              )}
             />
       )}
 
       {/* ABA MATCHES */}
       {abaAtiva === 'matches' && (
-        matchesOrdenados.length === 0
+        matchesOrdenados.length === 0 && grupos.length === 0
           ? <View style={styles.centro}>
               <Ionicons name="heart-outline" size={56} color={CORES.cinzaClaro} />
-              <Text style={styles.txtVazio}>Nenhum match ainda.</Text>
+              <Text style={styles.txtVazio}>Nenhum elo ainda.</Text>
               <Text style={[styles.txtVazio, { fontSize: 13, marginTop: 4 }]}>
                 Comece a descobrir monitores!
               </Text>
@@ -798,9 +953,108 @@ export default function Match({ navigation, route }: any) {
               keyExtractor={i => i.id}
               renderItem={renderMatch}
               contentContainerStyle={{ padding: 16 }}
+              ListHeaderComponent={
+                <View style={{ marginBottom: 6 }}>
+                  <TouchableOpacity
+                    style={styles.btnCriarGrupo}
+                    onPress={abrirCriarGrupo}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="people" size={18} color={CORES_SYMBIUS.creme} />
+                    <Text style={styles.btnCriarGrupoTxt}>Criar grupo de estudo</Text>
+                  </TouchableOpacity>
+                  {matches.length < 2 && (
+                    <Text style={styles.dicaGrupo}>Você pode chamar seus elos e convidar outras pessoas pelo nome.</Text>
+                  )}
+
+                  {grupos.length > 0 && <Text style={styles.secaoLista}>GRUPOS</Text>}
+                  {grupos.map(g => {
+                    const naoLida = conversaNaoLida(g, meuUid);
+                    return (
+                      <TouchableOpacity
+                        key={g.id}
+                        style={[styles.solCard, { backgroundColor: C.branco }]}
+                        onPress={() => navigation.navigate('GrupoChat', { grupoId: g.id, uid: meuUid })}
+                        activeOpacity={0.8}
+                      >
+                        {g.foto
+                          ? <Image source={{ uri: getImageUri(g.foto) }} style={styles.solAvatar} />
+                          : (
+                            <View style={[styles.solAvatar, styles.grupoAvatar]}>
+                              <Ionicons name="people" size={22} color={CORES_SYMBIUS.creme} />
+                            </View>
+                          )}
+                        <View style={styles.solInfo}>
+                          <Text style={[styles.solNome, { color: C.azulEscuro, fontFamily: F.bold }]} numberOfLines={1}>{g.nome}</Text>
+                          <Text style={[styles.ultimaMsg, { color: naoLida ? C.azulEscuro : C.textoSec, fontFamily: naoLida ? F.semibold : F.regular }]} numberOfLines={1}>
+                            {(!previaLimpa(g, meuUid) && g.ultimaMensagem) || `${g.membros.length} participantes`}
+                          </Text>
+                        </View>
+                        <Text style={[styles.msgTimestamp, { color: C.textoSec, fontFamily: F.medium }]}>{g.membros.length} membros</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                  {matchesOrdenados.length > 0 && <Text style={styles.secaoLista}>ELOS</Text>}
+                </View>
+              }
             />
       )}
       </Animated.View>
+
+      <Modal visible={modalGrupo} transparent animationType="slide" onRequestClose={() => setModalGrupo(false)}>
+        <View style={styles.grupoOverlay}>
+          <View style={[styles.grupoSheet, { paddingBottom: 20 + insets.bottom }]}>
+            <View style={styles.grupoHandle} />
+            <Text style={styles.grupoTitulo}>Novo grupo de estudo</Text>
+            <TextInput
+              style={styles.grupoInput}
+              placeholder="Nome do grupo (ex: Revisão de Química)"
+              placeholderTextColor={CORES_SYMBIUS.textoTerciario}
+              value={grupoNome}
+              onChangeText={setGrupoNome}
+              maxLength={40}
+            />
+            <TextInput
+              style={styles.grupoInput}
+              placeholder="Matéria (opcional)"
+              placeholderTextColor={CORES_SYMBIUS.textoTerciario}
+              value={grupoMateria}
+              onChangeText={setGrupoMateria}
+              maxLength={30}
+            />
+            <Text style={styles.secaoLista}>
+              QUEM VAI PARTICIPAR ({totalEscolhidos}/{MAX_MEMBROS_GRUPO - 1})
+            </Text>
+            <SeletorPessoas
+              meuUid={meuUid}
+              matches={elosAtivosParaGrupo}
+              selecionados={grupoMembros}
+              convidados={grupoConvidados}
+              onAlternarMatch={alternarMembroGrupo}
+              onAlternarConvidado={alternarConvidadoGrupo}
+              vagas={vagasGrupo}
+              alturaMax={260}
+            />
+            <View style={styles.grupoBotoes}>
+              <TouchableOpacity style={[styles.grupoBtn, { backgroundColor: CORES_SYMBIUS.fundoSuave }]} onPress={() => setModalGrupo(false)}>
+                <Text style={[styles.grupoBtnTxt, { color: CORES_SYMBIUS.texto }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.grupoBtn, { backgroundColor: CORES_SYMBIUS.verdeEscuro }, !podeCriarGrupo && { opacity: 0.5 }]}
+                onPress={confirmarCriarGrupo}
+                disabled={!podeCriarGrupo}
+                accessibilityState={{ disabled: !podeCriarGrupo }}
+              >
+                {criandoGrupo
+                  ? <ActivityIndicator color={CORES_SYMBIUS.creme} />
+                  : <Text style={styles.grupoBtnTxt}>Criar grupo</Text>}
+              </TouchableOpacity>
+            </View>
+            {totalEscolhidos < 2 && <Text style={[styles.dicaGrupo, { textAlign: 'center' }]}>Escolha pelo menos 2 pessoas. Quem não é seu elo recebe um convite e entra se aceitar.</Text>}
+          </View>
+        </View>
+      </Modal>
 
       {/* POPUP INFO */}
       {popupInfo && (
@@ -810,13 +1064,13 @@ export default function Match({ navigation, route }: any) {
               <Ionicons name="people" size={32} color={CORES.rosa} />
             </View>
             <Text style={[styles.popupTitulo, { color: C.azulEscuro, fontFamily: F.black }]}>
-              O que é o <Text style={{ fontStyle: 'italic', color: CORES.rosa }}>Match Acadêmico</Text>?
+              O que é o <Text style={{ fontStyle: 'italic', color: CORES.rosa }}>Elo Acadêmico</Text>?
             </Text>
             <ScrollView style={{ maxHeight: height * 0.45 }} showsVerticalScrollIndicator={false}>
               {[
                 { num: '01', titulo: 'Encontre seu monitor ideal',         desc: 'Conectamos alunos que querem aprender com quem pode ensinar — da mesma série ou superior.' },
                 { num: '02', titulo: 'Você escolhe com quem quer estudar', desc: 'Nada é imposto. Você vê o perfil de cada pessoa e decide se quer se conectar.' },
-                { num: '03', titulo: 'Match mútuo → Chat liberado',        desc: 'Só quando os dois aceitarem é que o chat é aberto. Seguro e respeitoso.' },
+                { num: '03', titulo: 'Elo mútuo → Chat liberado',        desc: 'Só quando os dois aceitarem é que o chat é aberto. Seguro e respeitoso.' },
                 { num: '04', titulo: 'Configure no seu Perfil',            desc: 'Vá em Perfil e configure quais matérias você pode ensinar e quais quer melhorar.' },
               ].map(item => (
                 <View key={item.num} style={styles.popupItem}>
@@ -900,11 +1154,43 @@ export default function Match({ navigation, route }: any) {
 }
 
 const styles = StyleSheet.create({
+  cardVisivel: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16,
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
+  },
+  cardVisivelOff: { backgroundColor: CORES_SYMBIUS.fundoLaranjaClaro, borderColor: CORES_SYMBIUS.laranja + '55' },
+  cardVisivelTitulo: { fontSize: 13.5, fontFamily: F.bold, color: CORES_SYMBIUS.texto },
+  cardVisivelSub: { fontSize: 11.5, fontFamily: F.regular, color: CORES_SYMBIUS.textoSec, marginTop: 2, lineHeight: 16 },
+  btnCriarGrupo: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: CORES_SYMBIUS.verdeEscuro, borderRadius: 14, paddingVertical: 12,
+  },
+  btnCriarGrupoTxt: { fontSize: 14, fontFamily: F.bold, color: CORES_SYMBIUS.creme },
+  dicaGrupo: { fontSize: 11.5, fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 6 },
+  secaoLista: { fontSize: 10.5, fontFamily: F.bold, letterSpacing: 0.6, color: CORES_SYMBIUS.textoSec, marginTop: 14, marginBottom: 8 },
+  grupoAvatar: { backgroundColor: CORES_SYMBIUS.verdeEscuro, justifyContent: 'center', alignItems: 'center' },
+  grupoOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  grupoSheet: { backgroundColor: CORES_SYMBIUS.fundoCard, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 12 },
+  grupoHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: CORES_SYMBIUS.borda2, alignSelf: 'center', marginBottom: 12 },
+  grupoTitulo: { fontSize: 18, fontFamily: F.black, color: CORES_SYMBIUS.texto, marginBottom: 12 },
+  grupoInput: {
+    backgroundColor: CORES_SYMBIUS.fundo, borderRadius: 12, borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
+    paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, fontFamily: F.regular, color: CORES_SYMBIUS.texto, marginBottom: 10,
+  },
+  grupoOpcao: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
+  grupoOpcaoFoto: { width: 36, height: 36, borderRadius: 18, backgroundColor: CORES_SYMBIUS.fundoSuave },
+  grupoOpcaoNome: { flex: 1, fontSize: 14, fontFamily: F.semibold, color: CORES_SYMBIUS.texto },
+  grupoBotoes: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  grupoBtn: { flex: 1, borderRadius: 14, paddingVertical: 13, alignItems: 'center' },
+  grupoBtnTxt: { fontSize: 14, fontFamily: F.bold, color: CORES_SYMBIUS.creme },
+
   feedCard: {
     backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 20, padding: 16,
     borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
   },
   feedTopo:      { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  // Chapéu sai pra cima da foto no card do Descobrir.
+  avatarComFolga: { marginTop: 10 },
   feedAvatar:    { width: 56, height: 56, borderRadius: 28, backgroundColor: CORES_SYMBIUS.fundoSuave },
   feedNome:      { fontSize: 16, fontFamily: F.bold, color: CORES_SYMBIUS.texto },
   feedTurma:     { fontSize: 12, fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 1 },
@@ -927,24 +1213,27 @@ const styles = StyleSheet.create({
     borderRadius: 14, paddingVertical: 11, backgroundColor: CORES_SYMBIUS.verdeEscuro,
   },
   feedBtnAceitarTxt: { fontSize: 13.5, fontFamily: F.bold, color: CORES_SYMBIUS.creme },
+  solicTopo:        { marginBottom: 14, paddingHorizontal: 2 },
+  solicTitulo:      { fontSize: 18, lineHeight: 24, fontFamily: F.black, letterSpacing: -0.3, color: CORES_SYMBIUS.texto },
+  solicSub:         { fontSize: 13, fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 3 },
   avisoSolic: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: CORES_SYMBIUS.laranjaTexto, borderRadius: 16, padding: 14,
+    flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, padding: 14, borderRadius: 20,
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderWidth: 1.5, borderColor: CORES_SYMBIUS.semente,
   },
-  avisoSolicIcone: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.18)', justifyContent: 'center', alignItems: 'center' },
-  avisoSolicTitulo: { fontSize: 14, fontFamily: F.bold, color: CORES_SYMBIUS.creme },
-  avisoSolicSub:    { fontSize: 11.5, fontFamily: F.medium, color: 'rgba(244,241,232,0.85)', marginTop: 1 },
+  avisoSolicIcone: { width: 42, height: 42, borderRadius: 21, backgroundColor: CORES_SYMBIUS.semente, justifyContent: 'center', alignItems: 'center' },
+  avisoSolicTitulo: { fontSize: 14, fontFamily: F.bold, color: CORES_SYMBIUS.texto },
+  avisoSolicSub:    { fontSize: 12, fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 1 },
 
   container:          { flex: 1, backgroundColor: CORES.fundo },
-  navbar:             { minHeight: 64, backgroundColor: CORES.branco, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
+  navbar:             { minHeight: 60, paddingBottom: 8, backgroundColor: CORES.branco, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
   logoWrap:           { position: 'relative', flexDirection: 'row', alignItems: 'center' },
   dotAmarelo:         { position: 'absolute', top: 2, left: -4, width: 7, height: 7, borderRadius: 4, backgroundColor: CORES.amarelo, zIndex: 1 },
   logo:               { fontSize: 17, fontFamily: F.black, color: CORES.azulEscuro, letterSpacing: -0.3 },
-  tabs:               { flexDirection: 'row', backgroundColor: CORES.branco, paddingHorizontal: 16, paddingBottom: 12, paddingTop: 8, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
+  tabs:               { flexDirection: 'row', backgroundColor: CORES.branco, paddingHorizontal: 16, paddingBottom: 14, paddingTop: 10, borderBottomWidth: 1, borderBottomColor: CORES.cinzaClaro },
   tabsTrack:          { flex: 1, flexDirection: 'row', gap: 4, backgroundColor: CORES.fundo, padding: 4, borderRadius: 14 },
-  tab:                { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 6, paddingVertical: 9, borderRadius: 10 },
+  tab:                { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8, minHeight: 44, borderRadius: 12 },
   tabAtiva:           { backgroundColor: CORES.azulEscuro },
-  tabTxt:             { fontSize: 12, fontFamily: F.bold, color: CORES.textoSec },
+  tabTxt:             { fontSize: 13, fontFamily: F.bold, color: CORES.textoSec },
   tabTxtAtiva:        { color: CORES.branco },
   badge:              { backgroundColor: CORES.rosa, width: 18, height: 18, borderRadius: 9, justifyContent: 'center', alignItems: 'center', marginLeft: 2 },
   badgeTxt:           { color: CORES.branco, fontSize: 10, fontFamily: F.black },
@@ -1002,6 +1291,13 @@ const styles = StyleSheet.create({
   // Avatar com bolinha online (canto inferior direito — igual Instagram)
   avatarWrap:    { position: 'relative' },
   bolinhaOnline: { position: 'absolute', bottom: 1, right: 1, width: 13, height: 13, borderRadius: 7, backgroundColor: CORES.verde, borderWidth: 2, borderColor: CORES.branco },
+  btnFinalizarElo: {
+    flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 32,
+    paddingHorizontal: 10, borderRadius: 16, backgroundColor: CORES_SYMBIUS.verdeEscuro + '18',
+  },
+  btnFinalizarEloTxt: { fontSize: 12, fontFamily: F.bold, color: CORES_SYMBIUS.verdeEscuro },
+  pillFinalizado: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', marginTop: 5, backgroundColor: CORES_SYMBIUS.fundoSuave, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
+  pillFinalizadoTxt: { fontSize: 10, fontFamily: F.semibold, color: CORES_SYMBIUS.textoSec },
   badgeNaoLida:  { width: 10, height: 10, borderRadius: 5, backgroundColor: CORES.rosa, marginLeft: 8, alignSelf: 'center' },
 
   // Tags inline no match

@@ -2,14 +2,15 @@ import React from 'react';
 import { StyleSheet, View, TouchableOpacity, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CORES_SYMBIUS } from '../screens/Boasvindas';
+import { CORES_SYMBIUS } from '../constants/coresSymbius';
+import { irParaAba } from '../navegacao';
 import { F } from '../constants/theme';
 
 // ── Barra de navegação inferior compartilhada pelas 4 telas "top-level"
 // (Início, Match, Feed, Perfil). Não usamos @react-navigation/bottom-tabs
 // de propósito — o app inteiro roda num único Stack Navigator, então essa
 // barra só chama navigation.navigate(...) entre as telas já registradas.
-export type SymbiusAba = 'inicio' | 'agenda' | 'match' | 'feed' | 'perfil';
+export type SymbiusAba = 'inicio' | 'agenda' | 'match' | 'feed' | 'perfil' | 'nenhuma';
 
 interface Props {
   ativa: SymbiusAba;
@@ -20,8 +21,8 @@ interface Props {
 const ITENS: { chave: SymbiusAba; label: string; icone: keyof typeof Ionicons.glyphMap; iconeAtivo: keyof typeof Ionicons.glyphMap; destino: string }[] = [
   { chave: 'inicio', label: 'Início', icone: 'home-outline', iconeAtivo: 'home', destino: 'Index' },
   { chave: 'agenda', label: 'Agenda', icone: 'calendar-outline', iconeAtivo: 'calendar', destino: 'Calendario' },
-  { chave: 'match',  label: 'Match',  icone: 'heart-outline', iconeAtivo: 'heart', destino: 'Match' },
-  { chave: 'feed',   label: 'Feed',   icone: 'newspaper-outline', iconeAtivo: 'newspaper', destino: 'Resumos' },
+  { chave: 'match',  label: 'Elos',  icone: 'infinite-outline', iconeAtivo: 'infinite', destino: 'Match' },
+  { chave: 'feed',   label: 'Resumos',   icone: 'newspaper-outline', iconeAtivo: 'newspaper', destino: 'Resumos' },
   { chave: 'perfil', label: 'Perfil', icone: 'person-outline', iconeAtivo: 'person', destino: 'Perfil' },
 ];
 
@@ -29,7 +30,7 @@ export default function SymbiusTabBar({ ativa, navigation, uid }: Props) {
   const insets = useSafeAreaInsets();
   const irPara = (destino: string) => {
     if (destino === ativa && ITENS.find(i => i.chave === ativa)?.destino === destino) return;
-    navigation.navigate(destino, uid ? { uid } : undefined);
+    irParaAba(navigation, destino, uid ? { uid } : undefined);
   };
 
   return (

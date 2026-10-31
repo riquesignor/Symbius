@@ -1,18 +1,17 @@
-  import React, { useState, useEffect, useRef } from 'react';
+import { voltar, HIT_VOLTAR } from '../navegacao';
+  import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
   import {
     StyleSheet, Text, View, TouchableOpacity, ScrollView,
-    SafeAreaView, StatusBar, Switch, Modal, TextInput,
+    SafeAreaView, StatusBar, Switch, Modal,
     ActivityIndicator, Linking, Animated, Platform, Vibration
   } from 'react-native';
   import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
   import AsyncStorage from '@react-native-async-storage/async-storage';
   import { useSafeAreaInsets } from 'react-native-safe-area-context';
-  import { db, auth } from '../config/firebaseConfig';
+  import { db } from '../config/firebaseConfig';
   import { useAppSettings } from '../contexts/AppSettingsContext';
   import { doc, getDoc, updateDoc, collection, getDocs } from 'firebase/firestore';
   import { useNotificacao } from '../contexts/NotificacaoProvider';
-  import { sairDaConta as encerrarSessao } from '../services/authService';
-  import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 
   import { F } from '../constants/theme';
   import { CORES_SYMBIUS, CORES_SYMBIUS_DARK } from './Boasvindas';
@@ -52,7 +51,6 @@
 
   const TAMANHOS_FONTE = ['Pequeno', 'Normal', 'Grande'];
   const SONS_NOTIF     = ['Nenhum', 'Leve', 'Normal', 'Forte'];
-  const VISIBILIDADES  = ['Público', 'Apenas Contatos', 'Privado'];
   const SERIES         = ['1º Ano', '2º Ano', '3º Ano', 'Não definir'];
 
   // ── Animação ──
@@ -73,6 +71,78 @@
     );
   };
 
+  const EscalaFonte = createContext(1);
+
+  // ════ ROW COMPONENT ════
+  // Fora da tela de propósito: definido dentro do render, o React via um
+  // tipo novo a cada re-render e remontava as linhas, cancelando toques.
+  const SettingRow = ({ icon, iconCor, label, descricao, toggle, onToggle, valor, onPress, perigo, ultimo }: any) => {
+    const cores = CORES;
+    const fonteScale = useContext(EscalaFonte);
+    return (
+      <TouchableOpacity
+        style={[
+          styles.row,
+          { borderBottomColor: cores.cinzaClaro, borderBottomWidth: ultimo ? 0 : 0.5 },
+        ]}
+        onPress={onPress}
+        disabled={onToggle != null && onPress == null}
+        activeOpacity={onPress ? 0.6 : 1}
+      >
+        <View style={[styles.rowIcon, { backgroundColor: (iconCor || cores.azulEscuro) + '15' }]}>
+          <Ionicons name={icon} size={16} color={iconCor || cores.azulEscuro} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.rowLabel, { color: perigo ? CORES.vermelho : cores.preto, fontSize: 14 * fonteScale }]}>
+            {label}
+          </Text>
+          {descricao && (
+            <Text style={[styles.rowDesc, { color: cores.textoSec, fontSize: 11 * fonteScale }]}>
+              {descricao}
+            </Text>
+          )}
+        </View>
+        {onToggle != null ? (
+          <Switch
+            value={toggle}
+            onValueChange={onToggle}
+            trackColor={{ false: cores.cinzaClaro, true: cores.azulEscuro }}
+            thumbColor={toggle ? cores.amarelo : '#FFF'}
+            ios_backgroundColor={cores.cinzaClaro}
+          />
+        ) : valor ? (
+          <View style={styles.rowValor}>
+            <Text style={[styles.rowValorText, { color: cores.textoSec, fontSize: 12 * fonteScale }]}>
+              {valor}
+            </Text>
+            <Ionicons name="chevron-forward" size={15} color={cores.textoSec} />
+          </View>
+        ) : (
+          <Ionicons name="chevron-forward" size={15} color={cores.textoSec} />
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  // ════ SECTION COMPONENT ════
+  const Section = ({ eyebrow, titulo, children }: any) => {
+    const cores = CORES;
+    const fonteScale = useContext(EscalaFonte);
+    return (
+      <View style={styles.section}>
+        <Text style={[styles.sectionEyebrow, { color: cores.rosa, fontSize: 9 * fonteScale }]}>
+          {eyebrow}
+        </Text>
+        <Text style={[styles.sectionTitulo, { color: cores.azulEscuro, fontSize: 16 * fonteScale }]}>
+          {titulo}
+        </Text>
+        <View style={[styles.sectionCard, { backgroundColor: cores.branco }]}>
+          {children}
+        </View>
+      </View>
+    );
+  };
+
   export default function Configuracoes({ navigation, route }: any) {
     const insets = useSafeAreaInsets();
     const uid = route?.params?.uid;
@@ -85,10 +155,9 @@
     notifEventos,  setNotifEventos,
     notifMatch,    setNotifMatch,
     notifMensagens, setNotifMensagens,
+    notifDiario,    setNotifDiario,
     somNotif,      setSomNotif,
     vibracao,      setVibracao,
-    visibilidade,  setVisibilidade,
-    statusOnline,  setStatusOnline,
     serieFiltro,   setSerieFiltro,
   } = useAppSettings();
 
@@ -97,22 +166,14 @@
 
     // ════ STATES — UI ════
     const [carregando,      setCarregando]      = useState(true);
-    const [salvandoSenha,   setSalvandoSenha]   = useState(false);
     const [toast,           setToast]           = useState('');
     const [confirmacao,     setConfirmacao]     = useState<any>(null);
 
     // ════ STATES — MODAIS ════
     const [modalFonte,        setModalFonte]        = useState(false);
     const [modalSom,          setModalSom]          = useState(false);
-    const [modalVisibilidade, setModalVisibilidade] = useState(false);
     const [modalSerie,        setModalSerie]        = useState(false);
-    const [modalSenha,        setModalSenha]        = useState(false);
 
-    // ════ STATES — SENHA ════
-    const [senhaAtual,        setSenhaAtual]        = useState('');
-    const [senhaNova,         setSenhaNova]         = useState('');
-    const [senhaConfirma,     setSenhaConfirma]     = useState('');
-    const [erroSenha,         setErroSenha]         = useState('');
 
     // ── Histórico de notificações (portado do Index original) ──
     const { notificacoesChat, limparNotificacoesChat } = useNotificacao();
@@ -230,7 +291,7 @@
     const toggleModoEscuro = (v: boolean) => {
       setConfirmacao({
         titulo: v ? 'Ativar modo escuro?' : 'Voltar pro modo claro?',
-        msg: 'O app vai reiniciar rapidinho para aplicar o novo tema em todas as telas.',
+        msg: 'O tema novo atravessa a tela como uma onda e é aplicado em todas as telas.',
         btnTxt: 'Aplicar',
         onOk: () => {
           setConfirmacao(null);
@@ -272,12 +333,6 @@
       if (v) Vibration.vibrate(50);
     };
 
-    const toggleStatusOnline = (v: boolean) => {
-      setStatusOnline(v);
-      salvarFirestore('statusOnline', v);
-      setToast(v ? 'Status online visível' : 'Status online oculto');
-    };
-
     // ════ HANDLERS — SELETORES ════
     const selecionarFonte = (v: string) => {
       setTamanhoFonte(v);
@@ -291,13 +346,6 @@
       salvarLocal('cfg_somNotif', v);
       setModalSom(false);
       setToast(`Som: ${v}`);
-    };
-
-    const selecionarVisibilidade = (v: string) => {
-      setVisibilidade(v);
-      salvarFirestore('visibilidade', v);
-      setModalVisibilidade(false);
-      setToast(`Perfil: ${v}`);
     };
 
     const selecionarSerie = (v: string) => {
@@ -329,65 +377,6 @@
       });
     };
 
-    const sairDaConta = () => {
-      setConfirmacao({
-        titulo: 'Sair da conta?',
-        msg: 'Você precisará fazer login novamente para acessar o app.',
-        btnTxt: 'Sair',
-        perigo: true,
-        onOk: async () => {
-          try {
-            await encerrarSessao(uid);
-            setConfirmacao(null);
-            navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
-          } catch { setToast('Erro ao sair'); }
-        }
-      });
-    };
-
-    const alterarSenha = async () => {
-      setErroSenha('');
-      if (!senhaAtual || !senhaNova || !senhaConfirma) {
-        setErroSenha('Preencha todos os campos.');
-        return;
-      }
-      if (senhaNova.length < 6) {
-        setErroSenha('A nova senha deve ter no mínimo 6 caracteres.');
-        return;
-      }
-      if (senhaNova !== senhaConfirma) {
-        setErroSenha('As senhas não coincidem.');
-        return;
-      }
-      setSalvandoSenha(true);
-      try {
-        const user = auth.currentUser;
-        if (!user || !user.email) throw new Error('no-user');
-        const cred = EmailAuthProvider.credential(user.email, senhaAtual);
-        await reauthenticateWithCredential(user, cred);
-        await updatePassword(user, senhaNova);
-        setModalSenha(false);
-        setSenhaAtual(''); setSenhaNova(''); setSenhaConfirma('');
-        setToast('Senha alterada');
-      } catch (e: any) {
-        console.error('Erro ao alterar senha:', e?.code, e?.message);
-        const code = e?.code || '';
-        if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-          setErroSenha('Senha atual incorreta.');
-        } else if (code === 'auth/weak-password') {
-          setErroSenha('A nova senha é muito fraca. Escolha uma mais segura.');
-        } else if (code === 'auth/too-many-requests') {
-          setErroSenha('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
-        } else if (code === 'auth/network-request-failed') {
-          setErroSenha('Erro de conexão. Verifique sua internet e tente novamente.');
-        } else if (e?.message === 'no-user') {
-          setErroSenha('Usuário não autenticado. Feche o app, faça login novamente e tente outra vez.');
-        } else {
-          setErroSenha(`Erro ao alterar senha: ${e?.message || code || 'Tente novamente.'}`);
-        }
-      } finally { setSalvandoSenha(false); }
-    };
-
     const abrirURL = async (url: string) => {
       try {
         await Linking.openURL(url);
@@ -395,73 +384,7 @@
     };
 
     const enviarFeedback = () => {
-      abrirURL('mailto:contato@anchieta.br?subject=Feedback Symbius&body=Olá, gostaria de enviar um feedback sobre o app...');
-    };
-
-    // ════ ROW COMPONENT ════
-    const SettingRow = ({ icon, iconCor, label, descricao, toggle, onToggle, valor, onPress, perigo, ultimo }: any) => {
-      const cores = CORES;
-      return (
-        <TouchableOpacity
-          style={[
-            styles.row,
-            { borderBottomColor: cores.cinzaClaro, borderBottomWidth: ultimo ? 0 : 0.5 },
-          ]}
-          onPress={onPress}
-          disabled={onToggle != null && onPress == null}
-          activeOpacity={onPress ? 0.6 : 1}
-        >
-          <View style={[styles.rowIcon, { backgroundColor: (iconCor || cores.azulEscuro) + '15' }]}>
-            <Ionicons name={icon} size={16} color={iconCor || cores.azulEscuro} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.rowLabel, { color: perigo ? CORES.vermelho : cores.preto, fontSize: 14 * fonteScale }]}>
-              {label}
-            </Text>
-            {descricao && (
-              <Text style={[styles.rowDesc, { color: cores.textoSec, fontSize: 11 * fonteScale }]}>
-                {descricao}
-              </Text>
-            )}
-          </View>
-          {onToggle != null ? (
-            <Switch
-              value={toggle}
-              onValueChange={onToggle}
-              trackColor={{ false: cores.cinzaClaro, true: cores.azulEscuro }}
-              thumbColor={toggle ? cores.amarelo : '#FFF'}
-              ios_backgroundColor={cores.cinzaClaro}
-            />
-          ) : valor ? (
-            <View style={styles.rowValor}>
-              <Text style={[styles.rowValorText, { color: cores.textoSec, fontSize: 12 * fonteScale }]}>
-                {valor}
-              </Text>
-              <Ionicons name="chevron-forward" size={15} color={cores.textoSec} />
-            </View>
-          ) : (
-            <Ionicons name="chevron-forward" size={15} color={cores.textoSec} />
-          )}
-        </TouchableOpacity>
-      );
-    };
-
-    // ════ SECTION COMPONENT ════
-    const Section = ({ eyebrow, titulo, children }: any) => {
-      const cores = CORES;
-      return (
-        <View style={styles.section}>
-          <Text style={[styles.sectionEyebrow, { color: cores.rosa, fontSize: 9 * fonteScale }]}>
-            {eyebrow}
-          </Text>
-          <Text style={[styles.sectionTitulo, { color: cores.azulEscuro, fontSize: 16 * fonteScale }]}>
-            {titulo}
-          </Text>
-          <View style={[styles.sectionCard, { backgroundColor: cores.branco }]}>
-            {children}
-          </View>
-        </View>
-      );
+      abrirURL('mailto:contato@anchieta.br?subject=Feedback Simbio&body=Olá, gostaria de enviar um feedback sobre o app...');
     };
 
     if (carregando) {
@@ -474,7 +397,7 @@
 
     return (
       <View style={[styles.container, { backgroundColor: C.fundo }]}>
-        <StatusBar barStyle={modoEscuro ? "light-content" : "light-content"} backgroundColor={CORES.azulEscuro} />
+        <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
 
         {/* TOAST */}
         {toast !== '' && (
@@ -485,22 +408,19 @@
         )}
 
         {/* HEADER */}
-        <View style={[styles.header, { paddingTop: insets.top + 14, backgroundColor: CORES.azulEscuro }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.btnVoltar}>
-            <Ionicons name="arrow-back" size={20} color="#FFF" />
+        <View style={[styles.header, { paddingTop: insets.top + 28 }]}>
+          <TouchableOpacity hitSlop={HIT_VOLTAR} onPress={() => voltar(navigation)} style={styles.btnVoltar} accessibilityLabel="Voltar">
+            <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
           </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <View style={styles.headerEyebrowRow}>
-              <View style={styles.headerDot} />
-              <Text style={styles.headerEyebrow}>PERSONALIZE SEU APP</Text>
-            </View>
-            <Text style={styles.headerTitulo}>Configurações</Text>
-          </View>
-          <TouchableOpacity style={styles.headerIconWrap} onPress={() => toggleModoEscuro(!modoEscuro)}>
-            <Ionicons name={modoEscuro ? 'sunny' : 'moon'} size={18} color={CORES.amarelo} />
-          </TouchableOpacity>
+          {/* Título no fluxo normal (não absoluto): um Text absoluto por cima
+              do header engolia os toques do botão de voltar no Android/iOS. */}
+          <Text style={[styles.headerTitulo, styles.headerTituloFlex]} numberOfLines={1} accessibilityRole="header">
+            Configurações
+          </Text>
+          <View style={styles.headerEspaco} />
         </View>
 
+        <EscalaFonte.Provider value={fonteScale}>
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 60 }}
@@ -563,17 +483,25 @@
                 icon="chatbubbles"
                 iconCor={CORES.azulEscuro}
                 label="Mensagens"
-                descricao="Chat com seus matches"
+                descricao="Chat com seus elos"
                 toggle={notifMensagens && notifGeral}
                 onToggle={toggleNotifMensagens}
               />
               <SettingRow
                 icon="heart"
                 iconCor={CORES.rosa}
-                label="Match"
-                descricao="Solicitações e matches aceitos"
+                label="Elos"
+                descricao="Solicitações e elos aceitos"
                 toggle={notifMatch && notifGeral}
                 onToggle={toggleNotifMatch}
+              />
+              <SettingRow
+                icon="leaf"
+                iconCor={CORES.verde}
+                label="Desafio diário"
+                descricao="Lembrete quando o XP do dia está liberado"
+                toggle={notifDiario && notifGeral}
+                onToggle={setNotifDiario}
               />
               <SettingRow
                 icon="musical-notes"
@@ -593,24 +521,9 @@
             </Section>
           </FadeInView>
 
-          {/* ══ PRIVACIDADE ══ */}
+          {/* ══ AGENDA ══ */}
           <FadeInView delay={200}>
-            <Section eyebrow="SEGURANÇA" titulo="Privacidade">
-              <SettingRow
-                icon="eye"
-                iconCor={CORES.verde}
-                label="Visibilidade do Perfil"
-                valor={visibilidade}
-                onPress={() => setModalVisibilidade(true)}
-              />
-              <SettingRow
-                icon="radio-button-on"
-                iconCor={CORES.verde}
-                label="Status Online"
-                descricao="Mostrar quando você está ativo"
-                toggle={statusOnline}
-                onToggle={toggleStatusOnline}
-              />
+            <Section eyebrow="CALENDÁRIO" titulo="Agenda">
               <SettingRow
                 icon="school"
                 iconCor={CORES.azulEscuro}
@@ -632,33 +545,6 @@
                 label="Limpar Cache"
                 descricao="Remove dados temporários"
                 onPress={limparCache}
-                ultimo
-              />
-            </Section>
-          </FadeInView>
-
-          {/* ══ CONTA ══ */}
-          <FadeInView delay={400}>
-            <Section eyebrow="MINHA CONTA" titulo="Conta">
-              <SettingRow
-                icon="person-circle"
-                iconCor={CORES.azulEscuro}
-                label="Editar Perfil"
-                descricao={userData?.email_escolar || ''}
-                onPress={() => navigation.navigate('Perfil', { uid })}
-              />
-              <SettingRow
-                icon="lock-closed"
-                iconCor={CORES.azulEscuro}
-                label="Alterar Senha"
-                onPress={() => setModalSenha(true)}
-              />
-              <SettingRow
-                icon="log-out"
-                iconCor={CORES.vermelho}
-                label="Sair da Conta"
-                onPress={sairDaConta}
-                perigo
                 ultimo
               />
             </Section>
@@ -699,14 +585,15 @@
           <FadeInView delay={600}>
             <View style={styles.rodape}>
               <Text style={[styles.rodapeSymbius, { color: C.azulEscuro }]}>
-                Symbi<Text style={{ color: C.rosa }}>us</Text>
+                Simbi<Text style={{ color: C.rosa }}>o</Text>
               </Text>
               <Text style={[styles.rodapeTxt, { color: C.textoSec }]}>
-                feito com 💛 pela Anchieta
+                feito pela Anchieta
               </Text>
             </View>
           </FadeInView>
         </ScrollView>
+        </EscalaFonte.Provider>
 
         {/* ── MODAL TAMANHO FONTE ── */}
         <Modal visible={modalFonte} transparent animationType="slide">
@@ -750,26 +637,6 @@
           </View>
         </Modal>
 
-        {/* ── MODAL VISIBILIDADE ── */}
-        <Modal visible={modalVisibilidade} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 24, backgroundColor: C.branco }]}>
-              <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
-              <Text style={[styles.modalTitulo, { color: C.azulEscuro }]}>Visibilidade do Perfil</Text>
-              {VISIBILIDADES.map(v => (
-                <TouchableOpacity
-                  key={v}
-                  style={[styles.seletorItem, { borderBottomColor: C.cinzaClaro }]}
-                  onPress={() => selecionarVisibilidade(v)}
-                >
-                  <Text style={[styles.seletorItemText, { color: C.azulEscuro }]}>{v}</Text>
-                  {visibilidade === v && <Ionicons name="checkmark" size={18} color={C.azulEscuro} />}
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        </Modal>
-
         {/* ── MODAL SÉRIE ── */}
         <Modal visible={modalSerie} transparent animationType="slide">
           <View style={styles.modalOverlay}>
@@ -786,76 +653,6 @@
                   {serieFiltro === s && <Ionicons name="checkmark" size={18} color={C.azulEscuro} />}
                 </TouchableOpacity>
               ))}
-            </View>
-          </View>
-        </Modal>
-
-        {/* ── MODAL ALTERAR SENHA ── */}
-        <Modal visible={modalSenha} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 24, backgroundColor: C.branco }]}>
-              <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
-              <Text style={[styles.modalTitulo, { color: C.azulEscuro }]}>Alterar Senha</Text>
-
-              <Text style={[styles.inputLabel, { color: C.textoSec }]}>SENHA ATUAL</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: C.fundo, color: C.azulEscuro, borderColor: C.cinzaClaro }]}
-                placeholder="Digite sua senha atual"
-                placeholderTextColor={C.textoSec}
-                secureTextEntry
-                value={senhaAtual}
-                onChangeText={setSenhaAtual}
-              />
-
-              <Text style={[styles.inputLabel, { color: C.textoSec, marginTop: 14 }]}>NOVA SENHA</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: C.fundo, color: C.azulEscuro, borderColor: C.cinzaClaro }]}
-                placeholder="Mínimo 6 caracteres"
-                placeholderTextColor={C.textoSec}
-                secureTextEntry
-                value={senhaNova}
-                onChangeText={setSenhaNova}
-              />
-
-              <Text style={[styles.inputLabel, { color: C.textoSec, marginTop: 14 }]}>CONFIRMAR NOVA SENHA</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: C.fundo, color: C.azulEscuro, borderColor: C.cinzaClaro }]}
-                placeholder="Repita a nova senha"
-                placeholderTextColor={C.textoSec}
-                secureTextEntry
-                value={senhaConfirma}
-                onChangeText={setSenhaConfirma}
-              />
-
-              {erroSenha !== '' && (
-                <View style={styles.erroBox}>
-                  <Ionicons name="alert-circle" size={14} color={CORES.vermelho} />
-                  <Text style={styles.erroText}>{erroSenha}</Text>
-                </View>
-              )}
-
-              <View style={styles.modalBtnsRow}>
-                <TouchableOpacity
-                  style={[styles.btnCancelar, { borderColor: C.cinzaClaro }]}
-                  onPress={() => {
-                    setModalSenha(false);
-                    setSenhaAtual(''); setSenhaNova(''); setSenhaConfirma('');
-                    setErroSenha('');
-                  }}
-                >
-                  <Text style={[styles.btnCancelarText, { color: C.textoSec }]}>Cancelar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.btnSalvar, { backgroundColor: CORES.azulEscuro }]}
-                  onPress={alterarSenha}
-                  disabled={salvandoSenha}
-                >
-                  {salvandoSenha
-                    ? <ActivityIndicator color="#FFF" size="small" />
-                    : <Text style={styles.btnSalvarText}>Salvar</Text>
-                  }
-                </TouchableOpacity>
-              </View>
             </View>
           </View>
         </Modal>
@@ -965,7 +762,7 @@
                           <View style={{ flex: 1 }}>
                             <Text style={[styles.notifTitulo, { color: C.azulEscuro }]} numberOfLines={1}>{item.titulo}</Text>
                             <Text style={[styles.notifMeta, { color: C.textoSec }]}>
-                              {item.tipo === 'lembrete_vencido' ? '⚠️ Vencido' : '📅 Próximo'}
+                              {item.tipo === 'lembrete_vencido' ? 'Vencido' : 'Próximo'}
                             </Text>
                           </View>
                         </View>
@@ -984,6 +781,7 @@
             </View>
           </View>
         </Modal>
+        <SymbiusTabBar ativa="nenhuma" navigation={navigation} uid={uid ?? null} />
       </View>
     );
   }
@@ -997,12 +795,14 @@
     toastText:           { color: CORES.branco, fontFamily: F.bold, fontSize: 12 },
 
     // HEADER
-    header:              { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingBottom: 16, gap: 12 },
-    btnVoltar:           { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
+    header:              { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingBottom: 10, gap: 8, backgroundColor: CORES_SYMBIUS.fundo },
+    btnVoltar:           { width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-start' },
     headerEyebrowRow:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
     headerDot:           { width: 6, height: 6, borderRadius: 3, backgroundColor: CORES.amarelo },
     headerEyebrow:       { color: 'rgba(255,255,255,0.7)', fontSize: 9, fontFamily: F.black, letterSpacing: 1.6 },
-    headerTitulo:        { color: CORES.branco, fontSize: 19, fontFamily: F.black, letterSpacing: -0.4, marginTop: 2 },
+    headerTitulo:        { color: CORES_SYMBIUS.texto, fontSize: 17, fontFamily: F.black, letterSpacing: -0.3 },
+    headerTituloFlex:    { flex: 1, textAlign: 'center' },
+    headerEspaco:        { width: 44, height: 44 },
     headerIconWrap:      { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
 
     // SECTION
@@ -1057,4 +857,5 @@
     confirmTitulo:       { fontSize: 17, fontFamily: F.black, marginBottom: 6, textAlign: 'center' },
     confirmMsg:          { fontSize: 13, fontFamily: F.medium, textAlign: 'center', lineHeight: 19, marginBottom: 18 },
     confirmBtns:         { flexDirection: 'row', gap: 8, width: '100%' },
-  });
+  })
+import SymbiusTabBar from '../components/SymbiusTabBar';;

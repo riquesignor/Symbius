@@ -1,0 +1,219 @@
+rules_version = '2';
+
+// ══════════════════════════════════════════════════════════════════════
+// Regras do Firestore do Symbius.
+//
+// ATENÇÃO: tudo que não é grupo/mensagem de grupo/convite/denúncia continua
+// ABERTO exatamente como estava antes (allow if true), pra não quebrar o
+// login, a recuperação de senha e as telas atuais. Fechar `usuarios` e o
+// resto é um trabalho separado — enquanto `usuarios` for gravável por
+// qualquer um, a checagem de administrador (ehAdminApp) também é fraca.
+// ══════════════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function logado() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+    function mudou() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function caminho(colecao, id) { return /databases/$(database)/documents/$(colecao)/$(id); }
+
+    function ehAdminApp() {
+      return logado() && exists(caminho('usuarios', uid()))
+        && get(caminho('usuarios', uid())).data.get('tipo', '').lower() == 'administrador';
+    }
+
+    // ── Coleções sem regra própria: abertas, como antes ──────────────────
+    match /{colecao}/{documento=**} {
+      allow read, write: if !(colecao in ['conversas', 'mensagens', 'convites_grupo', 'denuncias']);
+    }
+
+    // ── Grupos (conversas com isGrupo) ───────────────────────────────────
+    // Conversas 1:1 continuam abertas como antes.
+    function ehGrupo(d) { return d.get('isGrupo', false) == true; }
+    // Grupos criados antes do campo `admins` têm o criador como admin.
+    function adminsDe(d) { return d.get('admins', [d.criadoPor]); }
+    function adminsAtivos(d) { return adminsDe(d).toSet().intersection(d.membros.toSet()); }
+    function souMembroDe(d) { return uid() in d.membros; }
+    function souAdminDe(d) { return souMembroDe(d) && uid() in adminsDe(d); }
+
+    function camposDeConversa() {
+      return ['ultimaMensagem', 'quemEnviou', 'data_postagem', 'leitura', 'visto', 'ocultaEm'];
+    }
+
+    function grupoCriadoOk() {
+      let d = request.resource.data;
+      return logado()
+        && d.criadoPor == uid()
+        && uid() in d.membros
+        && d.membros.size() <= 8
+        && d.get('admins', [uid()]) == [uid()];
+    }
+
+    function estruturaGrupoOk() {
+      let d = request.resource.data;
+      return d.isGrupo == true
+        && d.criadoPor == resource.data.criadoPor
+        && d.membros.size() <= 8
+        && !d.membros.hasAny(d.get('banidos', []))
+        // Nunca fica sem admin enquanto houver alguém no grupo.
+        && (!('admins' in d) || (d.membros.hasAll(d.admins) && (d.admins.size() > 0 || d.membros.size() == 0)));
+    }
+
+    // Membro comum: conversar/ler/ocultar, ou sair (só a si mesmo). Ao sair,
+    // os admins viram "admins antigos que ficaram", ou — se não sobrou
+    // nenhum — o membro mais antigo.
+    function membroComumOk() {
+      let d = request.resource.data;
+      let restantes = resource.data.membros.toSet().difference([uid()].toSet());
+      let adminsQueFicam = adminsDe(resource.data).toSet().intersection(d.membros.toSet());
+      let novosAdmins = d.get('admins', adminsDe(resource.data));
+      return souMembroDe(resource.data) && (
+        mudou().hasOnly(camposDeConversa())
+        || (
+          d.membros.toSet() == restantes
+          && mudou().hasOnly(camposDeConversa().concat(['membros', 'dadosMembros', 'admins']))
+          && (novosAdmins.toSet() == adminsQueFicam
+              || (adminsQueFicam.size() == 0 && d.membros.size() > 0 && novosAdmins == [d.membros[0]]))
+        )
+      );
+    }
+
+    // Quem tem convite pendente pra este grupo pode se adicionar (o convite é
+    // marcado como aceito no mesmo lote).
+    function entradaPorConviteOk(grupoId) {
+      let d = request.resource.data;
+      return !souMembroDe(resource.data)
+        && exists(caminho('convites_grupo', uid()))
+        && get(caminho('convites_grupo', uid())).data.status == 'pendente'
+        && get(caminho('convites_grupo', uid())).data.grupoId == grupoId
+        && !(uid() in resource.data.get('banidos', []))
+        && d.membros.toSet() == resource.data.membros.toSet().union([uid()].toSet())
+        && mudou().hasOnly(['membros', 'dadosMembros', 'ultimaMensagem', 'quemEnviou', 'data_postagem']);
+    }
+
+    // Grupo sem nenhum admin entre os membros: o mais antigo assume.
+    function reparoDeAdminOk() {
+      return souMembroDe(resource.data)
+        && adminsAtivos(resource.data).size() == 0
+        && resource.data.membros[0] == uid()
+        && mudou().hasOnly(['admins'])
+        && request.resource.data.admins == [uid()];
+    }
+
+    match /conversas/{conversaId} {
+      allow read: if true;
+      allow create: if !ehGrupo(request.resource.data) || grupoCriadoOk();
+      allow update: if (!ehGrupo(resource.data) && !ehGrupo(request.resource.data))
+        || (ehGrupo(resource.data) && logado() && estruturaGrupoOk() && (
+              souAdminDe(resource.data)
+              || membroComumOk()
+              || entradaPorConviteOk(conversaId)
+              || reparoDeAdminOk()
+           ));
+      allow delete: if !ehGrupo(resource.data);
+    }
+
+    // ── Mensagens ────────────────────────────────────────────────────────
+    // 1:1 continua aberto como antes; mensagens de grupo têm regras.
+    function conversaDe(id) { return get(caminho('conversas', id)).data; }
+    function ehMsgDeGrupo(d) {
+      return exists(caminho('conversas', d.conversaId)) && ehGrupo(conversaDe(d.conversaId));
+    }
+    function souAutor() { return logado() && resource.data.remetenteUid == uid(); }
+    function naoApagada() { return resource.data.get('apagadaParaTodos', false) != true; }
+
+    function edicaoOk() {
+      return souAutor() && naoApagada()
+        && resource.data.get('tipo', 'texto') == 'texto'
+        && mudou().hasOnly(['mensagem', 'editada', 'editadaEm'])
+        && request.resource.data.mensagem is string
+        && request.resource.data.mensagem.size() > 0;
+    }
+
+    function apagarParaMimOk() {
+      return logado()
+        && mudou().hasOnly(['ocultaPara'])
+        && request.resource.data.ocultaPara.toSet()
+           == resource.data.get('ocultaPara', []).toSet().union([uid()].toSet());
+    }
+
+    // Apagar para todos: só o autor e só até 30 minutos depois do envio.
+    function apagarParaTodosOk() {
+      return souAutor() && naoApagada()
+        && request.time < resource.data.data_postagem + duration.value(30, 'm')
+        && mudou().hasOnly(['apagadaParaTodos', 'mensagem', 'tipo', 'apagadaEm'])
+        && request.resource.data.apagadaParaTodos == true
+        && request.resource.data.mensagem == '';
+    }
+
+    // Exclusão física só quando todos os membros já ocultaram a conversa
+    // (mesma regra do apagarConversaParaMim).
+    function todosOcultaram(conversaId) {
+      let c = conversaDe(conversaId);
+      return c.membros.size() > 0 && c.get('ocultaEm', {}).keys().hasAll(c.membros);
+    }
+
+    match /mensagens/{mensagemId} {
+      allow read: if true;
+      allow create: if !ehMsgDeGrupo(request.resource.data)
+        || (logado()
+            && request.resource.data.remetenteUid == uid()
+            && uid() in conversaDe(request.resource.data.conversaId).membros);
+      allow update: if !ehMsgDeGrupo(resource.data)
+        || (request.resource.data.conversaId == resource.data.conversaId
+            && request.resource.data.remetenteUid == resource.data.remetenteUid
+            && (edicaoOk() || apagarParaMimOk() || apagarParaTodosOk()));
+      allow delete: if !ehMsgDeGrupo(resource.data) || todosOcultaram(resource.data.conversaId);
+    }
+
+    // ── Convites para grupo: um documento por pessoa convidada ───────────
+    // O id é o uid do convidado, então nunca há dois pendentes pra mesma
+    // pessoa: sobrescrever só é permitido depois que o anterior foi respondido.
+    function conviteNovoOk(alvo) {
+      let d = request.resource.data;
+      return logado()
+        && d.deUid == uid()
+        && d.alvoUid == alvo
+        && alvo != uid()
+        && d.status == 'pendente'
+        && exists(caminho('conversas', d.grupoId))
+        && ehGrupo(conversaDe(d.grupoId))
+        && souAdminDe(conversaDe(d.grupoId))
+        && !(alvo in conversaDe(d.grupoId).membros)
+        && !(alvo in conversaDe(d.grupoId).get('banidos', []));
+    }
+
+    function respostaConviteOk(alvo) {
+      let d = request.resource.data;
+      return logado() && uid() == alvo
+        && resource.data.status == 'pendente'
+        && mudou().hasOnly(['status', 'respondidoEm'])
+        && (d.status == 'recusado'
+            || (d.status == 'aceito'
+                && uid() in getAfter(caminho('conversas', resource.data.grupoId)).data.membros));
+    }
+
+    match /convites_grupo/{alvo} {
+      allow read: if logado();
+      allow create: if conviteNovoOk(alvo);
+      allow update: if (resource.data.status != 'pendente' && conviteNovoOk(alvo)) || respostaConviteOk(alvo);
+      allow delete: if false;
+    }
+
+    // ── Denúncias de mensagem ────────────────────────────────────────────
+    match /denuncias/{denunciaId} {
+      allow create: if logado()
+        && request.resource.data.denuncianteUid == uid()
+        && denunciaId == request.resource.data.mensagemId + '_' + uid()
+        && request.resource.data.status == 'pendente'
+        && request.resource.data.criadoEm == request.time
+        && request.resource.data.keys().hasOnly([
+             'mensagemId', 'conversaId', 'denuncianteUid', 'autorUid',
+             'tipoConversa', 'motivo', 'status', 'criadoEm']);
+      allow read: if logado() && (resource.data.denuncianteUid == uid() || ehAdminApp());
+      allow update: if ehAdminApp();
+      allow delete: if false;
+    }
+  }
+}

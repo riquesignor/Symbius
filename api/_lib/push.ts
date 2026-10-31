@@ -1,7 +1,20 @@
-import { FieldValue } from 'firebase-admin/firestore';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { messagingAdmin, dbAdmin, authAdmin } from './firebaseAdmin';
 
 export const CANAL_ANDROID = 'symbius';
+
+// Só o app na web (npm run web) precisa disso: o navegador bloqueia chamadas
+// entre origens sem esses cabeçalhos. A autenticação é por Bearer token (sem
+// cookies), então liberar a origem não abre nada além do que o token já protege.
+// Retorna true quando era só a verificação prévia (OPTIONS) e já foi respondida.
+export const liberarCors = (req: any, res: any): boolean => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  if (req.method === 'OPTIONS') { res.status(204).end(); return true; }
+  return false;
+};
 
 export const uidDoToken = async (authorization: string | undefined): Promise<string | null> => {
   const idToken = authorization?.startsWith('Bearer ') ? authorization.slice(7) : null;
@@ -24,14 +37,32 @@ const PREF_POR_TIPO: Record<string, string> = {
   lembrete: 'eventos',
   resumo_curtida: 'geral',
   resumo_comentario: 'geral',
+  mensagem_grupo: 'mensagens',
+  grupo_adicionado: 'match',
+  convite_grupo: 'match',
+  novo_post: 'avisos',
+  checkin: 'diario',
 };
 
-export const permitePush = (usuario: any, tipo: string, remetenteUid?: string): boolean => {
+// Avisos sobre a própria conta chegam sempre, independente das preferências.
+const TIPOS_OBRIGATORIOS = new Set(['conta_suspensa', 'conta_reativada']);
+
+// Só um administrador pode disparar esses tipos (senão qualquer usuário
+// logado poderia mandar "sua conta foi suspensa" pra outra pessoa).
+export const TIPOS_SO_ADMIN = new Set(['conta_suspensa', 'conta_reativada']);
+
+export const ehAdmin = (u: any) => String(u?.tipo || '').toLowerCase() === 'administrador';
+export const ehStaff = (u: any) => ehAdmin(u) || String(u?.tipo || '').toLowerCase() === 'gremista';
+
+// `silenciavel` é quem pode estar na lista de silenciados: o remetente numa
+// conversa 1:1 ou o id do grupo numa conversa em grupo.
+export const permitePush = (usuario: any, tipo: string, silenciavel?: string): boolean => {
+  if (TIPOS_OBRIGATORIOS.has(tipo)) return true;
   const prefs = usuario?.notif_prefs || {};
   if (prefs.geral === false) return false;
   const campo = PREF_POR_TIPO[tipo];
   if (campo && prefs[campo] === false) return false;
-  if (tipo === 'mensagem' && remetenteUid && (usuario?.silenciados || []).includes(remetenteUid)) return false;
+  if (silenciavel && (usuario?.silenciados || []).includes(silenciavel)) return false;
   return true;
 };
 
@@ -54,11 +85,20 @@ export interface Destino { uid: string; token: string }
 
 // Envia pra vários tokens e apaga do Firestore os que o FCM disser que não
 // existem mais (app desinstalado, token trocado).
+export interface OpcoesEnvio {
+  // Notificações com a mesma tag SUBSTITUEM a anterior (Android: tag; iOS: collapse-id).
+  // É o que impede a pilha de avisos repetidos da mesma conversa.
+  tag?: string;
+  // Link https de uma imagem (foto de quem mandou / do grupo). Android mostra na notificação.
+  imagem?: string;
+}
+
 export const enviarParaTokens = async (
   destinos: Destino[],
   titulo: string,
   corpo: string,
   dados: Record<string, any>,
+  opcoes: OpcoesEnvio = {},
 ): Promise<{ enviados: number; falhas: number; erros: string[] }> => {
   if (destinos.length === 0) return { enviados: 0, falhas: 0, erros: [] };
   let enviados = 0;
@@ -69,10 +109,17 @@ export const enviarParaTokens = async (
     const lote = destinos.slice(i, i + 500);
     const resp = await messagingAdmin.sendEach(lote.map(d => ({
       token: d.token,
-      notification: { title: titulo, body: corpo },
+      notification: { title: titulo, body: corpo, ...(opcoes.imagem ? { imageUrl: opcoes.imagem } : {}) },
       data: stringificar(dados),
-      android: { priority: 'high' as const, notification: { channelId: CANAL_ANDROID, color: '#1F3D2B' } },
-      apns: { payload: { aps: { sound: 'default' } } },
+      android: {
+        priority: 'high' as const,
+        notification: { channelId: CANAL_ANDROID, color: '#1F3D2B', ...(opcoes.tag ? { tag: opcoes.tag.slice(0, 64) } : {}) },
+      },
+      apns: {
+        ...(opcoes.tag ? { headers: { 'apns-collapse-id': opcoes.tag.slice(0, 64) } } : {}),
+        payload: { aps: { sound: 'default', ...(opcoes.imagem ? { 'mutable-content': 1 } : {}), ...(opcoes.tag ? { 'thread-id': opcoes.tag.slice(0, 64) } : {}) } },
+        ...(opcoes.imagem ? { fcmOptions: { imageUrl: opcoes.imagem } } : {}),
+      },
     })));
     enviados += resp.successCount;
     falhas += resp.failureCount;
@@ -88,4 +135,77 @@ export const enviarParaTokens = async (
     }));
   }
   return { enviados, falhas, erros };
+};
+
+// ── Notificação em bloco (estilo WhatsApp) ─────────────────────────────
+const msTs = (t: any): number => (t && typeof t.toMillis === 'function' ? t.toMillis() : 0);
+
+const textoDaMensagem = (m: any): string => {
+  switch (m.tipo) {
+    case 'imagem':    return '📷 Foto';
+    case 'video':     return '🎥 Vídeo';
+    case 'documento': return `📄 ${m.nomeArquivo || 'Documento'}`;
+    default:          return String(m.mensagem || '').slice(0, 140);
+  }
+};
+
+export interface BlocoMensagens { total: number; linhas: string[] }
+
+// Mensagens que o destinatário ainda NÃO leu nesta conversa (usa o horário de
+// leitura gravado em conversas/{id}.leitura.{uid}). Em conversa 1:1 só conta as do
+// remetente; em grupo conta as de todos os outros, com o nome na frente.
+export const mensagensNaoLidas = async (p: {
+  conversaId: string; destinatarioUid: string; remetenteUid?: string; comNome?: boolean;
+}): Promise<BlocoMensagens> => {
+  const conversa = (await dbAdmin.collection('conversas').doc(p.conversaId).get()).data() || {};
+  const lido = msTs(conversa.leitura?.[p.destinatarioUid]);
+
+  let q = dbAdmin.collection('mensagens').where('conversaId', '==', p.conversaId);
+  if (lido) q = q.where('data_postagem', '>', Timestamp.fromMillis(lido));
+  // Ordem crescente: usa o mesmo índice das telas de chat (sem criar outro).
+  const snap = await q.orderBy('data_postagem', 'asc').get();
+
+  const msgs = snap.docs
+    .map(d => d.data())
+    .filter(m => m.remetenteUid !== p.destinatarioUid && (!p.remetenteUid || m.remetenteUid === p.remetenteUid))
+    .slice(-30);
+
+  const linhas = msgs.map(m => {
+    const txt = textoDaMensagem(m);
+    return p.comNome ? `${String(m.nome_remetente || '').split(' ')[0]}: ${txt}` : txt;
+  });
+  return { total: linhas.length, linhas };
+};
+
+// Monta título/corpo do bloco: "Maria · 3 mensagens" + as últimas 5 em linhas.
+export const montarBloco = (tituloBase: string, bloco: BlocoMensagens, fallbackCorpo: string) => {
+  if (bloco.total === 0) return { titulo: tituloBase, corpo: fallbackCorpo };
+  const ultimas = bloco.linhas.slice(-5);
+  const anteriores = bloco.total - ultimas.length;
+  const corpo = (anteriores > 0 ? `+${anteriores} anterior${anteriores > 1 ? 'es' : ''}\n` : '') + ultimas.join('\n');
+  const titulo = bloco.total > 1 ? `${tituloBase} · ${bloco.total} mensagens` : tituloBase;
+  return { titulo, corpo: corpo.slice(0, 400) };
+};
+
+// ── Foto na notificação ─────────────────────────────────────────────────
+// As fotos ficam em base64 no Firestore, mas a notificação só aceita um link
+// https. /api/foto entrega a imagem; o link é assinado pra ninguém conseguir
+// baixar a foto de qualquer uid só trocando o parâmetro.
+const chaveFoto = () => createHash('sha256').update(`foto:${process.env.FIREBASE_PRIVATE_KEY || ''}`).digest();
+
+export const assinaturaFoto = (tipo: string, id: string) =>
+  createHmac('sha256', chaveFoto()).update(`${tipo}:${id}`).digest('hex').slice(0, 32);
+
+export const assinaturaFotoValida = (tipo: string, id: string, s: string) => {
+  const esperado = Buffer.from(assinaturaFoto(tipo, id));
+  const recebido = Buffer.from(String(s || ''));
+  return esperado.length === recebido.length && timingSafeEqual(esperado, recebido);
+};
+
+// tipo 'u' = foto do usuário, 'g' = foto do grupo. A versão muda quando a foto
+// muda, então o celular não reaproveita uma foto antiga do cache.
+export const urlFoto = (host: string | undefined, tipo: 'u' | 'g', id: string, foto: string | null | undefined) => {
+  if (!host || !foto) return undefined;
+  const v = createHash('sha1').update(String(foto)).digest('hex').slice(0, 10);
+  return `https://${host}/api/foto?t=${tipo}&id=${encodeURIComponent(id)}&v=${v}&s=${assinaturaFoto(tipo, id)}`;
 };

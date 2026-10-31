@@ -1,26 +1,32 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
-  StyleSheet, Text, View, TouchableOpacity, ScrollView,
-  StatusBar, TextInput, ActivityIndicator,
-  Image, FlatList, Dimensions, Modal,
+  StyleSheet, Text, View, TouchableOpacity, ScrollView, RefreshControl,
+  StatusBar, TextInput, ActivityIndicator, Switch, Alert,
+  Image, FlatList, Dimensions, Modal, useWindowDimensions,
 } from 'react-native';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { db } from '../config/firebaseConfig';
+import { db, auth } from '../config/firebaseConfig';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   doc, getDoc, getDocs, collection, query, where, orderBy, onSnapshot,
-  updateDoc, increment, arrayUnion,
+  updateDoc, increment, arrayUnion, writeBatch,
 } from 'firebase/firestore';
+import { confirmar } from '../utils/confirmar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { calcularNivel, calcularProgressoXp } from '../utils/gamification';
-import { awardDailyCheckIn, CheckInResult, LevelUpInfo } from '../services/gamificationService';
+import { calcularNivel, calcularProgressoXp, GAMIFICATION_CONFIG } from '../utils/gamification';
+import { awardDailyCheckIn, CheckInResult, LevelUpInfo, diaEscolar } from '../services/gamificationService';
 import { useNotificacao } from '../contexts/NotificacaoProvider';
+import { NIVEL_NUMERO } from '../constants/temaSymbius';
+import { useAppSettings } from '../contexts/AppSettingsContext';
 import { F } from '../constants/theme';
 import { CORES_SYMBIUS } from './Boasvindas';
 import NivelUpSymbiusModal from '../components/NivelUpSymbiusModal';
+import AnimalImagem from '../components/AnimalImagem';
 import SymbiusTabBar from '../components/SymbiusTabBar';
+import { ocultaParaMim } from '../utils/conversas';
 
 // ══════════════════════════════════════════════════════════════════════
 // Home ("Symbius"), ligada ao back-end atual (mesma coleção `usuarios`, mesmo
@@ -33,6 +39,8 @@ import SymbiusTabBar from '../components/SymbiusTabBar';
 const { width } = Dimensions.get('window');
 const PAD_H = 20;
 const DESTAQUE_W = (width - PAD_H * 2 - 12) / 2;
+const CARD_GAP = 12;
+const LARGURA_MAX_CONTEUDO = 760; // em tela larga (tablet/web) o conteúdo não estica
 const LARGURA_ANTIGO = (width - 44 - 12) / 2; // largura de card dentro do notifSheet (padding 22 de cada lado)
 
 const DIAS_VALIDADE_POST = 30;
@@ -73,6 +81,12 @@ const SUBS_AGENDA: { sub: string; rotulo: string; icon: any }[] = [
 const quandoTexto = (dias: number) =>
   dias === 0 ? 'hoje' : dias === 1 ? 'amanhã' : dias > 0 ? `em ${dias} dias` : `há ${Math.abs(dias)} dias`;
 
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+// O Perfil salva em posso_ensinar; `ensinar` é o campo antigo (igual ao Match.tsx)
+const materiasQueEnsina = (u: any): string[] =>
+  [...new Set<string>([...(u?.posso_ensinar || []), ...(u?.ensinar || [])])];
+
 const ACOES = [
   { chave: 'match',   label: 'Encontrar match', icone: 'location-outline'    as const, cor: CORES_SYMBIUS.verdeMedio },
   { chave: 'duvida',  label: 'Tirar dúvida',    icone: 'help-buoy-outline'   as const, cor: CORES_SYMBIUS.laranja },
@@ -88,15 +102,17 @@ export default function Index({ navigation, route }: any) {
   const [busca, setBusca] = useState('');
   const [checkIn, setCheckIn] = useState<CheckInResult | null>(null);
   const [processandoCheckIn, setProcessandoCheckIn] = useState(false);
+  // Último dia (horário de Brasília) em que o desafio foi concluído neste
+  // aparelho. Espelha `ultimo_checkin_dia` do Firestore pra esconder o card
+  // na hora e na reabertura, antes do getDoc voltar.
+  const [checkInDiaLocal, setCheckInDiaLocal] = useState<string | null>(null);
   const [levelUpInfo, setLevelUpInfo] = useState<LevelUpInfo | null>(null);
 
   // ── Mural / posts (coleção `posts` do app original) ──
   const [posts, setPosts] = useState<any[]>([]);
   const [modoEdicao, setModoEdicao] = useState(false);
-  const [destaqueIdx, setDestaqueIdx] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedPost, setSelectedPost] = useState<any>(null);
-  const carrosselRef = useRef<FlatList>(null);
 
   // ── Publicações antigas (fora da janela de 30 dias do mural) ──
   const [modalAntigos, setModalAntigos] = useState(false);
@@ -107,17 +123,77 @@ export default function Index({ navigation, route }: any) {
   const [notifDescartadas, setNotifDescartadas] = useState<Set<string>>(new Set());
   const [miniMenuAberto, setMiniMenuAberto] = useState(false);
 
-  const { notificacoesChat, limparNotificacoesChat } = useNotificacao();
+  const { notificacoesChat, limparNotificacoesChat, conviteGrupo, responderConvite } = useNotificacao();
+  const [respondendoConvite, setRespondendoConvite] = useState(false);
+  const { modoEscuro, setModoEscuro } = useAppSettings();
+
+  const { width: larguraTela } = useWindowDimensions();
+  const areaUtil = Math.min(larguraTela, LARGURA_MAX_CONTEUDO) - PAD_H * 2;
+  const colunasCarrossel = areaUtil >= 520 ? 2 : 1;
+  const larguraCard = Math.floor((areaUtil - CARD_GAP * (colunasCarrossel - 1)) / colunasCarrossel);
+  const [imagemAmpliada, setImagemAmpliada] = useState<string | null>(null);
+  const [atualizando, setAtualizando] = useState(false);
+  const [tickAtualizar, setTickAtualizar] = useState(0);
+
+  // ── Vínculos (matches aceitos): mesma consulta e mesmo filtro do Match.tsx ──
+  const [vinculos, setVinculos] = useState<any[]>([]);
+  useEffect(() => {
+    if (!uid) return;
+    let ativo = true;
+    const q = query(
+      collection(db, 'match_solicitacoes'),
+      where('status', '==', 'aceito'),
+      where('membros', 'array-contains', uid),
+    );
+    const unsub = onSnapshot(q, async (snap) => {
+      const porPessoa = new Map<string, any>();
+      await Promise.all(snap.docs.map(async d => {
+        try {
+          const data = d.data();
+          const outroUid = data.membros?.find((id: string) => id !== uid);
+          if (!outroUid) return;
+          const oSnap = await getDoc(doc(db, 'usuarios', outroUid));
+          if (!oSnap.exists()) return;
+          // Match finalizado fica no histórico; só some se a pessoa apagou a conversa
+          const cSnap = await getDoc(doc(db, 'conversas', [uid, outroUid].sort().join('_')));
+          if (cSnap.exists() && ocultaParaMim(cSnap.data(), uid)) return;
+          const ts = data.criadoEm?.seconds ?? 0;
+          const existente = porPessoa.get(outroUid);
+          if (!existente || ts > existente._ts) {
+            porPessoa.set(outroUid, { id: d.id, _ts: ts, outro: { ...oSnap.data(), uid: outroUid } });
+          }
+        } catch {}
+      }));
+      if (ativo) setVinculos([...porPessoa.values()].sort((a, b) => b._ts - a._ts));
+    }, () => {});
+    return () => { ativo = false; unsub(); };
+  }, [uid]);
+
+  const abrirChat = (v: any) => {
+    if (!uid) return;
+    navigation.navigate('Chat', {
+      room: [uid, v.outro.uid].sort().join('_'),
+      meuUid: uid,
+      meuNome: userData?.nome_completo,
+      minhaFoto: userData?.foto || null,
+      outroUid: v.outro.uid,
+      outroNome: v.outro.nome_completo,
+      outraFoto: v.outro.foto || null,
+    });
+  };
+
+  // Quem está logado: parâmetro da rota, senão sessão salva, senão o Auth.
+  // Voltar pra Home por outra tela pode chegar sem o parâmetro.
+  const resolverUid = useCallback(async (): Promise<string | null> => {
+    const atual = uid || route?.params?.uid || (await AsyncStorage.getItem('uid').catch(() => null)) || auth.currentUser?.uid || null;
+    if (atual && atual !== uid) setUid(atual);
+    return atual;
+  }, [uid, route?.params?.uid]);
 
   const carregar = useCallback(async () => {
     try {
-      let uidAtual = uid;
-      if (!uidAtual) {
-        uidAtual = await AsyncStorage.getItem('uid');
-        if (uidAtual) setUid(uidAtual);
-      }
+      const uidAtual = await resolverUid();
       if (!uidAtual) { setLoading(false); return; }
-
       const snap = await getDoc(doc(db, 'usuarios', uidAtual));
       if (snap.exists()) setUserData(snap.data());
     } catch (e) {
@@ -125,9 +201,33 @@ export default function Index({ navigation, route }: any) {
     } finally {
       setLoading(false);
     }
+  }, [resolverUid]);
+
+  // Perfil ao vivo: o nome/XP/foto aparecem assim que chegam e se atualizam sozinhos
+  // (antes era uma leitura única que, se falhasse, deixava "Olá, colega" até puxar a tela).
+  useEffect(() => {
+    if (!uid) { carregar(); return; }
+    const unsub = onSnapshot(doc(db, 'usuarios', uid), (snap) => {
+      if (snap.exists()) setUserData(snap.data());
+      setLoading(false);
+    }, () => { carregar(); });
+    return () => unsub();
   }, [uid]);
 
-  useEffect(() => { carregar(); }, [carregar]);
+  // Toda vez que a Home volta a ficar visível: garante os dados e refaz os avisos da agenda
+  useFocusEffect(useCallback(() => {
+    carregar();
+    setTickAtualizar(t => t + 1);
+  }, [carregar]));
+
+  // Puxar a tela pra baixo: recarrega perfil/XP e refaz a lista de avisos da agenda
+  // (os posts do mural já são ao vivo, via onSnapshot).
+  const atualizarTela = async () => {
+    setAtualizando(true);
+    setTickAtualizar(t => t + 1);
+    await carregar();
+    setTimeout(() => setAtualizando(false), 500);
+  };
 
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('data_publicacao', 'desc'));
@@ -192,10 +292,33 @@ export default function Index({ navigation, route }: any) {
         setNotificacoesAgenda(notifs);
       } catch (e) { console.error('Erro ao carregar notificações de agenda:', e); }
     })();
-  }, [uid, userData?.ra, userData?.turma, userData?.tipo]);
+  }, [uid, userData?.ra, userData?.turma, userData?.tipo, tickAtualizar]);
 
-  const totalNotificacoesAtivas =
+  const totalNotificacoesAtivas = (conviteGrupo ? 1 : 0) +
     notificacoesChat.length + notificacoesAgenda.filter(n => !notifDescartadas.has(n.id)).length;
+
+  const responderConviteGrupo = async (aceitar: boolean) => {
+    if (respondendoConvite) return;
+    setRespondendoConvite(true);
+    try {
+      const { grupoId } = await responderConvite(aceitar);
+      if (aceitar && grupoId) {
+        setModalNotif(false);
+        navigation.navigate('GrupoChat', { grupoId, uid });
+      }
+    } catch (e: any) {
+      Alert.alert('Não foi possível entrar', e?.message || 'Tente de novo.');
+    } finally {
+      setRespondendoConvite(false);
+    }
+  };
+
+  // Toque no push / banner do convite abre o sininho direto.
+  useEffect(() => {
+    if (!route?.params?.abrirNotificacoes) return;
+    setModalNotif(true);
+    navigation.setParams({ abrirNotificacoes: undefined });
+  }, [route?.params?.abrirNotificacoes]);
 
   const limparHistoricoNotificacoes = () => {
     limparNotificacoesChat();
@@ -216,21 +339,97 @@ export default function Index({ navigation, route }: any) {
   const xpTotal = userData?.xp_total || 0;
   const nivel = calcularNivel(xpTotal);
   const progresso = calcularProgressoXp(xpTotal);
+  const sementes = userData?.moedas_saldo || 0;
+  const streak = userData?.streak_dias || 0;
+  const matchesHoje = userData?.matches_bonificados_hoje || 0;
+  const buscando = busca.trim().length > 0;
 
-  // ── Desafio do dia só aparece se fizer 24h reais desde o último check-in
-  // (não é reset de meia-noite — usa o timestamp exato salvo pelo backend) ──
-  const checkInDisponivel = useMemo(() => {
-    const ts = userData?.ultimo_checkin_ts;
-    if (!ts) return true;
-    const ultimoMs = typeof ts === 'number' ? ts : (ts?.toMillis ? ts.toMillis() : new Date(ts).getTime());
-    return Date.now() - ultimoMs >= 24 * 60 * 60 * 1000;
-  }, [userData?.ultimo_checkin_ts]);
+  // ── Desafio do dia: uma conclusão por dia (horário de Brasília). Mesma
+  // regra do awardDailyCheckIn — a tela e o serviço leem `ultimo_checkin_dia`,
+  // então o card nunca aparece num dia em que a recompensa já foi dada. ──
+  const hojeEscolar = diaEscolar();
+  const checkInDisponivel = !!userData
+    && userData.ultimo_checkin_dia !== hojeEscolar
+    && checkInDiaLocal !== hojeEscolar;
 
-  const postsValidos = useMemo(() => posts.filter(postValido), [posts]);
+  // Próximo estágio (próxima fase, ou o próximo animal quando está na última fase)
+  const proximoEstagio = useMemo(() => {
+    const prox = calcularNivel(nivel.xpMaximo + 1);
+    if (prox.animal !== nivel.animal) return prox.nomeAnimal;
+    if (prox.subfase !== nivel.subfase) return prox.nomeSubfase;
+    return null;
+  }, [nivel.xpMaximo, nivel.animal, nivel.subfase]);
+
+  // Frase da saudação muda conforme a situação real do aluno
+  const fraseDoDia = checkInDisponivel
+    ? 'Seu desafio do dia está esperando.'
+    : streak >= 2
+      ? `${streak} dias seguidos. Bora manter!`
+      : proximoEstagio && progresso.faltam > 0
+        ? `Faltam ${progresso.faltam} XP pra virar ${proximoEstagio}.`
+        : 'Hoje é um ótimo dia para aprender.';
+
+  // Próximo item da agenda (os mesmos que o sino já carrega: eventos da série e lembretes)
+  const proximaAgenda = useMemo(
+    () => notificacoesAgenda.find(n => !notifDescartadas.has(n.id) && n.dias >= 0 && n.tipo !== 'lembrete_vencido') || null,
+    [notificacoesAgenda, notifDescartadas],
+  );
+
+  const postsValidos = useMemo(() => posts.filter(p => postValido(p) && !p.oculto), [posts]);
   // Posts fora da janela de 30 dias — hoje eram "perdidos pra sempre" no
   // mural; ficam disponíveis aqui pra quem quiser ver via "Ver publicações
   // antigas" (já vêm ordenados por data desc, mesma ordem de `posts`).
   const postsAntigos = useMemo(() => posts.filter(p => !postValido(p)), [posts]);
+
+  // ── "Ver tudo" no modo editor: segurar um post seleciona; depois toca pra marcar outros ──
+  const editandoPosts = modoEdicao && isSuperAdmin;
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [processandoSelecao, setProcessandoSelecao] = useState(false);
+  const modoSelecao = editandoPosts && selecionados.size > 0;
+  const postsDoModal = editandoPosts ? posts : posts.filter(p => !p.oculto);
+  const alternarSelecao = (id: string) => setSelecionados(prev => {
+    const n = new Set(prev);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
+  const limparSelecao = () => setSelecionados(new Set());
+  const todosSelecionadosOcultos = posts.filter(p => selecionados.has(p.id)).every(p => p.oculto);
+
+  const ocultarSelecionados = async () => {
+    const ocultar = !todosSelecionadosOcultos;
+    setProcessandoSelecao(true);
+    try {
+      const lote = writeBatch(db);
+      selecionados.forEach(id => lote.update(doc(db, 'posts', id), { oculto: ocultar }));
+      await lote.commit();
+      limparSelecao();
+    } catch (e) {
+      console.log('Erro ao ocultar posts:', e);
+    } finally {
+      setProcessandoSelecao(false);
+    }
+  };
+
+  const apagarSelecionados = async () => {
+    const n = selecionados.size;
+    const ok = await confirmar(
+      n === 1 ? 'Apagar 1 publicação?' : `Apagar ${n} publicações?`,
+      'Elas somem para todos e não dá para desfazer. Se quiser só tirar do mural, use "Ocultar".',
+      'Apagar', true,
+    );
+    if (!ok) return;
+    setProcessandoSelecao(true);
+    try {
+      const lote = writeBatch(db);
+      selecionados.forEach(id => lote.delete(doc(db, 'posts', id)));
+      await lote.commit();
+      limparSelecao();
+    } catch (e) {
+      console.log('Erro ao apagar posts:', e);
+    } finally {
+      setProcessandoSelecao(false);
+    }
+  };
 
   const postsFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -242,22 +441,6 @@ export default function Index({ navigation, route }: any) {
       return titulo.includes(termo) || categoria.includes(termo) || catLabel.includes(termo);
     });
   }, [postsValidos, busca]);
-
-  const slidesDestaque = useMemo(() => {
-    const pares: any[] = [];
-    for (let i = 0; i < postsValidos.length; i += 2) {
-      pares.push(postsValidos.slice(i, i + 2));
-    }
-    return pares;
-  }, [postsValidos]);
-
-  const irParaSlide = (idx: number) => {
-    const total = slidesDestaque.length;
-    if (total === 0) return;
-    const novo = ((idx % total) + total) % total;
-    setDestaqueIdx(novo);
-    carrosselRef.current?.scrollToIndex({ index: novo, animated: true });
-  };
 
   const visualizarPost = async (post: any) => {
     setSelectedPost(post);
@@ -272,6 +455,15 @@ export default function Index({ navigation, route }: any) {
       }
     } catch (e) {}
   };
+
+  // Veio da notificação de post novo: abre o post assim que ele carregar.
+  const abrirPostId = route?.params?.abrirPostId;
+  useEffect(() => {
+    if (!abrirPostId || posts.length === 0) return;
+    const alvo = posts.find(p => p.id === abrirPostId);
+    if (alvo) visualizarPost(alvo);
+    navigation.setParams({ abrirPostId: undefined });
+  }, [abrirPostId, posts.length]);
 
   // Fecha o modal de "publicações antigas" antes de abrir o post em cima,
   // pra não ter dois Modal do RN abertos ao mesmo tempo.
@@ -298,14 +490,34 @@ export default function Index({ navigation, route }: any) {
     const resultado = await awardDailyCheckIn(uid);
     setCheckIn(resultado);
     setProcessandoCheckIn(false);
+    if (resultado.erro) return; // card continua visível pra tentar de novo
+
+    // Concluído agora ou já concluído hoje em outro aparelho: some na hora.
+    const hoje = diaEscolar();
+    setCheckInDiaLocal(hoje);
+    setUserData((prev: any) => prev ? { ...prev, ultimo_checkin_dia: hoje } : prev);
+    AsyncStorage.setItem(`checkin_dia:${uid}`, hoje).catch(() => {});
+
     if (resultado.levelUp) setLevelUpInfo(resultado.levelUp);
     if (resultado.ganhou) await carregar(); // atualiza XP/nível na tela
   };
 
+  // Recompensa recém-coletada: aviso curto, já que o card some na hora.
+  useEffect(() => {
+    if (!checkIn?.ganhou) return;
+    const t = setTimeout(() => setCheckIn(null), 3500);
+    return () => clearTimeout(t);
+  }, [checkIn]);
+
+  useEffect(() => {
+    if (!uid) return;
+    AsyncStorage.getItem(`checkin_dia:${uid}`).then(setCheckInDiaLocal).catch(() => {});
+  }, [uid]);
+
   // ── Card de destaque (capa real + categoria como badge) ──
   // `opts` permite reusar o mesmo card no grid de "publicações antigas"
   // (largura diferente + fecha o modal de antigas antes de abrir o post).
-  const renderDestaqueCard = (post: any, opts?: { largura?: number; onAbrir?: () => void }) => {
+  const renderDestaqueCard = (post: any, opts?: { largura?: number; onAbrir?: () => void; selecionavel?: boolean }) => {
     const config = CATEGORIA_CONFIG[post.categoria] || CATEGORIA_CONFIG.avisos;
     const novo = ehNovo(post);
     const largura = opts?.largura ?? DESTAQUE_W;
@@ -313,11 +525,20 @@ export default function Index({ navigation, route }: any) {
     return (
       <TouchableOpacity
         key={post.id}
-        style={[styles.destCard, { width: largura }]}
-        onPress={() => modoEdicao && isSuperAdmin
-          ? navigation.navigate('EditorPost', { postId: post.id, categoria: post.categoria, current: post })
-          : (opts?.onAbrir ? opts.onAbrir() : visualizarPost(post))
+        style={[
+          styles.destCard,
+          { width: largura },
+          post.oculto && styles.destCardOculto,
+          opts?.selecionavel && selecionados.has(post.id) && styles.destCardSelecionado,
+        ]}
+        onPress={() => opts?.selecionavel && modoSelecao
+          ? alternarSelecao(post.id)
+          : modoEdicao && isSuperAdmin
+            ? navigation.navigate('EditorPost', { postId: post.id, categoria: post.categoria, current: post })
+            : (opts?.onAbrir ? opts.onAbrir() : visualizarPost(post))
         }
+        onLongPress={opts?.selecionavel && editandoPosts ? () => alternarSelecao(post.id) : undefined}
+        delayLongPress={350}
         activeOpacity={0.85}
         accessibilityRole="button"
         accessibilityLabel={`${config.label}. ${post.titulo}. ${post.visualizacoes || 0} visualizações.${novo ? ' Publicação nova.' : ''}`}
@@ -353,7 +574,18 @@ export default function Index({ navigation, route }: any) {
           </View>
         </View>
 
-        {modoEdicao && isSuperAdmin && (
+        {post.oculto && (
+          <View style={styles.destOcultoBadge}>
+            <Ionicons name="eye-off" size={10} color="#FFF" />
+            <Text style={styles.destOcultoTxt}>OCULTO</Text>
+          </View>
+        )}
+
+        {opts?.selecionavel && modoSelecao ? (
+          <View style={[styles.destCheck, selecionados.has(post.id) && styles.destCheckAtivo]}>
+            {selecionados.has(post.id) && <Ionicons name="checkmark" size={14} color="#FFF" />}
+          </View>
+        ) : modoEdicao && isSuperAdmin && (
           <View style={styles.destEditBadge}>
             <MaterialIcons name="edit" size={11} color="#FFF" />
           </View>
@@ -373,72 +605,250 @@ export default function Index({ navigation, route }: any) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 12 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 28 }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={atualizando}
+            onRefresh={atualizarTela}
+            tintColor={CORES_SYMBIUS.verdeEscuro}
+            colors={[CORES_SYMBIUS.verdeEscuro]}
+            progressViewOffset={insets.top}
+          />
+        }
+      >
 
         {/* HEADER */}
         <View style={styles.topoMarca}>
-          <Text style={styles.marca}>Symbius</Text>
+          <TouchableOpacity
+            onLongPress={() => irPara('TesteNivelUp')}
+            delayLongPress={800}
+            activeOpacity={1}
+            accessible={false}
+          >
+            <Text style={styles.marca}>simbio</Text>
+          </TouchableOpacity>
           <View style={styles.headerIcones}>
-            {temPermissaoDeStaff && (
-              <TouchableOpacity
-                onPress={() => setModoEdicao(!modoEdicao)}
-                hitSlop={HIT_SLOP_SM}
-                style={[styles.btnEdit, modoEdicao && styles.btnEditAtivo]}
-                accessibilityRole="switch"
-                accessibilityLabel={modoEdicao ? 'Desativar modo editor' : 'Ativar modo editor'}
-                accessibilityState={{ checked: modoEdicao }}
-              >
-                <FontAwesome5 name="pen" size={11} color={modoEdicao ? CORES_SYMBIUS.creme : CORES_SYMBIUS.verdeEscuro} />
-              </TouchableOpacity>
-            )}
             <TouchableOpacity
-              onPress={() => setModalNotif(true)}
+              onPress={() => irPara('Loja')}
               hitSlop={HIT_SLOP_SM}
-              style={{ marginLeft: 14 }}
+              style={styles.chipSementes}
               accessibilityRole="button"
-              accessibilityLabel="Notificações"
-              accessibilityHint="Toque duplo para ver suas notificações"
+              accessibilityLabel={`${sementes} Sementes. Abrir a loja.`}
             >
-              <Ionicons name="notifications-outline" size={20} color={CORES_SYMBIUS.texto} />
-              {totalNotificacoesAtivas > 0 && <View style={styles.dotNotif} />}
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => irPara('Loja')} hitSlop={HIT_SLOP_SM} style={{ marginLeft: 14 }}>
-              <Ionicons name="bag-outline" size={20} color={CORES_SYMBIUS.texto} />
+              <Ionicons name="leaf" size={14} color={CORES_SYMBIUS.semente} />
+              <Text style={styles.chipSementesTxt}>{sementes}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setMiniMenuAberto(true)}
               hitSlop={HIT_SLOP_SM}
-              style={{ marginLeft: 14 }}
+              style={styles.btnTopo}
               accessibilityRole="button"
               accessibilityLabel="Mais opções"
               accessibilityHint="Abre o menu com dúvidas, contato e admin"
             >
-              <Ionicons name="ellipsis-horizontal" size={20} color={CORES_SYMBIUS.texto} />
+              <Ionicons name="ellipsis-horizontal" size={21} color={CORES_SYMBIUS.texto} />
+              {totalNotificacoesAtivas > 0 && <View style={styles.dotNotif} />}
             </TouchableOpacity>
           </View>
         </View>
 
         <Text style={styles.saudacao}>Olá, {primeiroNome}!</Text>
-        <Text style={styles.subSaudacao}>Hoje é um ótimo dia para aprender.</Text>
+        <Text style={styles.subSaudacao}>{fraseDoDia}</Text>
 
         {/* BUSCA */}
         <View style={styles.buscaWrap}>
-          <Ionicons name="search-outline" size={16} color={CORES_SYMBIUS.textoMuted} />
+          <Ionicons name="search-outline" size={18} color={CORES_SYMBIUS.textoSec} />
           <TextInput
             style={styles.buscaInput}
             placeholder="Buscar posts, dúvidas, assuntos..."
-            placeholderTextColor={CORES_SYMBIUS.textoMuted}
+            placeholderTextColor={CORES_SYMBIUS.textoSec}
             value={busca}
             onChangeText={setBusca}
             returnKeyType="search"
             clearButtonMode="while-editing"
           />
           {busca.length > 0 && (
-            <TouchableOpacity onPress={() => setBusca('')} hitSlop={HIT_SLOP_SM}>
-              <Ionicons name="close" size={16} color={CORES_SYMBIUS.textoMuted} />
+            <TouchableOpacity onPress={() => setBusca('')} hitSlop={HIT_SLOP_SM} accessibilityLabel="Limpar busca">
+              <Ionicons name="close" size={18} color={CORES_SYMBIUS.textoSec} />
             </TouchableOpacity>
           )}
         </View>
+
+        {!buscando && (
+          <>
+            {/* HERÓI: o animal atual do aluno */}
+            <View
+              style={styles.heroi}
+              accessible
+              accessibilityLabel={`${nivel.nomeAnimal} ${nivel.nomeSubfase}, nível ${NIVEL_NUMERO[nivel.animal]}. ${xpTotal} de experiência. Faltam ${progresso.faltam} XP para evoluir. ${streak} dias de sequência.`}
+            >
+              <View style={styles.heroiTopo}>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.heroiFase}>
+                    <Text style={styles.heroiFaseTxt}>{nivel.nomeSubfase} · Nível {NIVEL_NUMERO[nivel.animal]}</Text>
+                  </View>
+                  <Text style={styles.heroiNome}>{nivel.nomeAnimal}</Text>
+                  <Text style={styles.heroiFaltam}>faltam {progresso.faltam} XP para evoluir</Text>
+                </View>
+                <View style={styles.heroiMedalhao}>
+                  <AnimalImagem animal={nivel.animal} size={118} />
+                </View>
+              </View>
+
+              <View style={styles.heroiBarraFundo}>
+                <View style={[styles.heroiBarra, { width: `${Math.max(progresso.percentual, 3)}%` }]} />
+              </View>
+
+              <View style={styles.heroiStats}>
+                <View style={styles.heroiStat}>
+                  <Text style={styles.heroiStatValor}>{xpTotal}</Text>
+                  <Text style={styles.heroiStatRotulo}>XP total</Text>
+                </View>
+                <View style={styles.heroiDivisor} />
+                <View style={styles.heroiStat}>
+                  <View style={styles.heroiStatLinha}>
+                    <Ionicons name="flame" size={16} color={CORES_SYMBIUS.semente} />
+                    <Text style={styles.heroiStatValor}>{streak}</Text>
+                  </View>
+                  <Text style={styles.heroiStatRotulo}>{streak === 1 ? 'dia seguido' : 'dias seguidos'}</Text>
+                </View>
+                <View style={styles.heroiDivisor} />
+                <View style={styles.heroiStat}>
+                  <Text style={styles.heroiStatValor}>{matchesHoje}/3</Text>
+                  <Text style={styles.heroiStatRotulo}>elos hoje</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* DESAFIO DO DIA (check-in real, via gamificationService) — um por
+                dia (horário de Brasília); some assim que é concluído. */}
+            {checkInDisponivel && (
+              <TouchableOpacity
+                style={styles.cardDesafio}
+                activeOpacity={0.9}
+                onPress={fazerCheckIn}
+                disabled={processandoCheckIn}
+                accessibilityRole="button"
+                accessibilityLabel={`Desafio do dia. Toque para coletar ${GAMIFICATION_CONFIG.DAILY_CHECKIN.xp} XP e ${GAMIFICATION_CONFIG.DAILY_CHECKIN.moedas} Sementes.`}
+              >
+                <View style={styles.desafioIcone}>
+                  <Ionicons name="checkmark" size={20} color={CORES_SYMBIUS.semente} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.desafioLabel}>Desafio do dia</Text>
+                  <Text style={styles.desafioTitulo}>
+                    {checkIn?.erro ? 'Não deu pra salvar. Toque para tentar de novo.' : 'Conecte-se com 1 novo elo'}
+                  </Text>
+                </View>
+                {processandoCheckIn
+                  ? <ActivityIndicator color={CORES_SYMBIUS.tinta} />
+                  : (
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={styles.desafioXp}>+{GAMIFICATION_CONFIG.DAILY_CHECKIN.xp} XP</Text>
+                      <Text style={styles.desafioMoedas}>+{GAMIFICATION_CONFIG.DAILY_CHECKIN.moedas} Sementes</Text>
+                    </View>
+                  )
+                }
+              </TouchableOpacity>
+            )}
+            {checkIn?.ganhou && (
+              <View style={styles.desafioFeito} accessibilityLiveRegion="polite">
+                <Ionicons name="checkmark-circle" size={18} color={CORES_SYMBIUS.verdeEscuro} />
+                <Text style={styles.desafioFeitoTxt}>
+                  Desafio concluído: +{checkIn.xp} XP e +{checkIn.moedas} Sementes. Volte amanhã!
+                </Text>
+              </View>
+            )}
+
+            {/* VÍNCULO: quem ensina o quê (o mais recente) */}
+            {vinculos.length === 0 ? (
+              <TouchableOpacity style={styles.vinculoVazio} activeOpacity={0.85} onPress={() => irPara('Match')} accessibilityRole="button">
+                <Ionicons name="infinite" size={22} color={CORES_SYMBIUS.verdeEscuro} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.vinculoVazioTitulo}>Encontre seu primeiro elo</Text>
+                  <Text style={styles.vinculoVazioSub}>Quem ensina o que você quer aprender.</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={CORES_SYMBIUS.textoSec} />
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.vinculoCard}>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => abrirChat(vinculos[0])}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Elo com ${vinculos[0].outro?.nome_completo || 'colega'}. Abrir conversa.`}
+                >
+                <View style={styles.vinculoPar}>
+                  <View style={styles.vinculoLado}>
+                    <Text style={styles.vinculoQuem}>Você ensina</Text>
+                    <Text style={styles.vinculoMateria} numberOfLines={2}>{materiasQueEnsina(userData)[0] || 'A definir'}</Text>
+                  </View>
+                  <View style={styles.vinculoElo}>
+                    <Ionicons name="infinite" size={20} color={CORES_SYMBIUS.verdeEscuro} />
+                  </View>
+                  <View style={[styles.vinculoLado, { alignItems: 'flex-end' }]}>
+                    <Text style={styles.vinculoQuem} numberOfLines={1}>
+                      {(vinculos[0].outro?.nome_completo || 'Colega').split(' ')[0]} ensina
+                    </Text>
+                    <Text style={[styles.vinculoMateria, { textAlign: 'right' }]} numberOfLines={2}>
+                      {materiasQueEnsina(vinculos[0].outro)[0] || 'A definir'}
+                    </Text>
+                  </View>
+                </View>
+                </TouchableOpacity>
+                <View style={styles.vinculoRodape}>
+                  {vinculos.length > 1 && (
+                    <TouchableOpacity
+                      onPress={() => irPara('Match', { aba: 'matches' })}
+                      hitSlop={HIT_SLOP_MD}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Ver mais ${vinculos.length - 1} elos`}
+                      style={{ marginRight: 'auto' }}
+                    >
+                      <Text style={[styles.vinculoRodapeTxt, { textDecorationLine: 'underline' }]}>+{vinculos.length - 1} outros elos</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    onPress={() => abrirChat(vinculos[0])}
+                    hitSlop={HIT_SLOP_MD}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Conversar"
+                  >
+                    <Text style={styles.vinculoRodapeTxt}>Conversar</Text>
+                    <Ionicons name="chevron-forward" size={16} color={CORES_SYMBIUS.verdeEscuro} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* PRÓXIMO NA AGENDA (só aparece se houver algo nos próximos dias) */}
+            {proximaAgenda && (
+              <TouchableOpacity
+                style={styles.agendaCard}
+                activeOpacity={0.85}
+                onPress={() => irPara('Calendario')}
+                accessibilityRole="button"
+                accessibilityLabel={`Próximo na agenda: ${proximaAgenda.titulo}. Abrir calendário.`}
+              >
+                <View style={styles.agendaData}>
+                  <Text style={styles.agendaDia}>{proximaAgenda.data.split('-')[2]}</Text>
+                  <Text style={styles.agendaMes}>{MESES_CURTOS[Number(proximaAgenda.data.split('-')[1]) - 1]}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.agendaTitulo} numberOfLines={1}>{proximaAgenda.titulo}</Text>
+                  <Text style={styles.agendaMeta}>
+                    {proximaAgenda.tipo === 'evento' ? proximaAgenda.rotulo : 'Lembrete'} · {quandoTexto(proximaAgenda.dias)}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={CORES_SYMBIUS.textoSec} />
+              </TouchableOpacity>
+            )}
+          </>
+        )}
 
         {modoEdicao && (
           <View style={styles.alertEdicao} accessibilityRole="alert" accessibilityLabel="Modo editor ativado">
@@ -449,10 +859,7 @@ export default function Index({ navigation, route }: any) {
 
         {/* ═══ DESTAQUES (mural real, restaurado do Index original) ═══ */}
         <View style={styles.secaoHeaderRow}>
-          <View>
-            <Text style={styles.secaoEyebrow}>EM DESTAQUE</Text>
-            <Text style={styles.secaoTitulo}>Confira agora</Text>
-          </View>
+          <Text style={styles.secaoTitulo}>Confira agora</Text>
           <View style={styles.navDestRow}>
             {modoEdicao && isSuperAdmin && (
               <TouchableOpacity
@@ -464,24 +871,16 @@ export default function Index({ navigation, route }: any) {
                 <MaterialIcons name="add" size={16} color={CORES_SYMBIUS.creme} />
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              style={styles.navDestBtn}
-              onPress={() => irParaSlide(destaqueIdx - 1)}
-              disabled={slidesDestaque.length <= 1}
-              hitSlop={HIT_SLOP_MD}
-              accessibilityLabel="Slide anterior"
-            >
-              <Ionicons name="chevron-back" size={14} color={CORES_SYMBIUS.textoSec} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.navDestBtn, styles.navDestBtnAtivo]}
-              onPress={() => irParaSlide(destaqueIdx + 1)}
-              disabled={slidesDestaque.length <= 1}
-              hitSlop={HIT_SLOP_MD}
-              accessibilityLabel="Próximo slide"
-            >
-              <Ionicons name="chevron-forward" size={14} color={CORES_SYMBIUS.creme} />
-            </TouchableOpacity>
+            {busca.trim().length === 0 && posts.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setModalAntigos(true)}
+                hitSlop={HIT_SLOP_MD}
+                accessibilityRole="button"
+                accessibilityLabel={`Ver tudo, ${posts.length} publicações`}
+              >
+                <Text style={styles.verTudo}>Ver tudo</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -494,41 +893,26 @@ export default function Index({ navigation, route }: any) {
               </View>
             ) : (
               postsFiltrados.map(post => (
-                <View key={post.id} style={{ marginBottom: 10 }}>{renderDestaqueCard(post)}</View>
+                <View key={post.id} style={{ marginBottom: 10 }}>{renderDestaqueCard(post, { largura: areaUtil })}</View>
               ))
             )}
           </View>
-        ) : slidesDestaque.length > 0 ? (
-          <>
+        ) : postsValidos.length > 0 ? (
+          // cada card ocupa a área toda (1 por vez no celular, 2 no tablet): nada de pedaço do próximo vazando
+          <View style={{ width: areaUtil, alignSelf: 'center' }}>
             <FlatList
-              ref={carrosselRef}
-              data={slidesDestaque}
-              keyExtractor={(_, i) => `slide-${i}`}
+              data={postsValidos}
+              keyExtractor={(p) => p.id}
               horizontal
-              pagingEnabled
               showsHorizontalScrollIndicator={false}
-              onMomentumScrollEnd={(e) => {
-                const idx = Math.round(e.nativeEvent.contentOffset.x / width);
-                setDestaqueIdx(idx);
-              }}
-              renderItem={({ item: par }) => (
-                <View style={[styles.slideWrap, { width }]}>
-                  {par.map((post: any) => renderDestaqueCard(post))}
-                  {par.length === 1 && <View style={{ width: DESTAQUE_W }} />}
-                </View>
-              )}
+              snapToInterval={larguraCard + CARD_GAP}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              style={{ width: areaUtil }}
+              ItemSeparatorComponent={() => <View style={{ width: CARD_GAP }} />}
+              renderItem={({ item }) => renderDestaqueCard(item, { largura: larguraCard })}
             />
-            <View style={styles.indicadores}>
-              {slidesDestaque.map((_, i) => {
-                const ativo = i === destaqueIdx;
-                return (
-                  <TouchableOpacity key={i} onPress={() => irParaSlide(i)} hitSlop={HIT_SLOP_DOT}>
-                    <View style={[styles.indicador, ativo && styles.indicadorAtivo]} />
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </>
+          </View>
         ) : (
           <View style={styles.destEmpty}>
             <Ionicons name="newspaper-outline" size={30} color={CORES_SYMBIUS.borda2} />
@@ -545,96 +929,46 @@ export default function Index({ navigation, route }: any) {
           </View>
         )}
 
-        {busca.trim().length === 0 && postsAntigos.length > 0 && (
-          <TouchableOpacity
-            style={styles.btnVerAntigos}
-            onPress={() => setModalAntigos(true)}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel={`Ver publicações antigas, ${postsAntigos.length} no total`}
-          >
-            <Ionicons name="time-outline" size={14} color={CORES_SYMBIUS.laranjaTexto} />
-            <Text style={styles.btnVerAntigosTxt}>Ver publicações antigas ({postsAntigos.length})</Text>
-            <Ionicons name="chevron-forward" size={14} color={CORES_SYMBIUS.laranjaTexto} />
-          </TouchableOpacity>
-        )}
-
-        {/* AÇÕES RÁPIDAS */}
-        <View style={styles.acoesGrid}>
-          {ACOES.map((a) => (
-            <TouchableOpacity key={a.chave} style={styles.acaoCard} activeOpacity={0.85} onPress={() => handleAcao(a.chave)}>
-              <View style={[styles.acaoIconeWrap, { backgroundColor: a.cor }]}>
-                <Ionicons name={a.icone} size={20} color={CORES_SYMBIUS.creme} />
-              </View>
-              <Text style={styles.acaoLabel}>{a.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* SEU PROGRESSO */}
-        <Text style={styles.secaoTituloSimples}>Seu progresso</Text>
-        <View style={styles.cardProgresso}>
-          <View style={styles.progressoIconeWrap}>
-            <Text style={styles.progressoIcone}>{nivel.iconeAnimal}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.progressoTitulo}>{nivel.nomeAnimal} · {nivel.nomeSubfase}</Text>
-            <Text style={styles.progressoSub}>{xpTotal} XP · faltam {progresso.faltam}</Text>
-            <View style={styles.barraFundo}>
-              <View style={[styles.barraPreenchida, { width: `${progresso.percentual}%` }]} />
-            </View>
-          </View>
-          <Text style={styles.progressoMoedas}>+10 XP</Text>
-        </View>
-
-        {/* DESAFIO DO DIA (check-in real, via gamificationService) — só
-            aparece se já passaram 24h reais desde o último check-in;
-            some sozinho depois de coletado e só volta no dia seguinte. */}
-        {checkInDisponivel && (
-          <TouchableOpacity
-            style={styles.cardDesafio}
-            activeOpacity={0.9}
-            onPress={fazerCheckIn}
-            disabled={processandoCheckIn}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={styles.desafioLabel}>Desafio do dia</Text>
-              <Text style={styles.desafioTitulo}>
-                {checkIn?.ganhou
-                  ? `Feito! +${checkIn.xp} XP, +${checkIn.moedas} Sementes 🌱`
-                  : 'Conecte-se com 1 novo match'}
-              </Text>
-            </View>
-            {processandoCheckIn
-              ? <ActivityIndicator color={CORES_SYMBIUS.creme} />
-              : (
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.desafioXp}>+10 XP</Text>
-                  <Text style={styles.desafioMoedas}>🌱 5 Sementes</Text>
-                </View>
-              )
-            }
-          </TouchableOpacity>
-        )}
-
       </ScrollView>
 
       <SymbiusTabBar ativa="inicio" navigation={navigation} uid={uid} />
       <NivelUpSymbiusModal info={levelUpInfo} onFechar={() => setLevelUpInfo(null)} />
 
       {/* MODAL — leitura do post */}
-      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
+      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => (imagemAmpliada ? setImagemAmpliada(null) : setModalVisible(false))}>
         <View style={styles.modalWrap}>
+          {imagemAmpliada && (
+            <TouchableOpacity style={styles.lightbox} activeOpacity={1} onPress={() => setImagemAmpliada(null)} accessibilityLabel="Fechar imagem ampliada">
+              <Image source={{ uri: imagemAmpliada }} style={styles.lightboxImg} resizeMode="contain" />
+              <View style={styles.lightboxFechar}>
+                <Ionicons name="close" size={22} color="#FFF" />
+              </View>
+            </TouchableOpacity>
+          )}
           <View style={styles.modalCover}>
             {selectedPost?.capa
-              ? <Image source={{ uri: selectedPost.capa }} style={StyleSheet.absoluteFill} />
+              ? <Image source={{ uri: selectedPost.capa }} style={StyleSheet.absoluteFill} resizeMode="cover" />
               : (
                 <View style={[StyleSheet.absoluteFill, styles.modalCoverVazia]}>
-                  <Text style={styles.modalMarca}>Symbius</Text>
+                  <Text style={styles.modalMarca}>Simbio</Text>
                 </View>
               )
             }
-            <View style={styles.modalCoverOverlay} />
+            <View style={styles.modalCoverOverlay} pointerEvents="none" />
+            {!!selectedPost?.capa && (
+              <TouchableOpacity
+                style={StyleSheet.absoluteFill}
+                activeOpacity={1}
+                onPress={() => setImagemAmpliada(selectedPost.capa)}
+                accessibilityRole="imagebutton"
+                accessibilityLabel="Ampliar imagem do post"
+              />
+            )}
+            {!!selectedPost?.capa && (
+              <View style={styles.dicaAmpliar} pointerEvents="none">
+                <Ionicons name="expand" size={13} color="#FFF" />
+              </View>
+            )}
             <TouchableOpacity style={styles.btnFechar} onPress={() => setModalVisible(false)} hitSlop={HIT_SLOP_SM}>
               <Ionicons name="chevron-down" size={24} color="#FFF" />
             </TouchableOpacity>
@@ -693,6 +1027,43 @@ export default function Index({ navigation, route }: any) {
               </View>
             ) : (
               <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+                {conviteGrupo && (
+                  <>
+                    <Text style={styles.notifGrupoLabel}>CONVITE</Text>
+                    <View style={styles.conviteCard}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <View style={[styles.notifIconWrap, { backgroundColor: CORES_SYMBIUS.verdeEscuro + '18' }]}>
+                          <Ionicons name="people" size={16} color={CORES_SYMBIUS.verdeEscuro} />
+                        </View>
+                        <Text style={[styles.notifCardTitulo, { flex: 1 }]}>
+                          {conviteGrupo.deNome} te convidou para o grupo "{conviteGrupo.grupoNome}". Quer entrar?
+                        </Text>
+                      </View>
+                      <View style={styles.conviteBotoes}>
+                        <TouchableOpacity
+                          style={[styles.conviteBtn, styles.conviteBtnNao]}
+                          onPress={() => responderConviteGrupo(false)}
+                          disabled={respondendoConvite}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Recusar convite para ${conviteGrupo.grupoNome}`}
+                        >
+                          <Text style={styles.conviteBtnNaoTxt}>Não</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.conviteBtn, styles.conviteBtnSim]}
+                          onPress={() => responderConviteGrupo(true)}
+                          disabled={respondendoConvite}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Aceitar convite para ${conviteGrupo.grupoNome}`}
+                        >
+                          {respondendoConvite
+                            ? <ActivityIndicator color={CORES_SYMBIUS.creme} />
+                            : <Text style={styles.conviteBtnSimTxt}>Sim</Text>}
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </>
+                )}
                 {notificacoesChat.length > 0 && (
                   <>
                     <Text style={styles.notifGrupoLabel}>MENSAGENS</Text>
@@ -702,7 +1073,8 @@ export default function Index({ navigation, route }: any) {
                         style={styles.notifCard}
                         onPress={() => {
                           setModalNotif(false);
-                          navigation.navigate('Chat', { outroUid: item.outroUid, outroNome: item.outroNome });
+                          if (item.grupoId) navigation.navigate('GrupoChat', { grupoId: item.grupoId, uid });
+                          else navigation.navigate('Chat', { outroUid: item.outroUid, outroNome: item.outroNome });
                         }}
                       >
                         <View style={[styles.notifIconWrap, { backgroundColor: CORES_SYMBIUS.laranjaTexto + '18' }]}>
@@ -759,28 +1131,32 @@ export default function Index({ navigation, route }: any) {
       </Modal>
 
       {/* MODAL — publicações antigas (fora da janela de 30 dias) */}
-      <Modal visible={modalAntigos} transparent animationType="slide" onRequestClose={() => setModalAntigos(false)}>
+      <Modal visible={modalAntigos} transparent animationType="slide" onRequestClose={() => (modoSelecao ? limparSelecao() : setModalAntigos(false))}>
         <View style={styles.notifOverlay}>
           <View style={[styles.notifSheet, { maxHeight: '85%' }]}>
             <View style={styles.notifHandle} />
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.secaoEyebrow}>MURAL</Text>
-                <Text style={styles.notifTitulo}>Publicações antigas</Text>
+                <Text style={styles.notifTitulo}>Todas as publicações</Text>
+                {editandoPosts && !modoSelecao && (
+                  <Text style={styles.dicaSelecao}>Segure uma publicação para selecionar</Text>
+                )}
               </View>
-              <TouchableOpacity onPress={() => setModalAntigos(false)} hitSlop={HIT_SLOP_SM}>
+              <TouchableOpacity onPress={() => { limparSelecao(); setModalAntigos(false); }} hitSlop={HIT_SLOP_SM}>
                 <Ionicons name="close" size={22} color={CORES_SYMBIUS.textoSec} />
               </TouchableOpacity>
             </View>
 
-            {postsAntigos.length === 0 ? (
+            {postsDoModal.length === 0 ? (
               <View style={{ alignItems: 'center', paddingVertical: 36 }}>
                 <Ionicons name="archive-outline" size={36} color={CORES_SYMBIUS.borda2} />
-                <Text style={styles.notifVaziaTxt}>Nenhuma publicação antiga</Text>
+                <Text style={styles.notifVaziaTxt}>Nenhuma publicação ainda</Text>
               </View>
             ) : (
               <FlatList
-                data={postsAntigos}
+                data={postsDoModal}
+                extraData={selecionados}
                 keyExtractor={(p) => p.id}
                 numColumns={2}
                 columnWrapperStyle={{ gap: 12 }}
@@ -789,8 +1165,34 @@ export default function Index({ navigation, route }: any) {
                 renderItem={({ item }) => renderDestaqueCard(item, {
                   largura: LARGURA_ANTIGO,
                   onAbrir: () => abrirPostAntigo(item),
+                  selecionavel: true,
                 })}
               />
+            )}
+
+            {modoSelecao && (
+              <View style={styles.barraSelecao}>
+                <TouchableOpacity onPress={limparSelecao} hitSlop={HIT_SLOP_SM} accessibilityLabel="Cancelar seleção">
+                  <Ionicons name="close" size={20} color={CORES_SYMBIUS.texto} />
+                </TouchableOpacity>
+                <Text style={styles.barraSelecaoTxt}>
+                  {selecionados.size} {selecionados.size === 1 ? 'selecionada' : 'selecionadas'}
+                </Text>
+                {processandoSelecao ? (
+                  <ActivityIndicator color={CORES_SYMBIUS.verdeEscuro} />
+                ) : (
+                  <>
+                    <TouchableOpacity style={styles.barraSelecaoBtn} onPress={ocultarSelecionados} accessibilityRole="button">
+                      <Ionicons name={todosSelecionadosOcultos ? 'eye-outline' : 'eye-off-outline'} size={16} color={CORES_SYMBIUS.verdeEscuro} />
+                      <Text style={styles.barraSelecaoBtnTxt}>{todosSelecionadosOcultos ? 'Mostrar' : 'Ocultar'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.barraSelecaoBtn, styles.barraSelecaoBtnPerigo]} onPress={apagarSelecionados} accessibilityRole="button">
+                      <Ionicons name="trash-outline" size={16} color="#D64545" />
+                      <Text style={[styles.barraSelecaoBtnTxt, { color: '#D64545' }]}>Apagar</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
             )}
           </View>
         </View>
@@ -798,8 +1200,25 @@ export default function Index({ navigation, route }: any) {
 
       {/* MENU "MAIS" — dúvidas / contato / admin */}
       <Modal visible={miniMenuAberto} transparent animationType="fade" onRequestClose={() => setMiniMenuAberto(false)}>
-        <TouchableOpacity style={[styles.menuOverlay, { paddingTop: insets.top + 44 }]} activeOpacity={1} onPress={() => setMiniMenuAberto(false)}>
+        <TouchableOpacity style={[styles.menuOverlay, { paddingTop: insets.top + 60 }]} activeOpacity={1} onPress={() => setMiniMenuAberto(false)}>
           <View style={styles.menuPopup}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => { setMiniMenuAberto(false); setModoEscuro(!modoEscuro); }}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: modoEscuro }}
+              accessibilityLabel="Modo escuro"
+            >
+              <Ionicons name={modoEscuro ? 'moon' : 'moon-outline'} size={17} color={CORES_SYMBIUS.verdeEscuro} />
+              <Text style={[styles.menuItemText, { flex: 1 }]}>Modo escuro</Text>
+              <Switch
+                value={modoEscuro}
+                onValueChange={(v) => { setMiniMenuAberto(false); setModoEscuro(v); }}
+                trackColor={{ false: CORES_SYMBIUS.borda2, true: CORES_SYMBIUS.verdeEscuro }}
+                thumbColor={CORES_SYMBIUS.creme}
+              />
+            </TouchableOpacity>
+            <View style={styles.menuDivider} />
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => { setMiniMenuAberto(false); irPara('Ajuda'); }}
@@ -821,6 +1240,18 @@ export default function Index({ navigation, route }: any) {
               <Ionicons name="settings" size={17} color={CORES_SYMBIUS.verdeEscuro} />
               <Text style={styles.menuItemText}>Configurações</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => { setMiniMenuAberto(false); setModalNotif(true); }}
+              accessibilityRole="button"
+              accessibilityLabel={`Notificações${totalNotificacoesAtivas > 0 ? `, ${totalNotificacoesAtivas} novas` : ''}`}
+            >
+              <Ionicons name="notifications" size={17} color={CORES_SYMBIUS.verdeEscuro} />
+              <Text style={[styles.menuItemText, { flex: 1 }]}>Notificações</Text>
+              {totalNotificacoesAtivas > 0 && (
+                <View style={styles.menuBadge}><Text style={styles.menuBadgeTxt}>{totalNotificacoesAtivas}</Text></View>
+              )}
+            </TouchableOpacity>
             {isAdmin && (
               <>
                 <View style={styles.menuDivider} />
@@ -830,6 +1261,22 @@ export default function Index({ navigation, route }: any) {
                 >
                   <Ionicons name="shield-checkmark" size={17} color={CORES_SYMBIUS.verdeEscuro} />
                   <Text style={styles.menuItemText}>Painel Admin</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            {temPermissaoDeStaff && (
+              <>
+                {!isAdmin && <View style={styles.menuDivider} />}
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => { setMiniMenuAberto(false); setModoEdicao(!modoEdicao); }}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: modoEdicao }}
+                  accessibilityLabel="Modo editor"
+                >
+                  <FontAwesome5 name="pen" size={14} color={CORES_SYMBIUS.verdeEscuro} />
+                  <Text style={[styles.menuItemText, { flex: 1 }]}>Modo editor</Text>
+                  {modoEdicao && <Ionicons name="checkmark-circle" size={18} color={CORES_SYMBIUS.verdeEscuro} />}
                 </TouchableOpacity>
               </>
             )}
@@ -843,30 +1290,121 @@ export default function Index({ navigation, route }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
   centro: { justifyContent: 'center', alignItems: 'center' },
-  scroll: { paddingHorizontal: PAD_H, paddingBottom: 24 },
+  scroll: { paddingHorizontal: PAD_H, paddingBottom: 48 },
 
   topoMarca: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  marca: { fontSize: 22, fontFamily: F.bold, color: CORES_SYMBIUS.verdeEscuro },
-  headerIcones: { flexDirection: 'row', alignItems: 'center' },
+  marca: { fontSize: 26, fontFamily: F.black, letterSpacing: -0.6, color: CORES_SYMBIUS.verdeEscuro },
+  headerIcones: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  btnTopo: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   btnEdit: {
-    width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center',
+    width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center',
     backgroundColor: CORES_SYMBIUS.fundoSuave, borderWidth: 1, borderColor: CORES_SYMBIUS.borda2,
   },
   btnEditAtivo: { backgroundColor: CORES_SYMBIUS.verdeEscuro, borderColor: CORES_SYMBIUS.verdeEscuro },
+  chipSementes: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, height: 34, paddingHorizontal: 12, borderRadius: 17,
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderWidth: 1.5, borderColor: CORES_SYMBIUS.semente,
+  },
+  chipSementesTxt: { fontSize: 14, fontFamily: F.bold, color: CORES_SYMBIUS.texto },
   dotNotif: {
-    position: 'absolute', top: -1, right: -1, width: 8, height: 8, borderRadius: 4,
+    position: 'absolute', top: 8, right: 9, width: 8, height: 8, borderRadius: 4,
     backgroundColor: CORES_SYMBIUS.laranjaTexto, borderWidth: 1.5, borderColor: CORES_SYMBIUS.fundo,
   },
 
-  saudacao: { fontSize: 21, fontFamily: F.black, color: CORES_SYMBIUS.texto, marginTop: 14 },
-  subSaudacao: { fontSize: 13.5, color: CORES_SYMBIUS.textoSec, fontFamily: F.medium, marginTop: 2 },
+  saudacao: { fontSize: 28, lineHeight: 34, fontFamily: F.black, letterSpacing: -0.5, color: CORES_SYMBIUS.texto, marginTop: 28 },
+  subSaudacao: { fontSize: 15, lineHeight: 22, color: CORES_SYMBIUS.textoSec, fontFamily: F.medium, marginTop: 6 },
 
   buscaWrap: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: CORES_SYMBIUS.fundoSuave, borderRadius: 14, paddingHorizontal: 14,
-    paddingVertical: 12, marginTop: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48,
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 16, paddingHorizontal: 16,
+    borderWidth: 1, borderColor: CORES_SYMBIUS.borda2, marginTop: 22,
   },
-  buscaInput: { flex: 1, color: CORES_SYMBIUS.texto, fontSize: 13, fontFamily: F.regular },
+  buscaInput: { flex: 1, color: CORES_SYMBIUS.texto, fontSize: 14, fontFamily: F.regular, paddingVertical: 12 },
+
+  // ── Herói: animal atual ──
+  heroi: { backgroundColor: CORES_SYMBIUS.heroiFundo, borderRadius: 28, padding: 20, marginTop: 28 },
+  heroiTopo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  heroiFase: {
+    alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999,
+    borderWidth: 1.5, borderColor: CORES_SYMBIUS.semente,
+  },
+  heroiFaseTxt: { fontSize: 12.5, fontFamily: F.bold, color: CORES_SYMBIUS.heroiTexto },
+  heroiNome: { fontSize: 34, lineHeight: 42, fontFamily: F.black, letterSpacing: -0.8, color: CORES_SYMBIUS.heroiTexto, marginTop: 10 },
+  heroiFaltam: { fontSize: 13, fontFamily: F.medium, color: CORES_SYMBIUS.heroiTextoSec, marginTop: 2 },
+  heroiMedalhao: {
+    width: 128, height: 128, borderRadius: 64, backgroundColor: CORES_SYMBIUS.heroiElevado,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  heroiBarraFundo: { height: 10, borderRadius: 5, backgroundColor: CORES_SYMBIUS.heroiElevado, marginTop: 22, overflow: 'hidden' },
+  heroiBarra: { height: 10, borderRadius: 5, backgroundColor: CORES_SYMBIUS.semente },
+  heroiStats: {
+    flexDirection: 'row', alignItems: 'center', marginTop: 20, paddingTop: 18,
+    borderTopWidth: 1, borderTopColor: CORES_SYMBIUS.heroiElevado,
+  },
+  heroiStat: { flex: 1, alignItems: 'center', gap: 2 },
+  heroiStatLinha: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  heroiStatValor: { fontSize: 20, lineHeight: 26, fontFamily: F.black, color: CORES_SYMBIUS.heroiTexto },
+  heroiStatRotulo: { fontSize: 12, fontFamily: F.medium, color: CORES_SYMBIUS.heroiTextoSec },
+  heroiDivisor: { width: 1, height: 32, backgroundColor: CORES_SYMBIUS.heroiElevado },
+
+  // ── Desafio do dia ──
+  desafioFeito: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12,
+    paddingVertical: 10, paddingHorizontal: 14, borderRadius: 14,
+    backgroundColor: CORES_SYMBIUS.fundoSuave,
+  },
+  desafioFeitoTxt: { flex: 1, color: CORES_SYMBIUS.verdeEscuro, fontSize: 13, fontFamily: F.semibold },
+  cardDesafio: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 68, marginTop: 14,
+    backgroundColor: CORES_SYMBIUS.semente, borderRadius: 22, paddingVertical: 14, paddingHorizontal: 16,
+  },
+  desafioIcone: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: CORES_SYMBIUS.tinta,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  desafioLabel: { color: CORES_SYMBIUS.tinta, fontSize: 15, fontFamily: F.black },
+  desafioTitulo: { color: CORES_SYMBIUS.tinta, fontSize: 13, fontFamily: F.medium, marginTop: 1 },
+  desafioXp: { color: CORES_SYMBIUS.tinta, fontSize: 14, fontFamily: F.black },
+  desafioMoedas: { color: CORES_SYMBIUS.tinta, fontSize: 12, fontFamily: F.semibold, marginTop: 1 },
+
+  // ── Vínculo ──
+  vinculoCard: {
+    marginTop: 14, backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 22, padding: 18,
+    borderWidth: 1, borderColor: CORES_SYMBIUS.borda2,
+  },
+  vinculoPar: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  vinculoLado: { flex: 1 },
+  vinculoQuem: { fontSize: 12, fontFamily: F.medium, color: CORES_SYMBIUS.textoSec },
+  vinculoMateria: { fontSize: 18, lineHeight: 24, fontFamily: F.black, color: CORES_SYMBIUS.texto, marginTop: 3 },
+  vinculoElo: {
+    width: 44, height: 44, borderRadius: 22, backgroundColor: CORES_SYMBIUS.fundoSuave,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  vinculoRodape: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 14, paddingTop: 12,
+    borderTopWidth: 1, borderTopColor: CORES_SYMBIUS.borda,
+  },
+  vinculoRodapeTxt: { fontSize: 13, fontFamily: F.semibold, color: CORES_SYMBIUS.verdeEscuro },
+  vinculoVazio: {
+    flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 68, padding: 16, marginTop: 14, borderRadius: 22,
+    borderWidth: 1.5, borderStyle: 'dashed', borderColor: CORES_SYMBIUS.borda2,
+  },
+  vinculoVazioTitulo: { fontSize: 14.5, fontFamily: F.bold, color: CORES_SYMBIUS.texto },
+  vinculoVazioSub: { fontSize: 12.5, fontFamily: F.regular, color: CORES_SYMBIUS.textoSec, marginTop: 2 },
+
+  // ── Agenda ──
+  agendaCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 68, marginTop: 14, paddingVertical: 12, paddingHorizontal: 16,
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 22, borderWidth: 1, borderColor: CORES_SYMBIUS.borda2,
+  },
+  agendaData: {
+    width: 48, height: 52, borderRadius: 14, backgroundColor: CORES_SYMBIUS.fundoSuave,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  agendaDia: { fontSize: 20, lineHeight: 24, fontFamily: F.black, color: CORES_SYMBIUS.verdeEscuro },
+  agendaMes: { fontSize: 12, fontFamily: F.semibold, color: CORES_SYMBIUS.textoSec, textTransform: 'uppercase' },
+  agendaTitulo: { fontSize: 14.5, fontFamily: F.bold, color: CORES_SYMBIUS.texto },
+  agendaMeta: { fontSize: 12.5, fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 2 },
 
   alertEdicao: {
     flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: CORES_SYMBIUS.verdeEscuro,
@@ -874,21 +1412,19 @@ const styles = StyleSheet.create({
   },
   txtEdicao: { color: CORES_SYMBIUS.creme, fontSize: 11.5, fontFamily: F.bold, letterSpacing: 0.4 },
 
-  secaoHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 20, marginBottom: 10 },
+  secaoHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 36, marginBottom: 16 },
   secaoEyebrow: { fontSize: 10, fontFamily: F.bold, color: CORES_SYMBIUS.textoSec, letterSpacing: 0.6 },
-  secaoTitulo: { fontSize: 16, fontFamily: F.black, color: CORES_SYMBIUS.texto, marginTop: 2 },
-  secaoTituloSimples: { fontSize: 13, fontFamily: F.bold, color: CORES_SYMBIUS.texto, marginTop: 20, marginBottom: 10 },
+  secaoTitulo: { fontSize: 20, fontFamily: F.black, letterSpacing: -0.3, color: CORES_SYMBIUS.texto },
+  secaoTituloSimples: { fontSize: 15, fontFamily: F.bold, color: CORES_SYMBIUS.texto, marginTop: 36, marginBottom: 14 },
 
   navDestRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   btnNovoPost: {
     width: 28, height: 28, borderRadius: 14, backgroundColor: CORES_SYMBIUS.laranjaTexto,
     justifyContent: 'center', alignItems: 'center',
   },
-  navDestBtn: {
-    width: 26, height: 26, borderRadius: 13, backgroundColor: CORES_SYMBIUS.fundoSuave,
-    borderWidth: 1, borderColor: CORES_SYMBIUS.borda2, justifyContent: 'center', alignItems: 'center',
-  },
-  navDestBtnAtivo: { backgroundColor: CORES_SYMBIUS.verdeEscuro, borderColor: CORES_SYMBIUS.verdeEscuro },
+  verTudo: { fontSize: 13, fontFamily: F.semibold, color: CORES_SYMBIUS.textoSec },
+  carrossel: { marginHorizontal: -PAD_H },
+  carrosselConteudo: { paddingHorizontal: PAD_H },
 
   slideWrap: { flexDirection: 'row', gap: 12, paddingRight: 12 },
   destCard: { height: 150, borderRadius: 16, overflow: 'hidden', justifyContent: 'space-between', padding: 10 },
@@ -916,10 +1452,6 @@ const styles = StyleSheet.create({
   },
   btnPrimeiroPostText: { color: CORES_SYMBIUS.creme, fontSize: 12, fontFamily: F.bold },
 
-  indicadores: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 10 },
-  indicador: { width: 6, height: 6, borderRadius: 3, backgroundColor: CORES_SYMBIUS.borda2 },
-  indicadorAtivo: { width: 18, backgroundColor: CORES_SYMBIUS.verdeEscuro },
-
   acoesGrid: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginTop: 20 },
   acaoCard: { flex: 1, alignItems: 'center', gap: 6 },
   acaoIconeWrap: {
@@ -928,35 +1460,13 @@ const styles = StyleSheet.create({
   },
   acaoLabel: { color: CORES_SYMBIUS.texto, fontSize: 10.5, fontFamily: F.semibold, textAlign: 'center' },
 
-  cardProgresso: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 16, padding: 14,
-    borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
-  },
-  progressoIconeWrap: {
-    width: 44, height: 44, borderRadius: 22, backgroundColor: CORES_SYMBIUS.fundoSuave,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  progressoIcone: { fontSize: 22 },
-  progressoTitulo: { color: CORES_SYMBIUS.texto, fontSize: 14, fontFamily: F.bold },
-  progressoSub: { color: CORES_SYMBIUS.textoMuted, fontSize: 11, fontFamily: F.medium, marginTop: 4, marginBottom: 6 },
-  progressoMoedas: { color: CORES_SYMBIUS.laranja, fontSize: 12, fontFamily: F.bold },
-  barraFundo: { height: 6, backgroundColor: CORES_SYMBIUS.borda, borderRadius: 3, overflow: 'hidden' },
-  barraPreenchida: { height: 6, backgroundColor: CORES_SYMBIUS.verdeEscuro, borderRadius: 3 },
-
-  cardDesafio: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: CORES_SYMBIUS.verdeEscuro, borderRadius: 16, padding: 16,
-    marginTop: 8,
-  },
-  desafioLabel: { color: CORES_SYMBIUS.creme, fontSize: 13, fontFamily: F.bold },
-  desafioTitulo: { color: '#C7D4C2', fontSize: 12, fontFamily: F.medium, marginTop: 2 },
-  desafioXp: { color: CORES_SYMBIUS.creme, fontSize: 12, fontFamily: F.bold },
-  desafioMoedas: { color: '#C7D4C2', fontSize: 11, fontFamily: F.medium, marginTop: 2 },
-
   // ── Modal de leitura do post ──
   modalWrap: { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
   modalCover: { height: 220 },
+  dicaAmpliar: { position: 'absolute', right: 12, bottom: 12, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+  lightbox: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, backgroundColor: 'rgba(0,0,0,0.94)', justifyContent: 'center', alignItems: 'center' },
+  lightboxImg: { width: '100%', height: '100%' },
+  lightboxFechar: { position: 'absolute', top: 48, right: 18, width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.18)', justifyContent: 'center', alignItems: 'center' },
   modalCoverVazia: { backgroundColor: CORES_SYMBIUS.verdeEscuro, justifyContent: 'center', alignItems: 'center' },
   modalMarca: { color: CORES_SYMBIUS.creme, fontSize: 30, fontFamily: F.black },
   modalCoverOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.18)' },
@@ -989,17 +1499,33 @@ const styles = StyleSheet.create({
     backgroundColor: CORES_SYMBIUS.fundoCard, borderTopLeftRadius: 26, borderTopRightRadius: 26,
     padding: 22, paddingBottom: 36, maxHeight: '80%',
   },
-  btnVerAntigos: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: CORES_SYMBIUS.fundoLaranjaClaro, borderRadius: 12,
-    paddingVertical: 10, marginTop: 2, marginBottom: 4,
-  },
-  btnVerAntigosTxt: { color: CORES_SYMBIUS.laranjaTexto, fontSize: 12.5, fontFamily: F.bold },
   notifHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16, backgroundColor: CORES_SYMBIUS.borda2 },
+  destCardOculto: { opacity: 0.55 },
+  destCardSelecionado: { borderWidth: 3, borderColor: CORES_SYMBIUS.laranja },
+  destOcultoBadge: { position: 'absolute', bottom: 8, right: 8, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3 },
+  destOcultoTxt: { color: '#FFF', fontSize: 8, fontFamily: F.bold, letterSpacing: 0.3 },
+  destCheck: { position: 'absolute', top: 8, right: 8, width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#FFF', backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'center', alignItems: 'center' },
+  destCheckAtivo: { backgroundColor: CORES_SYMBIUS.laranja, borderColor: CORES_SYMBIUS.laranja },
+  dicaSelecao: { fontSize: 11.5, fontFamily: F.medium, color: CORES_SYMBIUS.textoSec, marginTop: 2 },
+  barraSelecao: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: CORES_SYMBIUS.borda },
+  barraSelecaoTxt: { flex: 1, fontSize: 14, fontFamily: F.bold, color: CORES_SYMBIUS.texto },
+  barraSelecaoBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: CORES_SYMBIUS.fundoSuave },
+  barraSelecaoBtnPerigo: { backgroundColor: 'rgba(214,69,69,0.1)' },
+  barraSelecaoBtnTxt: { fontSize: 13, fontFamily: F.semibold, color: CORES_SYMBIUS.verdeEscuro },
   notifTitulo: { fontSize: 17, fontFamily: F.black, color: CORES_SYMBIUS.texto },
   notifLimparTxt: { fontSize: 13, fontFamily: F.bold, color: CORES_SYMBIUS.laranjaTexto },
   notifVaziaTxt: { color: CORES_SYMBIUS.textoMuted, fontSize: 13, fontFamily: F.medium, marginTop: 10 },
   notifGrupoLabel: { fontSize: 10, fontFamily: F.bold, letterSpacing: 0.6, color: CORES_SYMBIUS.textoSec, marginBottom: 8 },
+  conviteCard: {
+    borderWidth: 1, borderColor: CORES_SYMBIUS.verdeEscuro + '40', borderRadius: 14,
+    padding: 12, marginBottom: 8, backgroundColor: CORES_SYMBIUS.fundoSuave,
+  },
+  conviteBotoes: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  conviteBtn: { flex: 1, minHeight: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  conviteBtnNao: { borderWidth: 1, borderColor: CORES_SYMBIUS.borda2 },
+  conviteBtnNaoTxt: { fontFamily: F.bold, fontSize: 14, color: CORES_SYMBIUS.texto },
+  conviteBtnSim: { backgroundColor: CORES_SYMBIUS.verdeEscuro },
+  conviteBtnSimTxt: { fontFamily: F.bold, fontSize: 14, color: CORES_SYMBIUS.creme },
   notifCard: {
     flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: CORES_SYMBIUS.fundoSuave,
     borderRadius: 14, padding: 10, marginBottom: 8,
@@ -1018,5 +1544,7 @@ const styles = StyleSheet.create({
   },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13 },
   menuItemText: { fontSize: 14, fontFamily: F.semibold, color: CORES_SYMBIUS.texto },
+  menuBadge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, backgroundColor: CORES_SYMBIUS.laranjaTexto, justifyContent: 'center', alignItems: 'center' },
+  menuBadgeTxt: { color: '#FFFFFF', fontSize: 12, fontFamily: F.bold },
   menuDivider: { height: 1, backgroundColor: CORES_SYMBIUS.borda, marginVertical: 2 },
 });

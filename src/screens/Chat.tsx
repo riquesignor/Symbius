@@ -1,9 +1,10 @@
+import { voltar, HIT_VOLTAR } from '../navegacao';
 import React, { useEffect, useRef, useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   Platform, StyleSheet, Image, ActivityIndicator,
   Dimensions, KeyboardAvoidingView, Alert, FlatList,
-  Animated, TouchableWithoutFeedback, useWindowDimensions
+  Animated, TouchableWithoutFeedback, useWindowDimensions, AppState
 } from "react-native";
 import { db } from "../config/firebaseConfig";
 import {
@@ -17,6 +18,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { useNotificacao } from '../contexts/NotificacaoProvider';
 import { dispararPush } from '../services/pushNotificationsService';
+import { msDe, mensagemLidaPor, marcarComoLida, apagarConversaParaMim, corteDoHistorico, limparConversaParaMim } from '../utils/conversas';
+import { confirmar } from '../utils/confirmar';
 import {
   escolherImagemBase64, escolherVideoBase64, escolherDocumentoBase64, abrirArquivoBase64,
 } from '../utils/midiaNativa';
@@ -24,6 +27,9 @@ import {
 import { F, CORES } from '../constants/theme';
 import { CORES_SYMBIUS } from '../constants/temaSymbius';
 import { awardXpFinalizarMatch, AwardResult, LevelUpInfo } from '../services/gamificationService';
+import { alunoDoElo } from '../utils/elos';
+import ModalDenuncia from '../components/ModalDenuncia';
+import AvatarComCosmeticos from '../components/AvatarComCosmeticos';
 import NivelUpSymbiusModal from '../components/NivelUpSymbiusModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -191,10 +197,29 @@ const PerfilModal = ({ visible, onClose, outroUid, outroNome, outraFoto, CC, meu
     ? (outraFoto.startsWith("data:") || outraFoto.startsWith("http") ? outraFoto : `data:image/jpeg;base64,${outraFoto}`)
     : "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 
-  if (!visible) return null;
+  // Mantém montado durante a animação de saída; sem isso o cartão sumia de uma vez.
+  const [montado, setMontado] = useState(visible);
+  const fundoAnim = useRef(new Animated.Value(0)).current;
+  const cartaoAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (visible) {
+      setMontado(true);
+      Animated.parallel([
+        Animated.timing(fundoAnim, { toValue: 1, duration: 220, useNativeDriver: true }),
+        Animated.spring(cartaoAnim, { toValue: 1, friction: 9, tension: 70, useNativeDriver: true }),
+      ]).start();
+    } else if (montado) {
+      Animated.parallel([
+        Animated.timing(fundoAnim, { toValue: 0, duration: 180, useNativeDriver: true }),
+        Animated.timing(cartaoAnim, { toValue: 0, duration: 180, useNativeDriver: true }),
+      ]).start(() => setMontado(false));
+    }
+  }, [visible]);
+
+  if (!visible && !montado) return null;
 
   return (
-    <View style={psty.overlay}>
+    <Animated.View style={[psty.overlay, { opacity: fundoAnim }]}>
       <TouchableOpacity style={{
   position: "absolute",
   top: 0,
@@ -202,7 +227,13 @@ const PerfilModal = ({ visible, onClose, outroUid, outroNome, outraFoto, CC, meu
   bottom: 0,
   left: 0,
 }} onPress={onClose} />
-      <View style={[psty.sheet, { backgroundColor: CC.menuBg }]}>
+      <Animated.View style={[
+        psty.sheet,
+        { backgroundColor: CC.menuBg, transform: [
+          { translateY: cartaoAnim.interpolate({ inputRange: [0, 1], outputRange: [90, 0] }) },
+          { scale: cartaoAnim.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) },
+        ] },
+      ]}>
         <View style={[psty.handle, { backgroundColor: CC.menuBorder }]} />
 
         {/* Capa + foto */}
@@ -272,11 +303,11 @@ const PerfilModal = ({ visible, onClose, outroUid, outroNome, outraFoto, CC, meu
             {/* Seção Favoritos */}
             {favoritos.length > 0 && (
               <View style={psty.secao}>
-                <Text style={[psty.secaoTitulo, { color: CC.textoSec }]}>⭐ MENSAGENS FAVORITAS</Text>
+                <Text style={[psty.secaoTitulo, { color: CC.textoSec }]}>MENSAGENS FAVORITAS</Text>
                 {favoritos.map((fav: any, i: number) => (
                   <View key={i} style={[psty.favItem, { backgroundColor: CC.bolhaOther, borderColor: CC.menuBorder }]}>
                     <Text style={[psty.favTexto, { color: "#E0E0E0" }]} numberOfLines={3}>
-                      {fav.tipo === "imagem" ? "📷 Imagem" : fav.mensagem}
+                      {fav.tipo === "imagem" ? "Imagem" : fav.mensagem}
                     </Text>
                     <Text style={[psty.favHora, { color: CC.textoSec }]}>
                       {fav.nome_remetente} · {fav.hora || ""}
@@ -291,8 +322,8 @@ const PerfilModal = ({ visible, onClose, outroUid, outroNome, outraFoto, CC, meu
             </TouchableOpacity>
           <View style={{ height: 24 }} />
         </ScrollView>
-      </View>
-    </View>
+      </Animated.View>
+    </Animated.View>
   );
 };
 
@@ -412,7 +443,7 @@ const EncaminharModal = ({ visible, onClose, meuUid, meuNome, minhaFoto, mensage
           {/* Preview da mensagem */}
           <View style={[esty.preview, { backgroundColor: CC.bolhaOther }]}>
             <Text style={esty.previewTxt} numberOfLines={2}>
-              {mensagem?.tipo === "imagem" ? "📷 Imagem" : mensagem?.mensagem || ""}
+              {mensagem?.tipo === "imagem" ? "Imagem" : mensagem?.mensagem || ""}
             </Text>
           </View>
 
@@ -520,22 +551,26 @@ export default function Chat({ route, navigation }: any) {
   const [fullImageMsg,     setFullImageMsg]      = useState<any | null>(null);
   const [fullVideoMsg,     setFullVideoMsg]      = useState<any | null>(null);
   const [menuMsg,          setMenuMsg]           = useState<any | null>(null);
+  const [denunciaMsg,      setDenunciaMsg]       = useState<any | null>(null);
   const [editandoId,       setEditandoId]        = useState<string | null>(null);
   const [citando,          setCitando]           = useState<any | null>(null);
   const [outraFoto,        setOutraFoto]         = useState<string | null>(null);
+  const [outroCosmeticos,  setOutroCosmeticos]   = useState<any>(null);
   const [onlineStatus,     setOnlineStatus]      = useState(false);
   const [outroDigitando,   setOutroDigitando]    = useState(false);
   const [perfilVisible,    setPerfilVisible]     = useState(false);
   const [encaminharMsg,    setEncaminharMsg]     = useState<any | null>(null);
   const [favoritos,        setFavoritos]         = useState<any[]>([]);
   const [silenciado,       setSilenciado]        = useState(false);
+  const [conversaDados,    setConversaDados]     = useState<any>(null);
+  const [escolhaConversa,  setEscolhaConversa]   = useState(false);
+  const [appAtivo,         setAppAtivo]          = useState(AppState.currentState === 'active');
+  const ultimaLeituraMarcada = useRef(0);
 
   // ── Finalizar Match / Gamificação ────────────────────────
   const [souAluno,         setSouAluno]          = useState<boolean | null>(null); // true=aluno (avalia), false=professor (não avalia), null=carregando
   const [matchFinalizado,  setMatchFinalizado]   = useState(false);
   const [avaliacaoVisible, setAvaliacaoVisible]  = useState(false);
-  const [avaliacaoEtapa,   setAvaliacaoEtapa]    = useState<'pergunta' | 'estrelas'>('pergunta');
-  const [entendeuDuvida,   setEntendeuDuvida]    = useState<boolean | null>(null);
   const [estrelasHover,    setEstrelasHover]     = useState<number | null>(null);
   const [comentarioPriv,   setComentarioPriv]    = useState('');
   const [enviandoAvaliacao,setEnviandoAvaliacao] = useState(false);
@@ -709,7 +744,9 @@ export default function Chat({ route, navigation }: any) {
     if (!outroUid) return;
     getDoc(firestoreDoc(db, "usuarios", outroUid)).then(snap => { if (snap.exists()) setOutraFoto(snap.data().foto || null); });
     const unsub = onSnapshot(firestoreDoc(db, "usuarios", outroUid), (snap) => {
-      if (snap.exists()) { setOnlineStatus(snap.data().online === true); setOutroDigitando(!!snap.data().digitandoEm); }
+      if (snap.exists()) setOutraFoto(snap.data().foto || null); // foto sempre a atual
+      if (snap.exists()) setOutroCosmeticos(snap.data().cosmeticos_equipados || null);
+      if (snap.exists()) { setOnlineStatus(snap.data().online === true && (snap.data().online_ping ? Date.now() - msDe(snap.data().online_ping, Date.now()) < 150000 : true)); setOutroDigitando(!!snap.data().digitandoEm); }
     });
     return () => unsub();
   }, [outroUid]);
@@ -729,6 +766,102 @@ export default function Chat({ route, navigation }: any) {
     }, (e) => { console.log(e.message); setLoading(false); });
     return () => unsub();
   }, [conversaId]);
+
+  // ── Documento da conversa ao vivo: quando o outro leu e o que eu já apaguei ──
+  useEffect(() => {
+    if (!conversaId) return;
+    return onSnapshot(firestoreDoc(db, "conversas", conversaId), (snap) => {
+      if (snap.exists()) {
+        const d: any = snap.data();
+        setConversaDados(d);
+        if (d.matchFinalizado) setMatchFinalizado(true);
+      }
+    }, () => {});
+  }, [conversaId]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => {
+      setAppAtivo(st === 'active');
+      if (st === 'active') ultimaLeituraMarcada.current = 0; // reabriu o app: confirma de novo
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Mensagens que sumiram quando eu apaguei a conversa não voltam
+  const apagadaEm = corteDoHistorico(conversaDados, uidAtual);
+  const mensagensVisiveis = apagadaEm
+    ? messages.filter(m => msDe(m.data_postagem, Date.now()) > apagadaEm)
+    : messages;
+
+  // ── Marca como lida: ao abrir e a cada mensagem nova que chega com o chat aberto ──
+  useEffect(() => {
+    if (!conversaId || !uidAtual || !appAtivo) return;
+    const maisNovaRecebida = messages
+      .filter(m => m.remetenteUid !== uidAtual && !String(m.docId).startsWith('temp_'))
+      .reduce((max, m) => Math.max(max, msDe(m.data_postagem, Date.now())), 0);
+    // Considera também a marca local: o serverTimestamp da leitura chega null no
+    // cache enquanto não confirma, e sem isso regravaria em laço.
+    const jaLida = Math.max(msDe(conversaDados?.leitura?.[uidAtual]), ultimaLeituraMarcada.current);
+    const precisa = maisNovaRecebida > jaLida
+      || (!!conversaDados?.quemEnviou && conversaDados.quemEnviou !== uidAtual && msDe(conversaDados.data_postagem, Date.now()) > jaLida);
+    if (!precisa) return;
+    ultimaLeituraMarcada.current = Math.max(maisNovaRecebida, Date.now());
+    marcarComoLida(conversaId, uidAtual);
+  }, [messages, conversaDados?.quemEnviou, conversaDados?.data_postagem, conversaId, uidAtual, appAtivo]);
+
+  // ── Setinhas estilo WhatsApp: ✓ enviada · ✓✓ azul = o outro leu ──
+  const renderTicks = (item: any) => {
+    if (String(item.docId).startsWith('temp_')) {
+      return <Ionicons name="time-outline" size={13} color="rgba(255,255,255,0.65)" style={{ marginLeft: 4 }} />;
+    }
+    const lida = mensagemLidaPor(conversaDados, outroUid, item.data_postagem);
+    return (
+      <Ionicons
+        name={lida ? "checkmark-done" : "checkmark"}
+        size={15}
+        color={lida ? "#53BDEB" : "rgba(255,255,255,0.65)"}
+        style={{ marginLeft: 4 }}
+      />
+    );
+  };
+
+  // ── Limpar a conversa só pra mim: some o histórico, a conversa continua ──
+  const limparConversa = async () => {
+    if (!conversaId || !uidAtual) return;
+    const ok = await confirmar(
+      "Limpar conversa?",
+      "As mensagens somem só para você. A outra pessoa continua vendo tudo.",
+      "Limpar", true,
+    );
+    if (!ok) return;
+    try {
+      await limparConversaParaMim(conversaId, uidAtual);
+    } catch (e: any) {
+      console.log("Erro ao limpar conversa:", e?.message);
+      Alert.alert("Erro", "Não foi possível limpar a conversa.");
+    }
+  };
+
+  // ── Apagar a conversa só pra mim (histórico de matches finalizados) ──
+  const apagarConversa = () => {
+    if (!conversaId || !uidAtual) return;
+    const executar = async () => {
+      try {
+        await apagarConversaParaMim(conversaId, uidAtual);
+        setEscolhaConversa(false);
+        voltar(navigation);
+      } catch (e: any) {
+        console.log("Erro ao apagar conversa:", e?.message);
+        Alert.alert("Erro", "Não foi possível apagar a conversa.");
+      }
+    };
+    const msg = "A conversa some só pra você. Se a outra pessoa também apagar, ela é removida de vez.";
+    if (Platform.OS === "web") { if (window.confirm("Apagar esta conversa?\n" + msg)) executar(); return; }
+    Alert.alert("Apagar esta conversa?", msg, [
+      { text: "Cancelar", style: "cancel" },
+      { text: "Apagar", style: "destructive", onPress: executar },
+    ]);
+  };
 
   // ── Marca conversa como "ativa" (provider não notifica dela) ──
   useEffect(() => {
@@ -751,14 +884,13 @@ export default function Chat({ route, navigation }: any) {
     if (!uidAtual || !outroUid) return;
     (async () => {
       try {
-        const [souAlunoSnap, souProfessorSnap] = await Promise.all([
-          getDocs(query(collection(db, "match_solicitacoes"),
-            where("deUid", "==", uidAtual), where("paraUid", "==", outroUid), where("status", "==", "aceito"))),
-          getDocs(query(collection(db, "match_solicitacoes"),
-            where("deUid", "==", outroUid), where("paraUid", "==", uidAtual), where("status", "==", "aceito"))),
-        ]);
-        if (!souAlunoSnap.empty) setSouAluno(true);
-        else if (!souProfessorSnap.empty) setSouAluno(false);
+        // Mesmo formato de consulta da lista de elos (status + membros), que
+        // não depende de índice composto; o par é filtrado aqui.
+        const snap = await getDocs(query(collection(db, "match_solicitacoes"),
+          where("status", "==", "aceito"), where("membros", "array-contains", uidAtual)));
+        const doPar = snap.docs.map(d => d.data()).filter((d: any) => d.membros?.includes(outroUid));
+        const aluno = alunoDoElo(doPar as any);
+        if (aluno) setSouAluno(aluno === uidAtual);
       } catch (e) { console.log("Erro ao checar papel aluno/professor:", e); }
     })();
   }, [uidAtual, outroUid]);
@@ -900,7 +1032,7 @@ export default function Chat({ route, navigation }: any) {
   };
 
   // ── Toast de XP (mesma animação usada no check-in da Home) ──
-  // Se xp/moedas forem 0 (dúvida não resolvida), mostra um toast neutro sem número.
+  // Se xp/moedas forem 0 (limite diário atingido), mostra um toast neutro sem número.
   const mostrarXpToast = (resultado: AwardResult) => {
     const neutro = resultado.xp === 0 && resultado.moedas === 0;
     setXpToast({ xp: resultado.xp, moedas: resultado.moedas, neutro });
@@ -933,23 +1065,25 @@ export default function Chat({ route, navigation }: any) {
   // ── Abre o modal de avaliação — só o aluno (quem pediu ajuda) avalia ──
   const abrirAvaliacao = () => {
     if (!uidAtual || !outroUid || matchFinalizado || souAluno !== true) return;
-    setAvaliacaoEtapa('pergunta');
-    setEntendeuDuvida(null);
     setEstrelasHover(null);
     setComentarioPriv('');
     setAvaliacaoVisible(true);
   };
 
-  // ── Passo 1: responde se a dúvida foi resolvida, avança pro passo das estrelas ──
-  const responderPergunta = (resolveu: boolean) => {
-    setEntendeuDuvida(resolveu);
-    setEstrelasHover(null);
-    setAvaliacaoEtapa('estrelas');
-  };
+  // Aberto pelo botão "Finalizar" da lista de elos: abre a avaliação assim
+  // que o papel (aluno) e o estado do match estiverem carregados.
+  const pediuAvaliacaoRef = useRef(!!route.params?.abrirAvaliacao);
+  useEffect(() => {
+    if (!pediuAvaliacaoRef.current || souAluno === null || !conversaId) return;
+    pediuAvaliacaoRef.current = false;
+    abrirAvaliacao();
+  }, [souAluno, conversaId, matchFinalizado]);
 
-  // ── Passo 2: confirma a nota, premia professor (sempre) e aluno (se resolveu) ──
+  // ── Avaliação: só as 5 estrelas. 1 = não entendeu nada · 4 = explicou bem, mas
+  // ficou dúvida · 5 = entendeu tudo. "Resolveu" passa a ser a nota máxima.
   const confirmarAvaliacao = async () => {
-    if (!uidAtual || !outroUid || !conversaId || enviandoAvaliacao || entendeuDuvida === null || estrelasHover === null) return;
+    if (!uidAtual || !outroUid || !conversaId || enviandoAvaliacao || estrelasHover === null) return;
+    const entendeuDuvida = estrelasHover === 5;
     setEnviandoAvaliacao(true);
     try {
       // uidAtual = aluno (só ele vê esse fluxo) · outroUid = professor
@@ -965,9 +1099,10 @@ export default function Chat({ route, navigation }: any) {
       setMatchFinalizado(true);
       setAvaliacaoVisible(false);
       mostrarXpToast(resultado.aluno);
+      setEscolhaConversa(true);
     } catch (e: any) {
       console.log("❌ Erro ao finalizar match:", e.message);
-      Alert.alert("Erro", "Não foi possível finalizar o match. Tente novamente.");
+      Alert.alert("Erro", "Não foi possível finalizar o elo. Tente novamente.");
     } finally {
       setEnviandoAvaliacao(false);
     }
@@ -1031,13 +1166,13 @@ export default function Chat({ route, navigation }: any) {
     <KeyboardAvoidingView style={[styles.container, { backgroundColor: CC.fundo }]} behavior={Platform.OS==="ios"?"padding":"height"}>
 
       {/* ── HEADER ── */}
-      <View style={[styles.header, { paddingTop: insets.top + 10, backgroundColor: CC.headerBg, borderBottomColor: CC.headerBorder }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.backBtn, { backgroundColor: CC.backBtn }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 24, backgroundColor: CC.headerBg, borderBottomColor: CC.headerBorder }]}>
+        <TouchableOpacity hitSlop={HIT_VOLTAR} onPress={() => voltar(navigation)} style={[styles.backBtn, { backgroundColor: CC.backBtn }]}>
           <Ionicons name="arrow-back" size={22} color={CC.backIcon} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.headerCenter} onPress={() => setPerfilVisible(true)} activeOpacity={0.7}>
           <View style={styles.headerAvatarWrap}>
-            <Image source={{ uri: outraFotoUri }} style={styles.headerAvatar} />
+            <AvatarComCosmeticos foto={outraFotoUri} nome={outroNome} tamanho={42} cosmeticosEquipados={outroCosmeticos} />
             <View style={[styles.headerOnlineDot, { backgroundColor: onlineStatus ? "#22C55E" : "#94A3B8" }]} />
           </View>
           <View>
@@ -1062,6 +1197,24 @@ export default function Chat({ route, navigation }: any) {
             color={silenciado ? CORES_SYMBIUS.laranjaTexto : CC.backIcon}
           />
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.finalizarBtn, { backgroundColor: CC.backBtn }]}
+          onPress={limparConversa}
+          activeOpacity={0.7}
+          accessibilityLabel="Limpar conversa"
+        >
+          <Ionicons name="brush-outline" size={19} color={CC.backIcon} />
+        </TouchableOpacity>
+        {matchFinalizado && (
+          <TouchableOpacity
+            style={[styles.finalizarBtn, { backgroundColor: CC.backBtn }]}
+            onPress={apagarConversa}
+            activeOpacity={0.7}
+            accessibilityLabel="Apagar conversa"
+          >
+            <Ionicons name="trash-outline" size={19} color="#D64545" />
+          </TouchableOpacity>
+        )}
         {souAluno === true ? (
           <TouchableOpacity
             style={[styles.finalizarBtn, { backgroundColor: matchFinalizado ? CC.backBtn : CORES_SYMBIUS.verdeEscuro + '25' }]}
@@ -1078,6 +1231,12 @@ export default function Chat({ route, navigation }: any) {
         ) : null}
         </View>
       </View>
+      {matchFinalizado && (
+        <View style={[styles.avisoSilenciado, { backgroundColor: CORES_SYMBIUS.fundoSuave }]}>
+          <Ionicons name="checkmark-circle" size={13} color={CORES_SYMBIUS.verdeEscuro} />
+          <Text style={[styles.avisoSilenciadoTxt, { color: CORES_SYMBIUS.textoSec }]}>Match finalizado · a conversa continua no seu histórico</Text>
+        </View>
+      )}
       {silenciado && (
         <TouchableOpacity style={[styles.avisoSilenciado, { backgroundColor: CORES_SYMBIUS.fundoLaranjaClaro }]} onPress={alternarSilenciar}>
           <Ionicons name="notifications-off" size={13} color={CORES_SYMBIUS.laranjaTexto} />
@@ -1093,12 +1252,12 @@ export default function Chat({ route, navigation }: any) {
         showsVerticalScrollIndicator={false}
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
       >
-        {messages.map((item, index) => {
+        {mensagensVisiveis.map((item, index) => {
           const isMe = item.remetenteUid === uidAtual;
           const chaveAtual    = getDataChave(item.data_postagem);
-          const chaveAnterior = index > 0 ? getDataChave(messages[index-1].data_postagem) : null;
+          const chaveAnterior = index > 0 ? getDataChave(mensagensVisiveis[index-1].data_postagem) : null;
           const mostrarSep    = chaveAtual !== chaveAnterior;
-          const prevMsg       = messages[index-1];
+          const prevMsg       = mensagensVisiveis[index-1];
           const primeiraDaSeq = !prevMsg || prevMsg.remetenteUid !== item.remetenteUid || mostrarSep;
           const borderMe    = primeiraDaSeq ? { borderRadius:18, borderBottomRightRadius:4 } : { borderRadius:18 };
           const borderOther = primeiraDaSeq ? { borderRadius:18, borderBottomLeftRadius:4  } : { borderRadius:18 };
@@ -1130,6 +1289,7 @@ export default function Chat({ route, navigation }: any) {
                       <View style={styles.rodape}>
                         {isFav && <Ionicons name="star" size={10} color="rgba(255,200,44,0.8)" style={{ marginRight: 4 }} />}
                         <Text style={[styles.hora, !isMe && { color: CORES_SYMBIUS.textoSec }]}>{formatarHora(item.data_postagem)}</Text>
+                        {isMe && renderTicks(item)}
                       </View>
                     </>
                   ) : item.tipo === "video" ? (
@@ -1137,12 +1297,13 @@ export default function Chat({ route, navigation }: any) {
                       <TouchableOpacity onPress={() => setFullVideoMsg(item)} activeOpacity={0.85}>
                         <View style={[styles.videoThumb, { width: imgMax }]}>
                           <Ionicons name="play-circle" size={52} color="rgba(255,255,255,0.9)" />
-                          <Text style={styles.videoLabel}>🎥 Toque para assistir</Text>
+                          <Text style={styles.videoLabel}>Toque para assistir</Text>
                         </View>
                       </TouchableOpacity>
                       <View style={styles.rodape}>
                         {isFav && <Ionicons name="star" size={10} color="rgba(255,200,44,0.8)" style={{ marginRight: 4 }} />}
                         <Text style={[styles.hora, !isMe && { color: CORES_SYMBIUS.textoSec }]}>{formatarHora(item.data_postagem)}</Text>
+                        {isMe && renderTicks(item)}
                       </View>
                     </>
                   ) : item.tipo === "documento" ? (
@@ -1158,6 +1319,7 @@ export default function Chat({ route, navigation }: any) {
                       <View style={styles.rodape}>
                         {isFav && <Ionicons name="star" size={10} color="rgba(255,200,44,0.8)" style={{ marginRight: 4 }} />}
                         <Text style={[styles.hora, !isMe && { color: CORES_SYMBIUS.textoSec }]}>{formatarHora(item.data_postagem)}</Text>
+                        {isMe && renderTicks(item)}
                       </View>
                     </>
                   ) : (
@@ -1167,6 +1329,7 @@ export default function Chat({ route, navigation }: any) {
                         {item.editada && <Text style={[styles.editadaLabel, !isMe && { color: CORES_SYMBIUS.textoSec }]}>editada · </Text>}
                         {isFav && <Ionicons name="star" size={10} color="rgba(255,200,44,0.8)" style={{ marginRight: 4 }} />}
                         <Text style={[styles.hora, !isMe && { color: CORES_SYMBIUS.textoSec }]}>{formatarHora(item.data_postagem)}</Text>
+                        {isMe && renderTicks(item)}
                       </View>
                     </>
                   )}
@@ -1197,11 +1360,11 @@ export default function Chat({ route, navigation }: any) {
           <View style={styles.citandoInfo}>
             {citando ? <>
               <Text style={[styles.citandoNome, { color: CC.citandoNome }]}>{citando.nome_remetente}</Text>
-              <Text style={[styles.citandoTexto, { color: CC.citandoTexto }]} numberOfLines={1}>{citando.tipo==="imagem"?"📷 Imagem":citando.mensagem}</Text>
-            </> : <Text style={[styles.citandoNome, { color: CC.citandoNome }]}>✏️ Editando mensagem</Text>}
+              <Text style={[styles.citandoTexto, { color: CC.citandoTexto }]} numberOfLines={1}>{citando.tipo==="imagem"?"Imagem":citando.mensagem}</Text>
+            </> : <Text style={[styles.citandoNome, { color: CC.citandoNome }]}>Editando mensagem</Text>}
           </View>
           <TouchableOpacity onPress={() => { setCitando(null); setEditandoId(null); setInputText(""); clearTyping(); }}>
-            <Text style={[styles.citandoFechar, { color: CC.citandoFechar }]}>✕</Text>
+            <Ionicons name="close" size={20} color={CC.citandoFechar} style={{ paddingLeft: 10 }} />
           </TouchableOpacity>
         </View>
       )}
@@ -1279,12 +1442,12 @@ export default function Chat({ route, navigation }: any) {
               <Text style={styles.menuItemIcon}>↪️</Text><Text style={[styles.menuItemText, { color: CC.menuText }]}>Encaminhar</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.menuItem, { borderBottomColor: CC.menuBorder }]} onPress={() => toggleFavorito(menuMsg)}>
-              <Text style={styles.menuItemIcon}>{favoritos.some((f:any)=>f.id===(menuMsg.docId||menuMsg.id))?"⭐":"☆"}</Text>
+              <Ionicons name={favoritos.some((f:any)=>f.id===(menuMsg.docId||menuMsg.id))?"star":"star-outline"} size={20} color={CC.menuText} style={{ marginRight: 12 }} />
               <Text style={[styles.menuItemText, { color: CC.menuText }]}>{favoritos.some((f:any)=>f.id===(menuMsg.docId||menuMsg.id))?"Desfavoritar":"Favoritar"}</Text>
             </TouchableOpacity>
             {menuMsg.remetenteUid===uidAtual && menuMsg.tipo==="texto" && (
               <TouchableOpacity style={[styles.menuItem, { borderBottomColor: CC.menuBorder }]} onPress={() => iniciarEdicao(menuMsg)}>
-                <Text style={styles.menuItemIcon}>✏️</Text><Text style={[styles.menuItemText, { color: CC.menuText }]}>Editar</Text>
+                <Ionicons name="create-outline" size={20} color={CC.menuText} style={{ marginRight: 12 }} /><Text style={[styles.menuItemText, { color: CC.menuText }]}>Editar</Text>
               </TouchableOpacity>
             )}
             {menuMsg.remetenteUid===uidAtual && (
@@ -1292,7 +1455,16 @@ export default function Chat({ route, navigation }: any) {
                 if (Platform.OS==="web") { if (window.confirm("Apagar mensagem?")) apagarMensagem(menuMsg); }
                 else Alert.alert("Apagar", "Tem certeza?", [{ text:"Cancelar",style:"cancel" },{ text:"Apagar",style:"destructive",onPress:()=>apagarMensagem(menuMsg) }]);
               }}>
-                <Text style={styles.menuItemIcon}>🗑️</Text><Text style={[styles.menuItemText, { color: "#ff4d6d" }]}>Apagar</Text>
+                <Ionicons name="trash-outline" size={20} color="#ff4d6d" style={{ marginRight: 12 }} /><Text style={[styles.menuItemText, { color: "#ff4d6d" }]}>Apagar</Text>
+              </TouchableOpacity>
+            )}
+            {menuMsg.remetenteUid!==uidAtual && (
+              <TouchableOpacity
+                style={[styles.menuItem, { borderBottomColor: CC.menuBorder }]}
+                onPress={() => { setDenunciaMsg({ ...menuMsg, id: resolverDocId(menuMsg) }); setMenuMsg(null); }}
+                accessibilityRole="button"
+              >
+                <Ionicons name="flag-outline" size={20} color="#ff4d6d" style={{ marginRight: 12 }} /><Text style={[styles.menuItemText, { color: "#ff4d6d" }]}>Denunciar</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={[styles.menuItem, { borderBottomWidth:0, marginTop:4 }]} onPress={() => setMenuMsg(null)}>
@@ -1302,12 +1474,20 @@ export default function Chat({ route, navigation }: any) {
         </View>
       )}
 
+      <ModalDenuncia
+        mensagem={denunciaMsg}
+        conversaId={conversaId}
+        denuncianteUid={uidAtual}
+        tipoConversa="individual"
+        onFechar={() => setDenunciaMsg(null)}
+      />
+
       {/* ── PREVIEW UNIFICADO ── */}
       {previewVisible && (
         <View style={styles.overlayFull}>
           <View style={[styles.previewCard, { backgroundColor: CC.previewBg }]}>
             <Text style={[styles.previewTitle, { color: CC.previewTitle }]}>
-              {previewTipo === 'imagem' ? 'Pré-visualização' : previewTipo === 'video' ? '🎥 Vídeo' : '📄 Documento'}
+              {previewTipo === 'imagem' ? 'Pré-visualização' : previewTipo === 'video' ? 'Vídeo' : 'Documento'}
             </Text>
 
             {/* Imagem */}
@@ -1459,60 +1639,52 @@ export default function Chat({ route, navigation }: any) {
         />
       )}
 
+      {escolhaConversa && (
+        <View style={styles.overlayFull}>
+          <View style={[styles.menuCard, { backgroundColor: CC.menuBg }]}>
+            <Text style={[styles.menuTitle, { color: CC.menuTitle }]}>Match finalizado</Text>
+            <Text style={{ color: CC.textoSec, fontFamily: F.medium, fontSize: 13, textAlign: "center", marginBottom: 14 }}>
+              O que você quer fazer com esta conversa?
+            </Text>
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: CC.menuBorder }]}
+              onPress={() => setEscolhaConversa(false)}
+            >
+              <Text style={styles.menuItemIcon}>💬</Text>
+              <Text style={[styles.menuItemText, { color: CC.menuText }]}>Manter a conversa</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.menuItem, { borderBottomWidth: 0 }]} onPress={apagarConversa}>
+              <Text style={styles.menuItemIcon}>🗑️</Text>
+              <Text style={[styles.menuItemText, { color: "#D64545" }]}>Apagar a conversa</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {/* ── AVALIAÇÃO / FINALIZAR MATCH (aluno avalia o professor) ── */}
       {avaliacaoVisible && (
         <TouchableWithoutFeedback onPress={() => !enviandoAvaliacao && setAvaliacaoVisible(false)}>
           <View style={avaliacaoStyles.backdrop}>
             <TouchableWithoutFeedback>
               <View style={[avaliacaoStyles.card, { backgroundColor: CC.menuBg }]}>
-                {avaliacaoEtapa === 'pergunta' ? (
+                {(
                   <>
-                    <Text style={{ fontSize: 40, marginBottom: 8 }}>🤔</Text>
-                    <Text style={[avaliacaoStyles.titulo, { color: CC.menuTitle, fontFamily: F.black }]}>
-                      Você conseguiu tirar sua dúvida com {outroNome}?
-                    </Text>
-                    <Text style={[avaliacaoStyles.subtitulo, { color: CC.textoSec, fontFamily: F.medium }]}>
-                      Isso ajuda a gente a recompensar quem realmente ajuda
-                    </Text>
-
-                    <TouchableOpacity
-                      style={[avaliacaoStyles.btnConfirmar, { backgroundColor: "#22C55E", marginBottom: 10 }]}
-                      onPress={() => responderPergunta(true)}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={avaliacaoStyles.btnConfirmarTxt}>Sim, entendi a matéria!</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[avaliacaoStyles.btnConfirmar, { backgroundColor: CORES_SYMBIUS.verdeEscuro }]}
-                      onPress={() => responderPergunta(false)}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={avaliacaoStyles.btnConfirmarTxt}>Não, ainda com dúvida</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity onPress={() => setAvaliacaoVisible(false)} style={{ marginTop: 14 }}>
-                      <Text style={[avaliacaoStyles.btnCancelar, { color: CC.textoSec }]}>Cancelar</Text>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <>
-                    <Text style={{ fontSize: 40, marginBottom: 8 }}>{entendeuDuvida ? "🤝" : "😕"}</Text>
+                    <Ionicons name="star-outline" size={44} color={CC.menuTitle} style={{ marginBottom: 8 }} />
                     <Text style={[avaliacaoStyles.titulo, { color: CC.menuTitle, fontFamily: F.black }]}>
                       Avalie {outroNome}
                     </Text>
                     <Text style={[avaliacaoStyles.subtitulo, { color: CC.textoSec, fontFamily: F.medium }]}>
-                      {entendeuDuvida
-                        ? "Quão bem ele(a) te ajudou?"
-                        : "O que faltou? Isso é privado, só ele(a) vê"}
+                      Como foi a explicação? Só {outroNome?.split(" ")[0] || "ele(a)"} vê a nota.
                     </Text>
 
                     <View style={avaliacaoStyles.estrelasRow}>
-                      {(entendeuDuvida ? [4, 5] : [0, 1, 2, 3]).map(n => (
-                        <TouchableOpacity key={n} onPress={() => setEstrelasHover(n)} disabled={enviandoAvaliacao}>
+                      {/* sempre 5 estrelas; a resposta "resolveu ou não" vai separada */}
+                      {[1, 2, 3, 4, 5].map(n => (
+                        <TouchableOpacity key={n} onPress={() => setEstrelasHover(n)} disabled={enviandoAvaliacao} hitSlop={{ top: 8, bottom: 8, left: 2, right: 2 }} accessibilityLabel={`${n} estrela${n > 1 ? "s" : ""}`}>
                           <Ionicons
-                            name={n === 0 ? "close-circle" : (estrelasHover !== null && n <= estrelasHover ? "star" : "star-outline")}
+                            name={estrelasHover !== null && n <= estrelasHover ? "star" : "star-outline"}
                             size={34}
-                            color={n === 0 ? (estrelasHover === 0 ? CORES_SYMBIUS.verdeEscuro : CC.textoSec) : "#FFC82C"}
+                            color="#FFC82C"
                             style={{ marginHorizontal: 3 }}
                           />
                         </TouchableOpacity>
@@ -1520,15 +1692,14 @@ export default function Chat({ route, navigation }: any) {
                     </View>
                     <Text style={[avaliacaoStyles.subtitulo, { color: CC.textoSec, fontFamily: F.medium, marginTop: -8 }]}>
                       {estrelasHover === null ? " "
-                        : estrelasHover === 5 ? "Perfeito!"
-                        : estrelasHover === 4 ? "Bom, mas podia melhorar"
-                        : estrelasHover === 3 ? "Não resolveu, mas explicou bem"
-                        : estrelasHover === 2 ? "Saí com mais dúvidas, mas tentou"
-                        : estrelasHover === 1 ? "Tentou, mas não adiantou"
-                        : "Não ajudou em nada"}
+                        : estrelasHover === 5 ? "Explicou bem, entendi tudo!"
+                        : estrelasHover === 4 ? "Explicou bem, mas ainda tenho dúvida"
+                        : estrelasHover === 3 ? "Ajudou, mas ficou bastante dúvida"
+                        : estrelasHover === 2 ? "Entendi pouca coisa"
+                        : "Explicou mal, não entendi nada"}
                     </Text>
 
-                    {entendeuDuvida === false && (
+                    {estrelasHover !== null && estrelasHover < 5 && (
                       <TextInput
                         value={comentarioPriv}
                         onChangeText={setComentarioPriv}
@@ -1547,11 +1718,11 @@ export default function Chat({ route, navigation }: any) {
                     >
                       {enviandoAvaliacao
                         ? <ActivityIndicator color="#fff" />
-                        : <Text style={avaliacaoStyles.btnConfirmarTxt}>Finalizar match</Text>}
+                        : <Text style={avaliacaoStyles.btnConfirmarTxt}>Finalizar elo</Text>}
                     </TouchableOpacity>
 
-                    <TouchableOpacity onPress={() => setAvaliacaoEtapa('pergunta')} disabled={enviandoAvaliacao}>
-                      <Text style={[avaliacaoStyles.btnCancelar, { color: CC.textoSec }]}>Voltar</Text>
+                    <TouchableOpacity onPress={() => setAvaliacaoVisible(false)} disabled={enviandoAvaliacao} style={{ marginTop: 10 }}>
+                      <Text style={[avaliacaoStyles.btnCancelar, { color: CC.textoSec }]}>Cancelar</Text>
                     </TouchableOpacity>
                   </>
                 )}
@@ -1570,13 +1741,13 @@ export default function Chat({ route, navigation }: any) {
               opacity: xpToastOpacity,
               transform: [{ translateY: xpToastSlide }] },
           ]}>
-            <Text style={{ fontSize: 28 }}>{xpToast.neutro ? "📨" : "🌱"}</Text>
+            <Ionicons name={xpToast.neutro ? "mail-outline" : "leaf"} size={28} color={CORES_SYMBIUS.verdeEscuro} />
             <View>
               <Text style={[avaliacaoStyles.toastTitulo, { color: modoEscuro ? CORES_SYMBIUS.texto : CORES_SYMBIUS.texto, fontFamily: F.bold }]}>
-                {xpToast.neutro ? "Feedback enviado!" : "Match finalizado!"}
+                {xpToast.neutro ? "Feedback enviado!" : "Elo finalizado!"}
               </Text>
               <Text style={[avaliacaoStyles.toastSubtitulo, { color: "#8D99AE", fontFamily: F.medium }]}>
-                {xpToast.neutro ? "Tenta com outro professor sem problema" : `+${xpToast.xp} XP · +${xpToast.moedas} Sementes`}
+                {xpToast.neutro ? "Você já ganhou o XP de elos de hoje" : `+${xpToast.xp} XP · +${xpToast.moedas} Sementes`}
               </Text>
             </View>
           </Animated.View>

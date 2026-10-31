@@ -187,6 +187,7 @@ export interface Comentario {
   autorFoto: string | null;
   texto: string;
   criadoEm: any;
+  editadoEm?: any;
 }
 
 export const ouvirComentarios = (resumoId: string, aoMudar: (lista: Comentario[]) => void) =>
@@ -209,6 +210,20 @@ export const comentarResumo = async (resumoId: string, dados: {
     return true;
   } catch (e) {
     console.error('Erro ao comentar:', e);
+    return false;
+  }
+};
+
+export const editarComentario = async (resumoId: string, comentarioId: string, texto: string): Promise<boolean> => {
+  try {
+    const t = texto.trim();
+    if (!t) return false;
+    await updateDoc(doc(db, COLECAO, resumoId, 'comentarios', comentarioId), {
+      texto: t.slice(0, 1000), editadoEm: serverTimestamp(),
+    });
+    return true;
+  } catch (e) {
+    console.error('Erro ao editar comentário:', e);
     return false;
   }
 };

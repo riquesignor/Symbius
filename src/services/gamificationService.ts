@@ -1,24 +1,25 @@
 import { db } from '../config/firebaseConfig';
-import { doc, updateDoc, getDoc, increment, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, increment, serverTimestamp, arrayUnion, runTransaction, deleteField } from 'firebase/firestore';
 import {
   GAMIFICATION_CONFIG,
   podeGanharXpMatch,
   verificarResetDiario,
   calcularNivel,
+  atingiuAnimal,
 } from '../utils/gamification';
+import { AncoraCosmetico, getCosmetico } from '../constants/cosmeticos';
 
 
 // ─ Helpers de data ──────────────────────────────────────────────────
-const hojeStr = (): string => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+// "Dia" do check-in sempre no horário de Brasília (UTC-3, sem horário de
+// verão desde 2019), não no fuso do aparelho: web e celular precisam
+// concordar sobre qual é o dia, senão o desafio some num e volta no outro.
+const FUSO_ESCOLA_MS = 3 * 60 * 60 * 1000;
+export const diaEscolar = (deslocamentoDias = 0): string =>
+  new Date(Date.now() - FUSO_ESCOLA_MS + deslocamentoDias * 86400000).toISOString().slice(0, 10);
 
-const ontemStr = (): string => {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+export const checkInFeitoHoje = (userData: any): boolean =>
+  userData?.ultimo_checkin_dia === diaEscolar();
 
 export interface LevelUpInfo {
   nomeAnimal:   string;
@@ -34,6 +35,7 @@ export interface CheckInResult {
   xp:       number;
   moedas:   number;
   levelUp:  LevelUpInfo | null; // null = sem mudança de nível
+  erro?:    boolean;       // true = não gravou (sem rede, sem permissão...)
 }
 
 // ─ Resultado genérico de premiação de XP (match / pedir ajuda) ─
@@ -107,7 +109,7 @@ export const awardXpMatch = async (meuUid: string): Promise<AwardResult> => {
 
 
 export const awardDailyCheckIn = async (meuUid: string): Promise<CheckInResult> => {
-  const fallback: CheckInResult = { ganhou: false, streak: 0, xp: 0, moedas: 0, levelUp: null };
+  const fallback: CheckInResult = { ganhou: false, streak: 0, xp: 0, moedas: 0, levelUp: null, erro: true };
   try {
     if (!meuUid) return fallback;
 
@@ -118,8 +120,8 @@ export const awardDailyCheckIn = async (meuUid: string): Promise<CheckInResult> 
     const userData       = userSnap.data();
     const ultimoDia      = userData?.ultimo_checkin_dia as string | undefined;
     const streakAtual    = (userData?.streak_dias as number) || 0;
-    const hoje           = hojeStr();
-    const ontem          = ontemStr();
+    const hoje           = diaEscolar();
+    const ontem          = diaEscolar(-1);
 
     // ─ Já fez check-in hoje ─
     if (ultimoDia === hoje) {
@@ -229,8 +231,7 @@ export interface FinalizarMatchResult {
 }
 
 // ─ Aluno avalia o professor ao finalizar o match ──────────────────
-// entendeu=true  → estrelas deve ser 4 ou 5 (dúvida resolvida)
-// entendeu=false → estrelas deve ser 0 a 3 (dúvida não resolvida)
+// estrelas de 1 a 5 (sempre as 5 na tela). entendeu = nota máxima (5 = entendeu tudo).
 export const awardXpFinalizarMatch = async (
   alunoUid: string,
   professorUid: string,
@@ -275,9 +276,10 @@ export const awardXpFinalizarMatch = async (
     await updateDoc(profRef, profUpdates);
     const resultadoProfessor = construirAwardResult(xpProfessorAtual, tierProfessor.xp, tierProfessor.moedas);
 
-    // ── Aluno: só ganha se a dúvida foi resolvida, com limite diário ──
+    // ── Aluno: ganha ao finalizar o elo, qualquer que seja a nota (assim a nota
+    // fica honesta: ninguém precisa dar 5 estrelas pra ganhar XP). Limite diário. ──
     let resultadoAluno: AwardResult = AWARD_FALHA;
-    if (entendeu) {
+    {
       const matchesBonificadosHoje = alunoData?.matches_bonificados_hoje || 0;
       const ultimoReset = alunoData?.ultimo_reset_diario;
       const deveReset = verificarResetDiario(ultimoReset);
@@ -366,64 +368,49 @@ export const aplicarDecaimentoInatividade = async (meuUid: string): Promise<Deca
   }
 };
 
-export const comprarCosmetico = async (
-  meuUid: string,
-  idCosmetico: string,
-  precoCosmetico: number
-): Promise<boolean> => {
+// Compra em transação: saldo e posse são relidos no servidor, então dois
+// toques rápidos não descontam duas vezes nem compram o mesmo item de novo.
+export type ResultadoCompra = 'comprado' | 'ja_possui' | 'sem_saldo' | 'bloqueado' | 'erro';
+
+export const comprarCosmetico = async (meuUid: string, idCosmetico: string): Promise<ResultadoCompra> => {
+  const item = getCosmetico(idCosmetico);
+  if (!meuUid || !item) return 'erro';
   try {
-    if (!meuUid) throw new Error('UID não fornecido');
-
-    const userRef = doc(db, 'usuarios', meuUid);
-    const userSnap = await getDoc(userRef);
-
-    if (!userSnap.exists()) throw new Error('Usuário não encontrado');
-
-    const userData = userSnap.data();
-    const moedas = userData?.moedas_saldo || 0;
-
-    // ─ Validar moedas suficientes ─
-    if (moedas < precoCosmetico) {
-      console.warn(`⚠️ Moedas insuficientes. Tem ${moedas}, precisa ${precoCosmetico}`);
-      return false;
-    }
-
-    // ─ Verificar se já tem ─
-    const itensAdquiridos = userData?.itens_adquiridos || [];
-    if (itensAdquiridos.includes(idCosmetico)) {
-      console.warn('⚠️ Você já possui este cosmético');
-      return false;
-    }
-
-    // ─ Fazer compra ─
-    await updateDoc(userRef, {
-      moedas_saldo: increment(-precoCosmetico),
-      itens_adquiridos: [...itensAdquiridos, idCosmetico],
+    return await runTransaction(db, async tx => {
+      const ref = doc(db, 'usuarios', meuUid);
+      const snap = await tx.get(ref);
+      if (!snap.exists()) return 'erro';
+      const dados: any = snap.data();
+      const itens: string[] = dados?.itens_adquiridos || [];
+      if (itens.includes(item.id)) return 'ja_possui';
+      if (item.prestigio && item.animalMinimo && !atingiuAnimal(dados?.xp_total || 0, item.animalMinimo)) return 'bloqueado';
+      if ((dados?.moedas_saldo || 0) < item.preco) return 'sem_saldo';
+      tx.update(ref, { moedas_saldo: increment(-item.preco), itens_adquiridos: arrayUnion(item.id) });
+      return 'comprado';
     });
-
-    console.log(`✅ Cosmético comprado! -${precoCosmetico} Moedas`);
-    return true;
   } catch (error) {
     console.error('❌ Erro ao comprar cosmético:', error);
-    return false;
+    return 'erro';
   }
 };
 
-
+// Equipa (ou remove, com idCosmetico null) o item na âncora dele. Limpa o
+// slot antigo por categoria se ele apontava pra mesma âncora, pra não
+// "ressuscitar" um item removido.
 export const equiparCosmetico = async (
   meuUid: string,
-  categoria: 'chapeu' | 'acessorio' | 'moldura',
-  idCosmetico: string | null
+  ancora: AncoraCosmetico,
+  idCosmetico: string | null,
+  equipadosAtuais: any,
 ): Promise<boolean> => {
   try {
     if (!meuUid) throw new Error('UID não fornecido');
-
-    const userRef = doc(db, 'usuarios', meuUid);
-    await updateDoc(userRef, {
-      [`cosmeticos_equipados.${categoria}`]: idCosmetico,
-    });
-
-    console.log(idCosmetico ? '✅ Cosmético equipado!' : '✅ Cosmético removido!');
+    const patch: Record<string, any> = { [`cosmeticos_equipados.${ancora}`]: idCosmetico };
+    for (const legado of ['chapeu', 'acessorio']) {
+      const antigo = getCosmetico(equipadosAtuais?.[legado]);
+      if (antigo?.ancora === ancora) patch[`cosmeticos_equipados.${legado}`] = deleteField();
+    }
+    await updateDoc(doc(db, 'usuarios', meuUid), patch);
     return true;
   } catch (error) {
     console.error('❌ Erro ao equipar cosmético:', error);

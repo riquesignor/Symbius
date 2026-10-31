@@ -1,3 +1,4 @@
+import { voltar, HIT_VOLTAR, AREA_VOLTAR } from '../navegacao';
 import React from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, StatusBar,
@@ -25,13 +26,13 @@ export default function EscolhaPapel({ navigation }: any) {
       <StatusBar barStyle={CORES_SYMBIUS.barStyle} />
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity hitSlop={HIT_VOLTAR} style={AREA_VOLTAR} onPress={() => voltar(navigation)}>
           <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
       </View>
 
       <View style={styles.marcaWrap}>
-        <Text style={styles.marca}>Symbius</Text>
+        <Text style={styles.marca}>Simbio</Text>
       </View>
 
       <View style={styles.tituloWrap}>
@@ -77,7 +78,7 @@ export default function EscolhaPapel({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
-  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
+  header: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 4 },
   marcaWrap: { alignItems: 'center', paddingVertical: 12 },
   marca: { fontSize: 26, fontFamily: F.bold, color: CORES_SYMBIUS.verdeEscuro },
   tituloWrap: { paddingHorizontal: 28 },

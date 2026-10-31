@@ -1,3 +1,4 @@
+import { voltar, HIT_VOLTAR } from '../navegacao';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, FlatList,
@@ -5,7 +6,8 @@ import {
   KeyboardAvoidingView, Platform, Image, Alert, PanResponder, Animated, Dimensions,
 } from 'react-native';
 import { db } from '../config/firebaseConfig';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { confirmar } from '../utils/confirmar';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -16,7 +18,7 @@ import { F } from '../constants/theme';
 import {
   Resumo, buscarResumos, criarResumo, reagirResumo, Reacao,
   editarResumo, apagarResumo, alternarPrivacidadeResumo,
-  Comentario, ouvirComentarios, comentarResumo, apagarComentario, AnexoResumo,
+  Comentario, ouvirComentarios, comentarResumo, apagarComentario, editarComentario, AnexoResumo,
 } from '../services/resumosService';
 import { dispararPush } from '../services/pushNotificationsService';
 import { escolherDocumentoBase64, abrirArquivoBase64 } from '../utils/midiaNativa';
@@ -99,6 +101,26 @@ export default function FeedResumos({ navigation, route }: any) {
   const [resumoEditando, setResumoEditando] = useState<Resumo | null>(null);
   const [menuResumo, setMenuResumo] = useState<Resumo | null>(null);
   const [anexo, setAnexo] = useState<AnexoResumo | null>(null);
+  const [meuTipo, setMeuTipo] = useState('');
+  const [comentarioEditando, setComentarioEditando] = useState<Comentario | null>(null);
+
+  // O nome e a foto ficavam gravados dentro de cada comentário/resumo na hora em
+  // que eram criados, então nunca mudavam. Agora vêm do perfil atual, ao vivo.
+  const [perfis, setPerfis] = useState<Record<string, { nome?: string; foto?: string | null }>>({});
+  const perfisAssinados = useRef<Set<string>>(new Set());
+  const cancelarPerfis = useRef<(() => void)[]>([]);
+  const garantirPerfis = (uids: string[]) => {
+    uids.filter(Boolean).forEach(u => {
+      if (perfisAssinados.current.has(u)) return;
+      perfisAssinados.current.add(u);
+      cancelarPerfis.current.push(onSnapshot(doc(db, 'usuarios', u), snap => {
+        if (!snap.exists()) return;
+        const d: any = snap.data();
+        setPerfis(p => ({ ...p, [u]: { nome: d.nome_completo, foto: d.foto || d.foto_url || null } }));
+      }, () => {}));
+    });
+  };
+  useEffect(() => () => cancelarPerfis.current.forEach(f => f()), []);
 
   // ── Comentários ──
   const [resumoComentarios, setResumoComentarios] = useState<Resumo | null>(null);
@@ -106,8 +128,10 @@ export default function FeedResumos({ navigation, route }: any) {
   const [textoComentario, setTextoComentario] = useState('');
   const [enviandoComentario, setEnviandoComentario] = useState(false);
 
+  useEffect(() => { garantirPerfis(comentarios.map(c => c.autorUid)); }, [comentarios]);
+
   useEffect(() => {
-    if (!resumoComentarios) { setComentarios([]); return; }
+    if (!resumoComentarios) { setComentarios([]); setComentarioEditando(null); setTextoComentario(''); return; }
     return ouvirComentarios(resumoComentarios.id, setComentarios);
   }, [resumoComentarios?.id]);
 
@@ -133,6 +157,7 @@ export default function FeedResumos({ navigation, route }: any) {
         const d = snap.data() as any;
         setMeuNome(d.nome_completo || 'Anônimo');
         setMinhaFoto(d.foto || d.foto_url || null);
+        setMeuTipo(String(d.tipo || '').toLowerCase());
       }
     } catch (e) { console.log('Erro ao carregar perfil do feed:', e); }
   }, [uid]);
@@ -146,6 +171,7 @@ export default function FeedResumos({ navigation, route }: any) {
 
   useEffect(() => { carregarPerfil(); }, [carregarPerfil]);
   useEffect(() => { carregarResumos(); }, [carregarResumos]);
+  useEffect(() => { garantirPerfis(resumos.map(r => r.autorUid)); }, [resumos]);
 
   const handleReagir = async (item: Resumo, reacao: Reacao) => {
     if (!uid || processandoCurtida) return;
@@ -172,7 +198,7 @@ export default function FeedResumos({ navigation, route }: any) {
     if (resultado === 'adicionou' && reacao === 'curtir' && item.autorUid !== uid) {
       dispararPush({
         destinatarioUid: item.autorUid,
-        titulo: '👍 Curtiram seu resumo',
+        titulo: 'Curtiram seu resumo',
         corpo: `${meuNome} curtiu "${item.titulo}"`,
         dados: { tipo: 'resumo_curtida', resumoId: item.id },
       });
@@ -184,6 +210,16 @@ export default function FeedResumos({ navigation, route }: any) {
     if (!uid || !alvo || !textoComentario.trim() || enviandoComentario) return;
     setEnviandoComentario(true);
     const texto = textoComentario.trim();
+
+    if (comentarioEditando) {
+      const salvou = await editarComentario(alvo.id, comentarioEditando.id, texto);
+      setEnviandoComentario(false);
+      if (!salvou) { Alert.alert('Erro', 'Não foi possível salvar a edição.'); return; }
+      setComentarioEditando(null);
+      setTextoComentario('');
+      return;
+    }
+
     const ok = await comentarResumo(alvo.id, { autorUid: uid, autorNome: meuNome, autorFoto: minhaFoto, texto });
     setEnviandoComentario(false);
     if (!ok) { Alert.alert('Erro', 'Não foi possível comentar.'); return; }
@@ -192,26 +228,28 @@ export default function FeedResumos({ navigation, route }: any) {
     if (alvo.autorUid !== uid) {
       dispararPush({
         destinatarioUid: alvo.autorUid,
-        titulo: '💬 Novo comentário no seu resumo',
+        titulo: 'Novo comentário no seu resumo',
         corpo: `${meuNome}: ${texto.slice(0, 100)}`,
         dados: { tipo: 'resumo_comentario', resumoId: alvo.id },
       });
     }
   };
 
-  const handleApagarComentario = (c: Comentario) => {
+  const handleApagarComentario = async (c: Comentario) => {
     const alvo = resumoComentarios;
     if (!alvo) return;
-    Alert.alert('Apagar comentário?', '', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Apagar', style: 'destructive', onPress: async () => {
-          if (await apagarComentario(alvo.id, c.id)) {
-            setResumos(prev => prev.map(r => r.id === alvo.id ? { ...r, comentariosCount: Math.max(0, (r.comentariosCount || 1) - 1) } : r));
-          }
-        },
-      },
-    ]);
+    if (!(await confirmar('Apagar comentário?', 'Essa ação não pode ser desfeita.', 'Apagar', true))) return;
+    if (await apagarComentario(alvo.id, c.id)) {
+      if (comentarioEditando?.id === c.id) { setComentarioEditando(null); setTextoComentario(''); }
+      setResumos(prev => prev.map(r => r.id === alvo.id ? { ...r, comentariosCount: Math.max(0, (r.comentariosCount || 1) - 1) } : r));
+    } else {
+      Alert.alert('Erro', 'Não foi possível apagar o comentário.');
+    }
+  };
+
+  const iniciarEdicaoComentario = (c: Comentario) => {
+    setComentarioEditando(c);
+    setTextoComentario(c.texto);
   };
 
   const anexarArquivo = async () => {
@@ -282,71 +320,79 @@ export default function FeedResumos({ navigation, route }: any) {
     await alternarPrivacidadeResumo(item.id, privadoAtual);
   };
 
-  const handleApagar = (item: Resumo) => {
+  const handleApagar = async (item: Resumo) => {
     setMenuResumo(null);
-    Alert.alert(
-      'Apagar resumo?',
-      'Essa ação não pode ser desfeita.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Apagar',
-          style: 'destructive',
-          onPress: async () => {
-            setResumos(prev => prev.filter(r => r.id !== item.id));
-            await apagarResumo(item.id);
-          },
-        },
-      ],
-    );
+    if (!(await confirmar('Apagar resumo?', 'Essa ação não pode ser desfeita.', 'Apagar', true))) return;
+    setResumos(prev => prev.filter(r => r.id !== item.id));
+    await apagarResumo(item.id);
+  };
+
+  const abrirPerfil = (autorUid: string) => {
+    if (!autorUid) return;
+    setResumoComentarios(null);
+    if (autorUid === uid) navigation.navigate('Perfil', { uid });
+    else navigation.navigate('PerfilPublico', { uid: autorUid, meuUid: uid });
   };
 
   const renderItem = ({ item }: { item: Resumo }) => {
     const curti = !!(uid && item.curtidas?.includes(uid));
     const descurti = !!(uid && item.descurtidas?.includes(uid));
-    const foto = fotoUri(item.autorFoto);
+    const foto = fotoUri(perfis[item.autorUid] ? perfis[item.autorUid].foto : item.autorFoto);
+    const nomeAutor = perfis[item.autorUid]?.nome || item.autorNome;
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          {foto ? (
-            <Image source={{ uri: foto }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, styles.avatarFallback]}>
-              <Ionicons name="person" size={16} color={CORES_SYMBIUS.textoSec} />
+          <TouchableOpacity
+            onPress={() => abrirPerfil(item.autorUid)}
+            activeOpacity={0.7}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Abrir perfil de ${nomeAutor}`}
+          >
+            {foto ? (
+              <Image source={{ uri: foto }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.avatarFallback]}>
+                <Ionicons name="person" size={18} color={CORES_SYMBIUS.textoSec} />
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.autorNome, { fontSize: fs(14) }]} numberOfLines={1}>{nomeAutor}</Text>
+              <Text style={[styles.tempo, { fontSize: fs(12) }]}>{formatarTempo(item.criadoEm)}</Text>
             </View>
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.autorLinha, { fontSize: fs(12.5) }]} numberOfLines={1}>
-              <Text style={styles.autorNome}>{item.autorNome}</Text> compartilhou um resumo
-            </Text>
-            <View style={styles.materiaTempoRow}>
-              <Text style={[styles.materiaTempo, { fontSize: fs(11) }]}>
-                {item.materia} · {formatarTempo(item.criadoEm)}
-              </Text>
-              {item.privado && (
-                <View style={styles.privadoBadge}>
-                  <Ionicons name="eye-off" size={9} color={CORES_SYMBIUS.laranjaTexto} />
-                  <Text style={styles.privadoBadgeTxt}>Privado</Text>
-                </View>
-              )}
-            </View>
-          </View>
+          </TouchableOpacity>
           {uid && item.autorUid === uid && (
             <TouchableOpacity
               onPress={() => setMenuResumo(item)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.menuBtn}
+              accessibilityLabel="Opções do resumo"
             >
-              <Ionicons name="ellipsis-horizontal" size={18} color={CORES_SYMBIUS.textoSec} />
+              <Ionicons name="ellipsis-horizontal" size={20} color={CORES_SYMBIUS.textoSec} />
             </TouchableOpacity>
           )}
         </View>
 
-        <Text style={[styles.titulo, { fontSize: fs(14.5) }]}>{item.titulo}</Text>
-        <Text style={[styles.corpo, { fontSize: fs(12.5) }]} numberOfLines={3}>{item.corpo}</Text>
+        <View style={styles.chipsLinha}>
+          <View style={styles.materiaChip}>
+            <Ionicons name="book-outline" size={13} color={CORES_SYMBIUS.verdeEscuro} />
+            <Text style={[styles.materiaChipTxt, { fontSize: fs(12) }]}>{item.materia}</Text>
+          </View>
+          {item.privado && (
+            <View style={styles.privadoBadge}>
+              <Ionicons name="eye-off" size={12} color={CORES_SYMBIUS.laranjaTexto} />
+              <Text style={[styles.privadoBadgeTxt, { fontSize: fs(12) }]}>Privado</Text>
+            </View>
+          )}
+        </View>
+
+        <Text style={[styles.titulo, { fontSize: fs(17) }]}>{item.titulo}</Text>
+        <Text style={[styles.corpo, { fontSize: fs(14) }]} numberOfLines={4}>{item.corpo}</Text>
 
         {!!item.arquivoBase64 && (
-          <TouchableOpacity style={styles.anexoChip} onPress={() => abrirAnexo(item)} activeOpacity={0.8}>
-            <Ionicons name="document-text" size={22} color={CORES_SYMBIUS.laranjaTexto} />
+          <TouchableOpacity style={styles.anexoChip} onPress={() => abrirAnexo(item)} activeOpacity={0.8} accessibilityRole="button">
+            <View style={styles.anexoIcone}>
+              <Ionicons name="document-text" size={20} color={CORES_SYMBIUS.verdeEscuro} />
+            </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.anexoNome} numberOfLines={1}>{item.arquivoNome || 'Arquivo'}</Text>
               <Text style={styles.anexoMeta}>
@@ -359,37 +405,34 @@ export default function FeedResumos({ navigation, route }: any) {
 
         <View style={styles.acoesRow}>
           <TouchableOpacity
-            style={styles.curtidaBtn}
+            style={[styles.reacaoBtn, curti && styles.reacaoBtnCurtiu]}
             onPress={() => handleReagir(item, 'curtir')}
             disabled={processandoCurtida === item.id}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityLabel="Curtir"
           >
-            <Ionicons name={curti ? 'thumbs-up' : 'thumbs-up-outline'} size={16} color={curti ? CORES_SYMBIUS.verdeEscuro : CORES_SYMBIUS.textoSec} />
-            <Text style={[styles.curtidaTxt, { fontSize: fs(12), color: curti ? CORES_SYMBIUS.verdeEscuro : CORES_SYMBIUS.textoSec }]}>
+            <Ionicons name={curti ? 'thumbs-up' : 'thumbs-up-outline'} size={17} color={curti ? CORES_SYMBIUS.verdeEscuro : CORES_SYMBIUS.textoSec} />
+            <Text style={[styles.reacaoTxt, { fontSize: fs(13), color: curti ? CORES_SYMBIUS.verdeEscuro : CORES_SYMBIUS.textoSec }]}>
               {item.curtidasCount || 0}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.curtidaBtn}
+            style={[styles.reacaoBtn, descurti && styles.reacaoBtnDescurtiu]}
             onPress={() => handleReagir(item, 'descurtir')}
             disabled={processandoCurtida === item.id}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityLabel="Não curti"
           >
-            <Ionicons name={descurti ? 'thumbs-down' : 'thumbs-down-outline'} size={16} color={descurti ? '#D64545' : CORES_SYMBIUS.textoSec} />
-            <Text style={[styles.curtidaTxt, { fontSize: fs(12), color: descurti ? '#D64545' : CORES_SYMBIUS.textoSec }]}>
+            <Ionicons name={descurti ? 'thumbs-down' : 'thumbs-down-outline'} size={17} color={descurti ? '#C84B2E' : CORES_SYMBIUS.textoSec} />
+            <Text style={[styles.reacaoTxt, { fontSize: fs(13), color: descurti ? '#C84B2E' : CORES_SYMBIUS.textoSec }]}>
               {item.descurtidasCount || 0}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.curtidaBtn}
+            style={[styles.reacaoBtn, { marginLeft: 'auto' }]}
             onPress={() => setResumoComentarios(item)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityLabel="Comentários"
           >
-            <Ionicons name="chatbubble-outline" size={16} color={CORES_SYMBIUS.textoSec} />
-            <Text style={[styles.curtidaTxt, { fontSize: fs(12), color: CORES_SYMBIUS.textoSec }]}>
+            <Ionicons name="chatbubble-outline" size={17} color={CORES_SYMBIUS.textoSec} />
+            <Text style={[styles.reacaoTxt, { fontSize: fs(13), color: CORES_SYMBIUS.textoSec }]}>
               {item.comentariosCount || 0}
             </Text>
           </TouchableOpacity>
@@ -402,18 +445,18 @@ export default function FeedResumos({ navigation, route }: any) {
     <View style={styles.container}>
       <StatusBar barStyle={CORES_SYMBIUS.barStyle} backgroundColor={CORES_SYMBIUS.fundo} />
 
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Ionicons name="chevron-back" size={24} color={CORES_SYMBIUS.texto} />
+      <View style={[styles.header, { paddingTop: insets.top + 24 }]}>
+        <TouchableOpacity hitSlop={HIT_VOLTAR} onPress={() => voltar(navigation)} style={styles.headerBtnEsq} accessibilityRole="button" accessibilityLabel="Voltar">
+          <Ionicons name="arrow-back" size={22} color={CORES_SYMBIUS.texto} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitulo, { fontSize: fs(17) }]}>Feed de Resumos</Text>
-        <TouchableOpacity onPress={abrirModalNovo} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Ionicons name="add-circle" size={26} color={CORES_SYMBIUS.verdeEscuro} />
+        <Text style={[styles.headerTitulo, { fontSize: fs(17) }]}>Resumos</Text>
+        <TouchableOpacity onPress={abrirModalNovo} style={styles.headerBtnDir} accessibilityRole="button" accessibilityLabel="Novo resumo">
+          <Ionicons name="add-circle" size={30} color={CORES_SYMBIUS.verdeEscuro} />
         </TouchableOpacity>
       </View>
 
       <View style={styles.abasRow}>
-        {([{ chave: 'recentes', label: 'Recentes' }, { chave: 'populares', label: 'Mais Populares' }] as { chave: Aba; label: string }[]).map(a => {
+        {([{ chave: 'recentes', label: 'Recentes' }, { chave: 'populares', label: 'Mais populares' }] as { chave: Aba; label: string }[]).map(a => {
           const ativa = a.chave === aba;
           return (
             <TouchableOpacity
@@ -421,7 +464,7 @@ export default function FeedResumos({ navigation, route }: any) {
               style={[styles.abaPill, ativa && styles.abaPillAtiva]}
               onPress={() => setAba(a.chave)}
             >
-              <Text style={[styles.abaTxt, ativa && styles.abaTxtAtiva, { fontSize: fs(12.5) }]}>{a.label}</Text>
+              <Text style={[styles.abaTxt, ativa && styles.abaTxtAtiva, { fontSize: fs(13) }]}>{a.label}</Text>
             </TouchableOpacity>
           );
         })}
@@ -432,16 +475,24 @@ export default function FeedResumos({ navigation, route }: any) {
         <ActivityIndicator style={{ marginTop: 60 }} color={CORES_SYMBIUS.verdeEscuro} size="large" />
       ) : resumos.length === 0 ? (
         <View style={styles.vazio}>
-          <FontAwesome5 name="book-open" size={36} color={CORES_SYMBIUS.borda} />
-          <Text style={[styles.vazioTxt, { fontSize: fs(13) }]}>
-            Nenhum resumo publicado ainda.{'\n'}Toque em + pra ser o primeiro!
+          <View style={styles.vazioIcone}>
+            <Ionicons name="book-outline" size={30} color={CORES_SYMBIUS.verdeEscuro} />
+          </View>
+          <Text style={[styles.vazioTitulo, { fontSize: fs(17) }]}>Nenhum resumo ainda</Text>
+          <Text style={[styles.vazioTxt, { fontSize: fs(14) }]}>
+            Compartilhe o primeiro e ajude a turma a estudar.
           </Text>
+          <TouchableOpacity style={styles.vazioBtn} onPress={abrirModalNovo} accessibilityRole="button">
+            <Ionicons name="add" size={18} color={CORES_SYMBIUS.creme} />
+            <Text style={styles.vazioBtnTxt}>Publicar resumo</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
           data={resumos}
           keyExtractor={item => item.id}
           renderItem={renderItem}
+          style={{ flex: 1 }}
           contentContainerStyle={styles.lista}
           showsVerticalScrollIndicator={false}
         />
@@ -564,29 +615,57 @@ export default function FeedResumos({ navigation, route }: any) {
               style={{ flexGrow: 0, maxHeight: 360 }}
               ListEmptyComponent={<Text style={[styles.vazioTxt, { paddingVertical: 24 }]}>Nenhum comentário ainda. Seja o primeiro!</Text>}
               renderItem={({ item: c }) => {
-                const fotoC = fotoUri(c.autorFoto);
+                const perfilC = perfis[c.autorUid];
+                const fotoC = fotoUri(perfilC ? perfilC.foto : c.autorFoto);
+                const nomeC = perfilC?.nome || c.autorNome;
+                const meu = c.autorUid === uid;
+                const podeApagar = meu || meuTipo === 'administrador';
                 return (
-                  <TouchableOpacity
-                    style={styles.comentario}
-                    activeOpacity={1}
-                    onLongPress={() => c.autorUid === uid && handleApagarComentario(c)}
-                  >
-                    {fotoC
-                      ? <Image source={{ uri: fotoC }} style={styles.avatar} />
-                      : <View style={[styles.avatar, styles.avatarFallback]}><Ionicons name="person" size={14} color={CORES_SYMBIUS.textoSec} /></View>}
-                    <View style={styles.comentarioBolha}>
-                      <Text style={styles.comentarioAutor}>{c.autorNome} <Text style={styles.comentarioTempo}>· {formatarTempo(c.criadoEm)}</Text></Text>
+                  <View style={styles.comentario}>
+                    <TouchableOpacity onPress={() => abrirPerfil(c.autorUid)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={`Abrir perfil de ${nomeC}`}>
+                      {fotoC
+                        ? <Image source={{ uri: fotoC }} style={styles.avatar} />
+                        : <View style={[styles.avatar, styles.avatarFallback]}><Ionicons name="person" size={14} color={CORES_SYMBIUS.textoSec} /></View>}
+                    </TouchableOpacity>
+                    <View style={[styles.comentarioBolha, comentarioEditando?.id === c.id && styles.comentarioBolhaEditando]}>
+                      <Text style={styles.comentarioAutor}>
+                        {nomeC} <Text style={styles.comentarioTempo}>· {formatarTempo(c.criadoEm)}{c.editadoEm ? ' · editado' : ''}</Text>
+                      </Text>
                       <Text style={styles.comentarioTexto}>{c.texto}</Text>
+                      {podeApagar && (
+                        <View style={styles.comentarioAcoes}>
+                          {meu && (
+                            <TouchableOpacity onPress={() => iniciarEdicaoComentario(c)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.comentarioAcao}>
+                              <Ionicons name="create-outline" size={14} color={CORES_SYMBIUS.textoSec} />
+                              <Text style={styles.comentarioAcaoTxt}>Editar</Text>
+                            </TouchableOpacity>
+                          )}
+                          <TouchableOpacity onPress={() => handleApagarComentario(c)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.comentarioAcao}>
+                            <Ionicons name="trash-outline" size={14} color="#D64545" />
+                            <Text style={[styles.comentarioAcaoTxt, { color: '#D64545' }]}>Apagar</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
-                  </TouchableOpacity>
+                  </View>
                 );
               }}
             />
 
+            {comentarioEditando && (
+              <View style={styles.editandoBarra}>
+                <Ionicons name="create-outline" size={14} color={CORES_SYMBIUS.laranjaTexto} />
+                <Text style={styles.editandoTxt} numberOfLines={1}>Editando comentário</Text>
+                <TouchableOpacity onPress={() => { setComentarioEditando(null); setTextoComentario(''); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close" size={16} color={CORES_SYMBIUS.textoSec} />
+                </TouchableOpacity>
+              </View>
+            )}
+
             <View style={styles.comentarioInputRow}>
               <TextInput
                 style={[styles.input, { flex: 1, paddingVertical: 10 }]}
-                placeholder="Escreva um comentário..."
+                placeholder={comentarioEditando ? 'Edite seu comentário...' : 'Escreva um comentário...'}
                 placeholderTextColor={CORES_SYMBIUS.textoSec}
                 value={textoComentario}
                 onChangeText={setTextoComentario}
@@ -613,47 +692,63 @@ export default function FeedResumos({ navigation, route }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: CORES_SYMBIUS.fundo },
+  container: { flex: 1, overflow: 'hidden', backgroundColor: CORES_SYMBIUS.fundo },
 
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 18, paddingBottom: 14,
+    paddingHorizontal: 18, paddingBottom: 10,
   },
-  headerTitulo: { color: CORES_SYMBIUS.texto, fontFamily: F.black },
+  headerTitulo: { color: CORES_SYMBIUS.texto, fontFamily: F.black, textAlign: 'center' },
+  headerBtnEsq: { width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-start' },
+  headerBtnDir: { width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-end' },
 
-  abasRow: { flexDirection: 'row', gap: 4, marginHorizontal: 18, marginBottom: 14, backgroundColor: CORES_SYMBIUS.fundoSuave, padding: 4, borderRadius: 14 },
-  abaPill: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10 },
+  abasRow: { flexDirection: 'row', gap: 4, marginHorizontal: 16, marginBottom: 16, backgroundColor: CORES_SYMBIUS.fundoSuave, padding: 4, borderRadius: 16 },
+  abaPill: { flex: 1, minHeight: 42, justifyContent: 'center', alignItems: 'center', borderRadius: 12 },
   abaPillAtiva: { backgroundColor: CORES_SYMBIUS.verdeEscuro },
   abaTxt: { color: CORES_SYMBIUS.textoSec, fontFamily: F.bold },
   abaTxtAtiva: { color: CORES_SYMBIUS.creme },
 
   lista: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 40 },
   card: {
-    backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 16, padding: 14, marginBottom: 10,
-    borderWidth: 1, borderColor: CORES_SYMBIUS.borda,
+    backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 22, padding: 18, marginBottom: 14,
+    borderWidth: 1, borderColor: CORES_SYMBIUS.borda2,
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  avatar: { width: 32, height: 32, borderRadius: 16 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
+  avatar: { width: 42, height: 42, borderRadius: 21 },
   avatarFallback: { backgroundColor: CORES_SYMBIUS.fundo, alignItems: 'center', justifyContent: 'center' },
+  tempo: { color: CORES_SYMBIUS.textoSec, fontFamily: F.medium, marginTop: 1 },
+  menuBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center', marginRight: -10 },
+  chipsLinha: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
+  materiaChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, backgroundColor: CORES_SYMBIUS.verdeEscuro + '1F' },
+  materiaChipTxt: { fontFamily: F.bold, color: CORES_SYMBIUS.verdeEscuro },
+  anexoIcone: { width: 40, height: 40, borderRadius: 12, backgroundColor: CORES_SYMBIUS.fundoCard, justifyContent: 'center', alignItems: 'center' },
+  reacaoBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, paddingHorizontal: 14, borderRadius: 20 },
+  reacaoBtnCurtiu: { backgroundColor: CORES_SYMBIUS.verdeEscuro + '1F' },
+  reacaoBtnDescurtiu: { backgroundColor: '#C84B2E22' },
+  reacaoTxt: { fontFamily: F.bold },
+  vazioIcone: { width: 72, height: 72, borderRadius: 36, backgroundColor: CORES_SYMBIUS.fundoSuave, justifyContent: 'center', alignItems: 'center' },
+  vazioTitulo: { color: CORES_SYMBIUS.texto, fontFamily: F.black },
+  vazioBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 48, paddingHorizontal: 22, borderRadius: 24, backgroundColor: CORES_SYMBIUS.verdeEscuro, marginTop: 6 },
+  vazioBtnTxt: { color: CORES_SYMBIUS.creme, fontFamily: F.bold, fontSize: 14 },
   autorLinha: { color: CORES_SYMBIUS.texto, fontFamily: F.medium },
-  autorNome: { fontFamily: F.black },
+  autorNome: { fontFamily: F.bold, color: CORES_SYMBIUS.texto },
   materiaTempoRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 },
   materiaTempo: { color: CORES_SYMBIUS.textoSec, fontFamily: F.medium },
   privadoBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: CORES_SYMBIUS.fundoLaranjaClaro, borderRadius: 8,
-    paddingHorizontal: 6, paddingVertical: 1.5,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: CORES_SYMBIUS.fundoLaranjaClaro, borderRadius: 14,
+    paddingHorizontal: 12, paddingVertical: 5,
   },
-  privadoBadgeTxt: { color: CORES_SYMBIUS.laranjaTexto, fontFamily: F.bold, fontSize: 9 },
+  privadoBadgeTxt: { color: CORES_SYMBIUS.laranjaTexto, fontFamily: F.bold },
 
-  titulo: { color: CORES_SYMBIUS.texto, fontFamily: F.black, marginBottom: 4 },
-  corpo: { color: CORES_SYMBIUS.textoSec, lineHeight: 18, marginBottom: 10 },
+  titulo: { color: CORES_SYMBIUS.texto, fontFamily: F.black, letterSpacing: -0.3, lineHeight: 24, marginBottom: 6 },
+  corpo: { color: CORES_SYMBIUS.textoSec, lineHeight: 21, marginBottom: 14 },
 
   curtidaBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start' },
   curtidaTxt: { fontFamily: F.bold },
 
-  vazio: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 40 },
-  vazioTxt: { color: CORES_SYMBIUS.textoSec, textAlign: 'center', lineHeight: 20, fontFamily: F.medium },
+  vazio: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 40 },
+  vazioTxt: { color: CORES_SYMBIUS.textoSec, textAlign: 'center', lineHeight: 21, fontFamily: F.medium },
 
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalCard: {
@@ -677,14 +772,20 @@ const styles = StyleSheet.create({
   btnAnexarTxt: { color: CORES_SYMBIUS.verdeEscuro, fontFamily: F.semibold, fontSize: 13 },
   anexoChip: {
     flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: CORES_SYMBIUS.fundoSuave,
-    borderRadius: 12, padding: 10, marginBottom: 10,
+    borderRadius: 16, padding: 12, marginBottom: 14,
   },
-  anexoNome: { color: CORES_SYMBIUS.texto, fontFamily: F.bold, fontSize: 12.5 },
-  anexoMeta: { color: CORES_SYMBIUS.textoSec, fontFamily: F.medium, fontSize: 10.5, marginTop: 1 },
-  acoesRow: { flexDirection: 'row', alignItems: 'center', gap: 22 },
+  anexoNome: { color: CORES_SYMBIUS.texto, fontFamily: F.bold, fontSize: 13.5 },
+  anexoMeta: { color: CORES_SYMBIUS.textoSec, fontFamily: F.medium, fontSize: 12, marginTop: 1 },
+  acoesRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: CORES_SYMBIUS.borda },
   comentario: { flexDirection: 'row', gap: 8, marginBottom: 10 },
   comentarioBolha: { flex: 1, backgroundColor: CORES_SYMBIUS.fundoSuave, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
   comentarioAutor: { color: CORES_SYMBIUS.texto, fontFamily: F.bold, fontSize: 12.5 },
+  comentarioBolhaEditando: { borderWidth: 1.5, borderColor: CORES_SYMBIUS.laranja },
+  comentarioAcoes: { flexDirection: 'row', gap: 16, marginTop: 6 },
+  comentarioAcao: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  comentarioAcaoTxt: { fontSize: 11.5, fontFamily: F.semibold, color: CORES_SYMBIUS.textoSec },
+  editandoBarra: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: CORES_SYMBIUS.fundoLaranjaClaro, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, marginTop: 6 },
+  editandoTxt: { flex: 1, fontSize: 12, fontFamily: F.semibold, color: CORES_SYMBIUS.laranjaTexto },
   comentarioTempo: { color: CORES_SYMBIUS.textoSec, fontFamily: F.regular, fontSize: 11 },
   comentarioTexto: { color: CORES_SYMBIUS.texto, fontFamily: F.regular, fontSize: 13, lineHeight: 18, marginTop: 2 },
   comentarioInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 4 },

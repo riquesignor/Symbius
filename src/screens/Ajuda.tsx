@@ -1,4 +1,6 @@
+import { voltar, HIT_VOLTAR } from '../navegacao';
 import React, { useState, useRef, useEffect } from 'react';
+import SymbiusTabBar from '../components/SymbiusTabBar';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
   Animated, Platform,
@@ -40,7 +42,7 @@ const SECOES = [
     cor: '#E51C6A',
     itens: [
       {
-        pergunta: 'O que são as publicações do Symbius?',
+        pergunta: 'O que são as publicações do Simbio?',
         resposta:
           'As publicações são avisos, destaques, oportunidades, eventos de olimpíadas e passeios publicados pela gestão da escola. Fique por dentro de tudo que acontece no colégio.',
       },
@@ -64,7 +66,7 @@ const SECOES = [
       {
         pergunta: 'Como iniciar uma conversa?',
         resposta:
-          'Acesse a seção de Matches ou a lista de contatos e toque no perfil da pessoa com quem deseja conversar. A conversa será iniciada automaticamente.',
+          'Acesse a seção de Elos ou a lista de contatos e toque no perfil da pessoa com quem deseja conversar. A conversa será iniciada automaticamente.',
       },
       {
         pergunta: 'O que significa o indicador verde?',
@@ -91,7 +93,7 @@ const SECOES = [
       {
         pergunta: 'Como ativar ou desativar notificações?',
         resposta:
-          'Nas Configurações, acesse a seção "Notificações" e ajuste as preferências para Avisos, Eventos e Matches. Você pode silenciar categorias específicas.',
+          'Nas Configurações, acesse a seção "Notificações" e ajuste as preferências para Avisos, Eventos e Elos. Você pode silenciar categorias específicas.',
       },
       {
         pergunta: 'O que é o banner de mensagem?',
@@ -197,7 +199,7 @@ function ItemFAQ({ item, C, fs }: { item: { pergunta: string; resposta: string }
 }
 
 // ── Tela principal ──
-export default function Ajuda({ navigation }: any) {
+export default function Ajuda({ navigation, route }: any) {
   const insets  = useSafeAreaInsets();
   const { fonteScale } = useAppSettings();
   // Paleta Symbius fixa (claro) — mesma técnica de shadow usada em
@@ -214,15 +216,14 @@ export default function Ajuda({ navigation }: any) {
     <View style={[styles.container, { backgroundColor: C.fundo }]}>
 
       {/* HEADER */}
-      <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === 'android' ? 8 : 0), backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
+      <View style={[styles.header, { paddingTop: insets.top + 16 + (Platform.OS === 'android' ? 8 : 0), backgroundColor: C.branco, borderBottomColor: C.cinzaClaro }]}>
+        <TouchableOpacity hitSlop={HIT_VOLTAR}
+          onPress={() => voltar(navigation)}
           style={styles.backBtn}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           accessibilityRole="button"
           accessibilityLabel="Voltar"
         >
-          <Ionicons name="arrow-back" size={24} color={C.azulEscuro} />
+          <Ionicons name="arrow-back" size={22} color={C.azulEscuro} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: C.azulEscuro, fontSize: fs(17) }]}>
           Ajuda
@@ -245,7 +246,7 @@ export default function Ajuda({ navigation }: any) {
               Central de Ajuda
             </Text>
             <Text style={[styles.heroSub, { color: C.textoSec, fontSize: fs(13) }]}>
-              Encontre respostas para as perguntas mais frequentes sobre o Symbius.
+              Encontre respostas para as perguntas mais frequentes sobre o Simbio.
             </Text>
           </View>
 
@@ -298,6 +299,7 @@ export default function Ajuda({ navigation }: any) {
 
         </Animated.View>
       </ScrollView>
+      <SymbiusTabBar ativa="nenhuma" navigation={navigation} uid={route?.params?.uid ?? null} />
     </View>
   );
 }

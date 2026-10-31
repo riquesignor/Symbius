@@ -106,7 +106,9 @@ const chamarBackend = async (rota: string, corpo: object) => {
 
 export type TipoPush =
   | 'mensagem' | 'solicitacao_match' | 'match_aceito' | 'evento_admin'
-  | 'resumo_curtida' | 'resumo_comentario';
+  | 'resumo_curtida' | 'resumo_comentario'
+  | 'mensagem_grupo' | 'grupo_adicionado' | 'convite_grupo'
+  | 'conta_suspensa' | 'conta_reativada';
 
 interface DispararPushParams {
   destinatarioUid: string;
@@ -121,3 +123,10 @@ export const dispararPush = ({ destinatarioUid, titulo, corpo, dados }: Disparar
 // Só administradores (validado no backend) — manda pra todos os alunos das séries.
 export const dispararPushSerie = (params: { series: string[]; titulo: string; corpo: string; dados: Record<string, string> }) =>
   chamarBackend('enviar-push-serie', params);
+
+// Post novo no mural, pra todo mundo (administrador ou grêmio; validado no backend).
+export const dispararPushTodos = (params: { titulo: string; corpo: string; dados: Record<string, string> }) =>
+  chamarBackend('enviar-push-serie', { ...params, todos: true });
+
+// Avisa os administradores (o texto é montado no backend a partir do perfil de quem chamou).
+export const notificarAdmins = (evento: 'nova_conta') => chamarBackend('notificar-admins', { evento });
