@@ -571,8 +571,6 @@ export default function Chat({ route, navigation }: any) {
   const [souAluno,         setSouAluno]          = useState<boolean | null>(null); // true=aluno (avalia), false=professor (não avalia), null=carregando
   const [matchFinalizado,  setMatchFinalizado]   = useState(false);
   const [avaliacaoVisible, setAvaliacaoVisible]  = useState(false);
-  const [avaliacaoEtapa,   setAvaliacaoEtapa]    = useState<'pergunta' | 'estrelas'>('pergunta');
-  const [entendeuDuvida,   setEntendeuDuvida]    = useState<boolean | null>(null);
   const [estrelasHover,    setEstrelasHover]     = useState<number | null>(null);
   const [comentarioPriv,   setComentarioPriv]    = useState('');
   const [enviandoAvaliacao,setEnviandoAvaliacao] = useState(false);
@@ -1034,7 +1032,7 @@ export default function Chat({ route, navigation }: any) {
   };
 
   // ── Toast de XP (mesma animação usada no check-in da Home) ──
-  // Se xp/moedas forem 0 (dúvida não resolvida), mostra um toast neutro sem número.
+  // Se xp/moedas forem 0 (limite diário atingido), mostra um toast neutro sem número.
   const mostrarXpToast = (resultado: AwardResult) => {
     const neutro = resultado.xp === 0 && resultado.moedas === 0;
     setXpToast({ xp: resultado.xp, moedas: resultado.moedas, neutro });
@@ -1067,8 +1065,6 @@ export default function Chat({ route, navigation }: any) {
   // ── Abre o modal de avaliação — só o aluno (quem pediu ajuda) avalia ──
   const abrirAvaliacao = () => {
     if (!uidAtual || !outroUid || matchFinalizado || souAluno !== true) return;
-    setAvaliacaoEtapa('pergunta');
-    setEntendeuDuvida(null);
     setEstrelasHover(null);
     setComentarioPriv('');
     setAvaliacaoVisible(true);
@@ -1083,16 +1079,11 @@ export default function Chat({ route, navigation }: any) {
     abrirAvaliacao();
   }, [souAluno, conversaId, matchFinalizado]);
 
-  // ── Passo 1: responde se a dúvida foi resolvida, avança pro passo das estrelas ──
-  const responderPergunta = (resolveu: boolean) => {
-    setEntendeuDuvida(resolveu);
-    setEstrelasHover(null);
-    setAvaliacaoEtapa('estrelas');
-  };
-
-  // ── Passo 2: confirma a nota, premia professor (sempre) e aluno (se resolveu) ──
+  // ── Avaliação: só as 5 estrelas. 1 = não entendeu nada · 4 = explicou bem, mas
+  // ficou dúvida · 5 = entendeu tudo. "Resolveu" passa a ser a nota máxima.
   const confirmarAvaliacao = async () => {
-    if (!uidAtual || !outroUid || !conversaId || enviandoAvaliacao || entendeuDuvida === null || estrelasHover === null) return;
+    if (!uidAtual || !outroUid || !conversaId || enviandoAvaliacao || estrelasHover === null) return;
+    const entendeuDuvida = estrelasHover === 5;
     setEnviandoAvaliacao(true);
     try {
       // uidAtual = aluno (só ele vê esse fluxo) · outroUid = professor
@@ -1676,54 +1667,24 @@ export default function Chat({ route, navigation }: any) {
           <View style={avaliacaoStyles.backdrop}>
             <TouchableWithoutFeedback>
               <View style={[avaliacaoStyles.card, { backgroundColor: CC.menuBg }]}>
-                {avaliacaoEtapa === 'pergunta' ? (
+                {(
                   <>
-                    <Ionicons name="help-circle-outline" size={44} color={CC.menuTitle} style={{ marginBottom: 8 }} />
-                    <Text style={[avaliacaoStyles.titulo, { color: CC.menuTitle, fontFamily: F.black }]}>
-                      Você conseguiu tirar sua dúvida com {outroNome}?
-                    </Text>
-                    <Text style={[avaliacaoStyles.subtitulo, { color: CC.textoSec, fontFamily: F.medium }]}>
-                      Isso ajuda a gente a recompensar quem realmente ajuda
-                    </Text>
-
-                    <TouchableOpacity
-                      style={[avaliacaoStyles.btnConfirmar, { backgroundColor: "#22C55E", marginBottom: 10 }]}
-                      onPress={() => responderPergunta(true)}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={avaliacaoStyles.btnConfirmarTxt}>Sim, entendi a matéria!</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[avaliacaoStyles.btnConfirmar, { backgroundColor: CORES_SYMBIUS.verdeEscuro }]}
-                      onPress={() => responderPergunta(false)}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={avaliacaoStyles.btnConfirmarTxt}>Não, ainda com dúvida</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity onPress={() => setAvaliacaoVisible(false)} style={{ marginTop: 14 }}>
-                      <Text style={[avaliacaoStyles.btnCancelar, { color: CC.textoSec }]}>Cancelar</Text>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <>
-                    <Ionicons name={entendeuDuvida ? "happy-outline" : "sad-outline"} size={44} color={CC.menuTitle} style={{ marginBottom: 8 }} />
+                    <Ionicons name="star-outline" size={44} color={CC.menuTitle} style={{ marginBottom: 8 }} />
                     <Text style={[avaliacaoStyles.titulo, { color: CC.menuTitle, fontFamily: F.black }]}>
                       Avalie {outroNome}
                     </Text>
                     <Text style={[avaliacaoStyles.subtitulo, { color: CC.textoSec, fontFamily: F.medium }]}>
-                      {entendeuDuvida
-                        ? "Quão bem ele(a) te ajudou?"
-                        : "O que faltou? Isso é privado, só ele(a) vê"}
+                      Como foi a explicação? Só {outroNome?.split(" ")[0] || "ele(a)"} vê a nota.
                     </Text>
 
                     <View style={avaliacaoStyles.estrelasRow}>
-                      {(entendeuDuvida ? [4, 5] : [0, 1, 2, 3]).map(n => (
-                        <TouchableOpacity key={n} onPress={() => setEstrelasHover(n)} disabled={enviandoAvaliacao}>
+                      {/* sempre 5 estrelas; a resposta "resolveu ou não" vai separada */}
+                      {[1, 2, 3, 4, 5].map(n => (
+                        <TouchableOpacity key={n} onPress={() => setEstrelasHover(n)} disabled={enviandoAvaliacao} hitSlop={{ top: 8, bottom: 8, left: 2, right: 2 }} accessibilityLabel={`${n} estrela${n > 1 ? "s" : ""}`}>
                           <Ionicons
-                            name={n === 0 ? "close-circle" : (estrelasHover !== null && n <= estrelasHover ? "star" : "star-outline")}
+                            name={estrelasHover !== null && n <= estrelasHover ? "star" : "star-outline"}
                             size={34}
-                            color={n === 0 ? (estrelasHover === 0 ? CORES_SYMBIUS.verdeEscuro : CC.textoSec) : "#FFC82C"}
+                            color="#FFC82C"
                             style={{ marginHorizontal: 3 }}
                           />
                         </TouchableOpacity>
@@ -1731,15 +1692,14 @@ export default function Chat({ route, navigation }: any) {
                     </View>
                     <Text style={[avaliacaoStyles.subtitulo, { color: CC.textoSec, fontFamily: F.medium, marginTop: -8 }]}>
                       {estrelasHover === null ? " "
-                        : estrelasHover === 5 ? "Perfeito!"
-                        : estrelasHover === 4 ? "Bom, mas podia melhorar"
-                        : estrelasHover === 3 ? "Não resolveu, mas explicou bem"
-                        : estrelasHover === 2 ? "Saí com mais dúvidas, mas tentou"
-                        : estrelasHover === 1 ? "Tentou, mas não adiantou"
-                        : "Não ajudou em nada"}
+                        : estrelasHover === 5 ? "Explicou bem, entendi tudo!"
+                        : estrelasHover === 4 ? "Explicou bem, mas ainda tenho dúvida"
+                        : estrelasHover === 3 ? "Ajudou, mas ficou bastante dúvida"
+                        : estrelasHover === 2 ? "Entendi pouca coisa"
+                        : "Explicou mal, não entendi nada"}
                     </Text>
 
-                    {entendeuDuvida === false && (
+                    {estrelasHover !== null && estrelasHover < 5 && (
                       <TextInput
                         value={comentarioPriv}
                         onChangeText={setComentarioPriv}
@@ -1761,8 +1721,8 @@ export default function Chat({ route, navigation }: any) {
                         : <Text style={avaliacaoStyles.btnConfirmarTxt}>Finalizar elo</Text>}
                     </TouchableOpacity>
 
-                    <TouchableOpacity onPress={() => setAvaliacaoEtapa('pergunta')} disabled={enviandoAvaliacao}>
-                      <Text style={[avaliacaoStyles.btnCancelar, { color: CC.textoSec }]}>Voltar</Text>
+                    <TouchableOpacity onPress={() => setAvaliacaoVisible(false)} disabled={enviandoAvaliacao} style={{ marginTop: 10 }}>
+                      <Text style={[avaliacaoStyles.btnCancelar, { color: CC.textoSec }]}>Cancelar</Text>
                     </TouchableOpacity>
                   </>
                 )}
@@ -1787,7 +1747,7 @@ export default function Chat({ route, navigation }: any) {
                 {xpToast.neutro ? "Feedback enviado!" : "Elo finalizado!"}
               </Text>
               <Text style={[avaliacaoStyles.toastSubtitulo, { color: "#8D99AE", fontFamily: F.medium }]}>
-                {xpToast.neutro ? "Tenta com outro professor sem problema" : `+${xpToast.xp} XP · +${xpToast.moedas} Sementes`}
+                {xpToast.neutro ? "Você já ganhou o XP de elos de hoje" : `+${xpToast.xp} XP · +${xpToast.moedas} Sementes`}
               </Text>
             </View>
           </Animated.View>
