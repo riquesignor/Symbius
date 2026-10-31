@@ -2,18 +2,16 @@ import { voltar, HIT_VOLTAR } from '../navegacao';
   import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
   import {
     StyleSheet, Text, View, TouchableOpacity, ScrollView,
-    SafeAreaView, StatusBar, Switch, Modal, TextInput,
+    SafeAreaView, StatusBar, Switch, Modal,
     ActivityIndicator, Linking, Animated, Platform, Vibration
   } from 'react-native';
   import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
   import AsyncStorage from '@react-native-async-storage/async-storage';
   import { useSafeAreaInsets } from 'react-native-safe-area-context';
-  import { db, auth } from '../config/firebaseConfig';
+  import { db } from '../config/firebaseConfig';
   import { useAppSettings } from '../contexts/AppSettingsContext';
   import { doc, getDoc, updateDoc, collection, getDocs } from 'firebase/firestore';
   import { useNotificacao } from '../contexts/NotificacaoProvider';
-  import { sairDaConta as encerrarSessao } from '../services/authService';
-  import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 
   import { F } from '../constants/theme';
   import { CORES_SYMBIUS, CORES_SYMBIUS_DARK } from './Boasvindas';
@@ -168,7 +166,6 @@ import { voltar, HIT_VOLTAR } from '../navegacao';
 
     // ════ STATES — UI ════
     const [carregando,      setCarregando]      = useState(true);
-    const [salvandoSenha,   setSalvandoSenha]   = useState(false);
     const [toast,           setToast]           = useState('');
     const [confirmacao,     setConfirmacao]     = useState<any>(null);
 
@@ -176,13 +173,7 @@ import { voltar, HIT_VOLTAR } from '../navegacao';
     const [modalFonte,        setModalFonte]        = useState(false);
     const [modalSom,          setModalSom]          = useState(false);
     const [modalSerie,        setModalSerie]        = useState(false);
-    const [modalSenha,        setModalSenha]        = useState(false);
 
-    // ════ STATES — SENHA ════
-    const [senhaAtual,        setSenhaAtual]        = useState('');
-    const [senhaNova,         setSenhaNova]         = useState('');
-    const [senhaConfirma,     setSenhaConfirma]     = useState('');
-    const [erroSenha,         setErroSenha]         = useState('');
 
     // ── Histórico de notificações (portado do Index original) ──
     const { notificacoesChat, limparNotificacoesChat } = useNotificacao();
@@ -386,65 +377,6 @@ import { voltar, HIT_VOLTAR } from '../navegacao';
       });
     };
 
-    const sairDaConta = () => {
-      setConfirmacao({
-        titulo: 'Sair da conta?',
-        msg: 'Você precisará fazer login novamente para acessar o app.',
-        btnTxt: 'Sair',
-        perigo: true,
-        onOk: async () => {
-          try {
-            await encerrarSessao(uid);
-            setConfirmacao(null);
-            navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
-          } catch { setToast('Erro ao sair'); }
-        }
-      });
-    };
-
-    const alterarSenha = async () => {
-      setErroSenha('');
-      if (!senhaAtual || !senhaNova || !senhaConfirma) {
-        setErroSenha('Preencha todos os campos.');
-        return;
-      }
-      if (senhaNova.length < 6) {
-        setErroSenha('A nova senha deve ter no mínimo 6 caracteres.');
-        return;
-      }
-      if (senhaNova !== senhaConfirma) {
-        setErroSenha('As senhas não coincidem.');
-        return;
-      }
-      setSalvandoSenha(true);
-      try {
-        const user = auth.currentUser;
-        if (!user || !user.email) throw new Error('no-user');
-        const cred = EmailAuthProvider.credential(user.email, senhaAtual);
-        await reauthenticateWithCredential(user, cred);
-        await updatePassword(user, senhaNova);
-        setModalSenha(false);
-        setSenhaAtual(''); setSenhaNova(''); setSenhaConfirma('');
-        setToast('Senha alterada');
-      } catch (e: any) {
-        console.error('Erro ao alterar senha:', e?.code, e?.message);
-        const code = e?.code || '';
-        if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-          setErroSenha('Senha atual incorreta.');
-        } else if (code === 'auth/weak-password') {
-          setErroSenha('A nova senha é muito fraca. Escolha uma mais segura.');
-        } else if (code === 'auth/too-many-requests') {
-          setErroSenha('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
-        } else if (code === 'auth/network-request-failed') {
-          setErroSenha('Erro de conexão. Verifique sua internet e tente novamente.');
-        } else if (e?.message === 'no-user') {
-          setErroSenha('Usuário não autenticado. Feche o app, faça login novamente e tente outra vez.');
-        } else {
-          setErroSenha(`Erro ao alterar senha: ${e?.message || code || 'Tente novamente.'}`);
-        }
-      } finally { setSalvandoSenha(false); }
-    };
-
     const abrirURL = async (url: string) => {
       try {
         await Linking.openURL(url);
@@ -589,16 +521,9 @@ import { voltar, HIT_VOLTAR } from '../navegacao';
             </Section>
           </FadeInView>
 
-          {/* ══ PRIVACIDADE ══ */}
+          {/* ══ AGENDA ══ */}
           <FadeInView delay={200}>
-            <Section eyebrow="SEGURANÇA" titulo="Privacidade">
-              <SettingRow
-                icon="eye"
-                iconCor={CORES.verde}
-                label="Privacidade do perfil"
-                descricao="Visibilidade, status online e aparecer nos Elos ficam no seu Perfil"
-                onPress={() => navigation.navigate('Perfil', { uid })}
-              />
+            <Section eyebrow="CALENDÁRIO" titulo="Agenda">
               <SettingRow
                 icon="school"
                 iconCor={CORES.azulEscuro}
@@ -620,33 +545,6 @@ import { voltar, HIT_VOLTAR } from '../navegacao';
                 label="Limpar Cache"
                 descricao="Remove dados temporários"
                 onPress={limparCache}
-                ultimo
-              />
-            </Section>
-          </FadeInView>
-
-          {/* ══ CONTA ══ */}
-          <FadeInView delay={400}>
-            <Section eyebrow="MINHA CONTA" titulo="Conta">
-              <SettingRow
-                icon="person-circle"
-                iconCor={CORES.azulEscuro}
-                label="Editar Perfil"
-                descricao={userData?.email_escolar || ''}
-                onPress={() => navigation.navigate('Perfil', { uid })}
-              />
-              <SettingRow
-                icon="lock-closed"
-                iconCor={CORES.azulEscuro}
-                label="Alterar Senha"
-                onPress={() => setModalSenha(true)}
-              />
-              <SettingRow
-                icon="log-out"
-                iconCor={CORES.vermelho}
-                label="Sair da Conta"
-                onPress={sairDaConta}
-                perigo
                 ultimo
               />
             </Section>
@@ -755,76 +653,6 @@ import { voltar, HIT_VOLTAR } from '../navegacao';
                   {serieFiltro === s && <Ionicons name="checkmark" size={18} color={C.azulEscuro} />}
                 </TouchableOpacity>
               ))}
-            </View>
-          </View>
-        </Modal>
-
-        {/* ── MODAL ALTERAR SENHA ── */}
-        <Modal visible={modalSenha} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 24, backgroundColor: C.branco }]}>
-              <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
-              <Text style={[styles.modalTitulo, { color: C.azulEscuro }]}>Alterar Senha</Text>
-
-              <Text style={[styles.inputLabel, { color: C.textoSec }]}>SENHA ATUAL</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: C.fundo, color: C.azulEscuro, borderColor: C.cinzaClaro }]}
-                placeholder="Digite sua senha atual"
-                placeholderTextColor={C.textoSec}
-                secureTextEntry
-                value={senhaAtual}
-                onChangeText={setSenhaAtual}
-              />
-
-              <Text style={[styles.inputLabel, { color: C.textoSec, marginTop: 14 }]}>NOVA SENHA</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: C.fundo, color: C.azulEscuro, borderColor: C.cinzaClaro }]}
-                placeholder="Mínimo 6 caracteres"
-                placeholderTextColor={C.textoSec}
-                secureTextEntry
-                value={senhaNova}
-                onChangeText={setSenhaNova}
-              />
-
-              <Text style={[styles.inputLabel, { color: C.textoSec, marginTop: 14 }]}>CONFIRMAR NOVA SENHA</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: C.fundo, color: C.azulEscuro, borderColor: C.cinzaClaro }]}
-                placeholder="Repita a nova senha"
-                placeholderTextColor={C.textoSec}
-                secureTextEntry
-                value={senhaConfirma}
-                onChangeText={setSenhaConfirma}
-              />
-
-              {erroSenha !== '' && (
-                <View style={styles.erroBox}>
-                  <Ionicons name="alert-circle" size={14} color={CORES.vermelho} />
-                  <Text style={styles.erroText}>{erroSenha}</Text>
-                </View>
-              )}
-
-              <View style={styles.modalBtnsRow}>
-                <TouchableOpacity
-                  style={[styles.btnCancelar, { borderColor: C.cinzaClaro }]}
-                  onPress={() => {
-                    setModalSenha(false);
-                    setSenhaAtual(''); setSenhaNova(''); setSenhaConfirma('');
-                    setErroSenha('');
-                  }}
-                >
-                  <Text style={[styles.btnCancelarText, { color: C.textoSec }]}>Cancelar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.btnSalvar, { backgroundColor: CORES.azulEscuro }]}
-                  onPress={alterarSenha}
-                  disabled={salvandoSenha}
-                >
-                  {salvandoSenha
-                    ? <ActivityIndicator color="#FFF" size="small" />
-                    : <Text style={styles.btnSalvarText}>Salvar</Text>
-                  }
-                </TouchableOpacity>
-              </View>
             </View>
           </View>
         </Modal>

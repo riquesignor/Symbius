@@ -21,6 +21,7 @@ import { F } from '../constants/theme';
 import { TEMA_SYMBIUS as CORES, CORES_SYMBIUS, NIVEL_GRADIENTE, NIVEL_NUMERO } from '../constants/temaSymbius';
 import SymbiusTabBar from '../components/SymbiusTabBar';
 import PainelPrivacidade from '../components/PainelPrivacidade';
+import ModalAlterarSenha from '../components/ModalAlterarSenha';
 import AvatarComCosmeticos from '../components/AvatarComCosmeticos';
 import { escolherImagemBase64, OrigemImagem } from '../utils/midiaNativa';
 import { sairDaConta } from '../services/authService';
@@ -347,6 +348,7 @@ export default function Perfil({ navigation, route }: any) {
   ).current;
   const [salvandoPapel, setSalvandoPapel] = useState(false);
   const [modalConfirmSair, setModalConfirmSair] = useState(false);
+  const [modalSenha, setModalSenha] = useState(false);
   const [modalFoto,    setModalFoto]    = useState(false);
   const [salvandoFoto, setSalvandoFoto] = useState(false);
 
@@ -882,9 +884,21 @@ export default function Perfil({ navigation, route }: any) {
         </FadeInView>
 
         {/* SAIR DA CONTA */}
+        <FadeInView delay={820}>
+          <TouchableOpacity
+            style={styles.btnSenhaN}
+            onPress={() => setModalSenha(true)}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+          >
+            <Ionicons name="lock-closed-outline" size={20} color={CORES_SYMBIUS.texto} />
+            <Text style={[styles.btnSenhaNTxt, { fontSize: fs(15) }]}>Alterar senha</Text>
+          </TouchableOpacity>
+        </FadeInView>
+
         <FadeInView delay={840}>
           <TouchableOpacity
-            style={styles.btnSairN}
+            style={[styles.btnSairN, { marginTop: 12 }]}
             onPress={() => setModalConfirmSair(true)}
             activeOpacity={0.8}
             accessibilityRole="button"
@@ -894,6 +908,8 @@ export default function Perfil({ navigation, route }: any) {
           </TouchableOpacity>
         </FadeInView>
       </ScrollView>
+
+      <ModalAlterarSenha visivel={modalSenha} onFechar={() => setModalSenha(false)} onSucesso={() => setToast('Senha alterada')} />
 
       {/* ════════════════════════════════════════════════
           MODAL EDITAR BIO
@@ -1160,6 +1176,8 @@ const styles = StyleSheet.create({
   infoSepN: { width: 1, height: 34, backgroundColor: CORES_SYMBIUS.borda2 },
   btnSairN: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 52, marginHorizontal: 16, marginTop: 34, borderRadius: 18, borderWidth: 1.5, borderColor: '#C84B2E' },
   btnSairNTxt: { fontFamily: F.bold, color: '#C84B2E' },
+  btnSenhaN: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 52, marginHorizontal: 16, marginTop: 34, borderRadius: 18, borderWidth: 1.5, borderColor: CORES_SYMBIUS.borda2 },
+  btnSenhaNTxt: { fontFamily: F.bold, color: CORES_SYMBIUS.texto },
   secao:     { marginHorizontal: 16, marginTop: 22 },
   secaoTituloPrincipal: { fontFamily: F.black, letterSpacing: -0.3, marginBottom: 4, paddingHorizontal: 2 },
   secaoSubtitulo:       { fontFamily: F.regular, marginBottom: 12, paddingHorizontal: 2 },

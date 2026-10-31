@@ -31,6 +31,7 @@ export interface Grupo {
   ultimaMensagem?: string;
   quemEnviou?: string;
   data_postagem?: any;
+  limpaEm?: Record<string, any>; // quando cada membro limpou a conversa pra si
 }
 
 export const MAX_MEMBROS_GRUPO = 8;

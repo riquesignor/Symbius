@@ -18,7 +18,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { useNotificacao } from '../contexts/NotificacaoProvider';
 import { dispararPush } from '../services/pushNotificationsService';
-import { msDe, mensagemLidaPor, marcarComoLida, apagarConversaParaMim } from '../utils/conversas';
+import { msDe, mensagemLidaPor, marcarComoLida, apagarConversaParaMim, corteDoHistorico, limparConversaParaMim } from '../utils/conversas';
+import { confirmar } from '../utils/confirmar';
 import {
   escolherImagemBase64, escolherVideoBase64, escolherDocumentoBase64, abrirArquivoBase64,
 } from '../utils/midiaNativa';
@@ -745,6 +746,7 @@ export default function Chat({ route, navigation }: any) {
     if (!outroUid) return;
     getDoc(firestoreDoc(db, "usuarios", outroUid)).then(snap => { if (snap.exists()) setOutraFoto(snap.data().foto || null); });
     const unsub = onSnapshot(firestoreDoc(db, "usuarios", outroUid), (snap) => {
+      if (snap.exists()) setOutraFoto(snap.data().foto || null); // foto sempre a atual
       if (snap.exists()) setOutroCosmeticos(snap.data().cosmeticos_equipados || null);
       if (snap.exists()) { setOnlineStatus(snap.data().online === true && (snap.data().online_ping ? Date.now() - msDe(snap.data().online_ping, Date.now()) < 150000 : true)); setOutroDigitando(!!snap.data().digitandoEm); }
     });
@@ -788,7 +790,7 @@ export default function Chat({ route, navigation }: any) {
   }, []);
 
   // Mensagens que sumiram quando eu apaguei a conversa não voltam
-  const apagadaEm = msDe(conversaDados?.ocultaEm?.[uidAtual || ""]);
+  const apagadaEm = corteDoHistorico(conversaDados, uidAtual);
   const mensagensVisiveis = apagadaEm
     ? messages.filter(m => msDe(m.data_postagem, Date.now()) > apagadaEm)
     : messages;
@@ -823,6 +825,23 @@ export default function Chat({ route, navigation }: any) {
         style={{ marginLeft: 4 }}
       />
     );
+  };
+
+  // ── Limpar a conversa só pra mim: some o histórico, a conversa continua ──
+  const limparConversa = async () => {
+    if (!conversaId || !uidAtual) return;
+    const ok = await confirmar(
+      "Limpar conversa?",
+      "As mensagens somem só para você. A outra pessoa continua vendo tudo.",
+      "Limpar", true,
+    );
+    if (!ok) return;
+    try {
+      await limparConversaParaMim(conversaId, uidAtual);
+    } catch (e: any) {
+      console.log("Erro ao limpar conversa:", e?.message);
+      Alert.alert("Erro", "Não foi possível limpar a conversa.");
+    }
   };
 
   // ── Apagar a conversa só pra mim (histórico de matches finalizados) ──
@@ -1186,6 +1205,14 @@ export default function Chat({ route, navigation }: any) {
             size={19}
             color={silenciado ? CORES_SYMBIUS.laranjaTexto : CC.backIcon}
           />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.finalizarBtn, { backgroundColor: CC.backBtn }]}
+          onPress={limparConversa}
+          activeOpacity={0.7}
+          accessibilityLabel="Limpar conversa"
+        >
+          <Ionicons name="brush-outline" size={19} color={CC.backIcon} />
         </TouchableOpacity>
         {matchFinalizado && (
           <TouchableOpacity

@@ -8,6 +8,8 @@ import { db } from '../config/firebaseConfig';
 // documento `conversas/{id}`:
 //   leitura.{uid}  -> quando cada participante leu pela última vez
 //   ocultaEm.{uid} -> quando cada participante "apagou" a conversa pra si
+//   limpaEm.{uid}  -> quando cada participante "limpou" a conversa (some o histórico,
+//                     mas a conversa continua na lista)
 // Mensagem nova depois desses horários volta a contar como não lida / reaparece.
 // ══════════════════════════════════════════════════════════════════════
 
@@ -35,6 +37,14 @@ export const ocultaParaMim = (conversa: any, uid?: string | null): boolean => {
   if (!conversa || !uid || !conversa.ocultaEm?.[uid]) return false;
   return msDe(conversa.data_postagem, Date.now()) <= msDe(conversa.ocultaEm[uid]);
 };
+
+// Até quando as mensagens ficam escondidas pra essa pessoa (apagou ou limpou).
+export const corteDoHistorico = (conversa: any, uid?: string | null): number =>
+  uid ? Math.max(msDe(conversa?.ocultaEm?.[uid]), msDe(conversa?.limpaEm?.[uid])) : 0;
+
+// A prévia da última mensagem na lista some se a pessoa limpou depois dela.
+export const previaLimpa = (conversa: any, uid?: string | null): boolean =>
+  !!uid && msDe(conversa?.data_postagem, Date.now()) <= msDe(conversa?.limpaEm?.[uid]);
 
 export const marcarComoLida = async (conversaId: string, uid: string) => {
   try {
@@ -69,4 +79,26 @@ export const apagarConversaParaMim = async (conversaId: string, uid: string): Pr
   // Mantém o documento da conversa (sem mensagens) pra não perder o histórico do
   // match/XP; só zera o que aparece.
   await updateDoc(ref, { ultimaMensagem: '' });
+};
+
+// "Limpar conversa": esconde todas as mensagens até agora só pra mim; a conversa
+// continua na lista e as mensagens novas aparecem normalmente. Mensagens que
+// TODOS os participantes já limparam/apagaram são removidas do banco.
+export const limparConversaParaMim = async (conversaId: string, uid: string): Promise<void> => {
+  const ref = doc(db, 'conversas', conversaId);
+  await updateDoc(ref, { [`limpaEm.${uid}`]: serverTimestamp() });
+
+  const dados: any = (await getDoc(ref)).data();
+  const membros: string[] = dados?.membros || [];
+  const cortes = membros.map(m => corteDoHistorico(dados, m));
+  if (membros.length === 0 || cortes.some(c => !c)) return;
+  const limite = Math.min(...cortes);
+
+  const msgs = await getDocs(query(collection(db, 'mensagens'), where('conversaId', '==', conversaId)));
+  const velhas = msgs.docs.filter(d => msDe(d.data().data_postagem, Date.now()) <= limite);
+  for (let i = 0; i < velhas.length; i += 400) {
+    const lote = writeBatch(db);
+    velhas.slice(i, i + 400).forEach(d => lote.delete(d.ref));
+    await lote.commit();
+  }
 };

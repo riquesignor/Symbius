@@ -21,7 +21,7 @@ import { Grupo, criarGrupo, MAX_MEMBROS_GRUPO } from '../services/gruposService'
 import { enviarConviteGrupo } from '../services/convitesService';
 import SeletorPessoas, { Pessoa } from '../components/SeletorPessoas';
 import AvatarComCosmeticos from '../components/AvatarComCosmeticos';
-import { conversaNaoLida, ocultaParaMim, apagarConversaParaMim, msDe } from '../utils/conversas';
+import { conversaNaoLida, ocultaParaMim, apagarConversaParaMim, msDe, previaLimpa } from '../utils/conversas';
 import { alunoDoElo } from '../utils/elos';
 
 // ── Fonte Poppins ──
@@ -747,7 +747,7 @@ export default function Match({ navigation, route }: any) {
     // Online: respeita a config de privacidade statusOnline do outro
     const estaOnline = status?.online === true && status?.statusOnline !== false;
 
-    const ultimaMsg  = conversa?.ultimaMensagem || '';
+    const ultimaMsg  = previaLimpa(conversa, meuUid) ? '' : (conversa?.ultimaMensagem || '');
     const quemEnviou = conversa?.quemEnviou;
     const naoLida    = conversaNaoLida(conversa, meuUid);
     const finalizado = !!conversa?.matchFinalizado;
@@ -988,7 +988,7 @@ export default function Match({ navigation, route }: any) {
                         <View style={styles.solInfo}>
                           <Text style={[styles.solNome, { color: C.azulEscuro, fontFamily: F.bold }]} numberOfLines={1}>{g.nome}</Text>
                           <Text style={[styles.ultimaMsg, { color: naoLida ? C.azulEscuro : C.textoSec, fontFamily: naoLida ? F.semibold : F.regular }]} numberOfLines={1}>
-                            {g.ultimaMensagem || `${g.membros.length} participantes`}
+                            {(!previaLimpa(g, meuUid) && g.ultimaMensagem) || `${g.membros.length} participantes`}
                           </Text>
                         </View>
                         <Text style={[styles.msgTimestamp, { color: C.textoSec, fontFamily: F.medium }]}>{g.membros.length} membros</Text>

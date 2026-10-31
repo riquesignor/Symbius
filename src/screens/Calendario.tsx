@@ -4,7 +4,7 @@ import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
   StatusBar, Modal, TextInput,
   ActivityIndicator, Platform, FlatList,
-  useWindowDimensions, Animated, Vibration, PanResponder
+  useWindowDimensions, Animated, Vibration, PanResponder, Pressable,
 } from 'react-native';
 import { useAppSettings } from '../contexts/AppSettingsContext';
 import { db } from '../config/firebaseConfig';
@@ -888,8 +888,9 @@ useEffect(() => {
           MODAL DETALHE
       ════════════════════════════════════════════════ */}
       <Modal visible={modalDetalhe} transparent animationType="slide" onRequestClose={() => setModalDetalhe(false)}>
-        <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => setModalDetalhe(false)}>
-          <View onStartShouldSetResponder={() => true} style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setModalDetalhe(false)} accessibilityLabel="Fechar" />
+          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
             <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
 
             {eventoDetalhe && (() => {
@@ -982,15 +983,16 @@ useEffect(() => {
               );
             })()}
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {/* ════════════════════════════════════════════════
           MODAL DIA
       ════════════════════════════════════════════════ */}
       <Modal visible={modalDia} transparent animationType="slide" onRequestClose={() => { setModalDia(false); cancelarEdicaoLembrete(); }}>
-        <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => { setModalDia(false); cancelarEdicaoLembrete(); }}>
-          <View onStartShouldSetResponder={() => true} style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => { setModalDia(false); cancelarEdicaoLembrete(); }} accessibilityLabel="Fechar" />
+          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
             <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
 
             <View style={[styles.diaHeader, { borderBottomColor: C.cinzaClaro }]}>
@@ -1160,7 +1162,7 @@ useEffect(() => {
               <Text style={[styles.btnFecharModalText, { color: C.textoSec, fontSize: fs(13) }]}>Fechar</Text>
             </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
 
@@ -1168,9 +1170,12 @@ useEffect(() => {
           MODAL ADMIN FORM (cria E edita)
       ════════════════════════════════════════════════ */}
       <Modal visible={modalAdminForm} transparent animationType="slide" onRequestClose={fecharFormAdmin}>
-        <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={fecharFormAdmin}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={fecharFormAdmin} accessibilityLabel="Fechar" />
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end' }}>
-            <View onStartShouldSetResponder={() => true} style={[
+            {/* espaço livre acima do quadro: tocar aqui fecha (o fundo fica atrás da rolagem) */}
+            <Pressable style={{ flex: 1 }} onPress={fecharFormAdmin} accessibilityLabel="Fechar" />
+            <View style={[
               styles.modalSheet,
               { paddingBottom: Platform.OS === 'ios' ? 40 : 28, backgroundColor: C.branco }
             ]}>
@@ -1301,13 +1306,14 @@ useEffect(() => {
               </View>
             </View>
           </ScrollView>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {/* MODAL TIPO EVT */}
       <Modal visible={modalTipoEvt} transparent animationType="slide" onRequestClose={() => setModalTipoEvt(false)}>
-        <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => setModalTipoEvt(false)}>
-          <View onStartShouldSetResponder={() => true} style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setModalTipoEvt(false)} accessibilityLabel="Fechar" />
+          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
             <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
             <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>Tipo de Evento</Text>
             {TIPOS_EVENTO.map(t => (
@@ -1322,13 +1328,14 @@ useEffect(() => {
               </TouchableOpacity>
             ))}
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {/* MODAL DATA EVT */}
       <Modal visible={modalDataEvt} transparent animationType="slide" onRequestClose={() => setModalDataEvt(false)}>
-        <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => setModalDataEvt(false)}>
-          <View onStartShouldSetResponder={() => true} style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setModalDataEvt(false)} accessibilityLabel="Fechar" />
+          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
             <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
             <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>Selecionar Data</Text>
 
@@ -1403,13 +1410,14 @@ useEffect(() => {
               </Text>
             </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {/* MODAL LEGENDA */}
       <Modal visible={modalLegenda} transparent animationType="fade" onRequestClose={() => setModalLegenda(false)}>
-        <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => setModalLegenda(false)}>
-          <View onStartShouldSetResponder={() => true} style={[styles.modalSheet, { backgroundColor: C.branco }]}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setModalLegenda(false)} accessibilityLabel="Fechar" />
+          <View style={[styles.modalSheet, { backgroundColor: C.branco }]}>
             <View style={[styles.modalHandle, { backgroundColor: C.cinzaClaro }]} />
             <Text style={[styles.modalTitulo, { color: C.azulEscuro, fontSize: fs(17) }]}>Legenda</Text>
             {[
@@ -1431,7 +1439,7 @@ useEffect(() => {
               <Text style={[styles.btnFecharModalText, { color: C.textoSec, fontSize: fs(13) }]}>Fechar</Text>
             </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {/* MODAL DE CONFIRMAÇÃO */}

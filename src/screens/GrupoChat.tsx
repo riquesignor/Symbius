@@ -21,7 +21,7 @@ import {
 } from '../services/gruposService';
 import { enviarConviteGrupo } from '../services/convitesService';
 import { escolherImagemBase64 } from '../utils/midiaNativa';
-import { conversaNaoLida, marcarComoLida, mensagemLidaPor, msDe } from '../utils/conversas';
+import { conversaNaoLida, marcarComoLida, mensagemLidaPor, msDe, limparConversaParaMim } from '../utils/conversas';
 import { confirmar } from '../utils/confirmar';
 import ModalDenuncia from '../components/ModalDenuncia';
 import SeletorPessoas, { Pessoa } from '../components/SeletorPessoas';
@@ -109,6 +109,29 @@ export default function GrupoChat({ navigation, route }: any) {
     }, e => { console.log('Erro mensagens do grupo:', e.message); setCarregando(false); });
   }, [grupoId]);
 
+  // Nome e foto ATUAIS de cada pessoa, ao vivo. A mensagem guarda a foto da hora
+  // do envio; se alguém trocar a foto depois, o grupo mostra a nova na hora.
+  const [perfis, setPerfis] = useState<Record<string, { nome?: string; foto?: string | null }>>({});
+  const assinados = useRef<Map<string, () => void>>(new Map());
+  const uidsDoGrupo = useMemo(() => {
+    const s = new Set<string>(grupo?.membros || []);
+    mensagens.forEach(m => m.remetenteUid && s.add(m.remetenteUid));
+    return [...s].sort().join(',');
+  }, [grupo?.membros?.join(','), mensagens.length]);
+  useEffect(() => {
+    uidsDoGrupo.split(',').filter(Boolean).forEach(u => {
+      if (assinados.current.has(u)) return;
+      assinados.current.set(u, onSnapshot(doc(db, 'usuarios', u), snap => {
+        if (!snap.exists()) return;
+        const d: any = snap.data();
+        setPerfis(p => ({ ...p, [u]: { nome: d.nome_completo, foto: d.foto || d.foto_url || null } }));
+      }, () => {}));
+    });
+  }, [uidsDoGrupo]);
+  useEffect(() => () => { assinados.current.forEach(f => f()); assinados.current.clear(); }, []);
+  const fotoDe = (uid: string, guardada?: string | null) => (perfis[uid] ? perfis[uid].foto : guardada) || null;
+  const nomeDe = (uid: string, guardado?: string) => perfis[uid]?.nome || guardado || 'Usuário';
+
   const souMembro = !!grupo && !!meuUid && grupo.membros.includes(meuUid);
   const souAdmin = souAdminDoGrupo(grupo, meuUid);
   const admins = grupo ? adminsDoGrupo(grupo) : [];
@@ -119,11 +142,19 @@ export default function GrupoChat({ navigation, route }: any) {
     if (grupo && meuUid && souMembro) repararAdminDoGrupo(grupo, meuUid).catch(() => {});
   }, [grupo?.membros?.join(','), grupo?.admins?.join(','), meuUid]);
 
-  // "Apagar para mim" esconde só pra quem apagou.
+  // "Apagar para mim" esconde só pra quem apagou; "Limpar conversa" esconde tudo até aquele momento.
+  const limpaEm = msDe(grupo?.limpaEm?.[meuUid]);
   const visiveis = useMemo(
-    () => mensagens.filter(m => !(m.ocultaPara || []).includes(meuUid)),
-    [mensagens, meuUid],
+    () => mensagens.filter(m => !(m.ocultaPara || []).includes(meuUid) && (!limpaEm || msDe(m.data_postagem, Date.now()) > limpaEm)),
+    [mensagens, meuUid, limpaEm],
   );
+
+  const limparConversa = async () => {
+    if (!grupo || !meuUid) return;
+    if (!(await confirmar('Limpar conversa?', 'As mensagens somem só para você. O resto do grupo continua vendo tudo.', 'Limpar', true))) return;
+    setInfoAberta(false);
+    try { await limparConversaParaMim(grupo.id, meuUid); } catch (e) { console.log('Erro ao limpar grupo:', e); }
+  };
 
   // Marca como lido ao abrir e a cada mensagem nova com o grupo aberto.
   const ultimaMarcada = useRef(0);
@@ -338,7 +369,8 @@ export default function GrupoChat({ navigation, route }: any) {
     const minha = item.remetenteUid === meuUid;
     const anterior = visiveis[index - 1];
     const mostraNome = !minha && anterior?.remetenteUid !== item.remetenteUid;
-    const avatar = fotoUri(item.foto);
+    const avatar = fotoUri(fotoDe(item.remetenteUid, item.foto));
+    const nomeRemetente = nomeDe(item.remetenteUid, item.nome_remetente);
     const apagada = !!item.apagadaParaTodos;
     return (
       <View style={[styles.linha, minha ? styles.linhaMinha : styles.linhaOutro]}>
@@ -346,7 +378,7 @@ export default function GrupoChat({ navigation, route }: any) {
           <View style={{ width: 30 }}>
             {mostraNome && (avatar
               ? <Image source={{ uri: avatar }} style={styles.miniAvatar} />
-              : <View style={[styles.miniAvatar, styles.miniAvatarVazio]}><Text style={styles.miniAvatarTxt}>{(item.nome_remetente || '?').charAt(0)}</Text></View>)}
+              : <View style={[styles.miniAvatar, styles.miniAvatarVazio]}><Text style={styles.miniAvatarTxt}>{(nomeRemetente || '?').charAt(0)}</Text></View>)}
           </View>
         )}
         <TouchableOpacity
@@ -357,7 +389,7 @@ export default function GrupoChat({ navigation, route }: any) {
           style={[styles.bolha, minha ? styles.bolhaMinha : styles.bolhaOutro]}
           accessibilityHint="Toque e segure para ver opções"
         >
-          {mostraNome && <Text style={[styles.nome, { color: corDoNome(item.remetenteUid) }]}>{item.nome_remetente}</Text>}
+          {mostraNome && <Text style={[styles.nome, { color: corDoNome(item.remetenteUid) }]}>{nomeRemetente}</Text>}
           {apagada
             ? (
               <View style={styles.apagadaLinha}>
@@ -382,7 +414,10 @@ export default function GrupoChat({ navigation, route }: any) {
     );
   };
 
-  const membros = grupo ? grupo.membros.map(uid => ({ uid, ...(grupo.dadosMembros?.[uid] || { nome: 'Usuário', foto: null }) })) : [];
+  const membros = grupo ? grupo.membros.map(uid => {
+    const guardado = grupo.dadosMembros?.[uid];
+    return { uid, nome: nomeDe(uid, guardado?.nome), foto: fotoDe(uid, guardado?.foto) };
+  }) : [];
   const fotoGrupo = fotoUri(grupo?.foto);
   const msgMenuMinha = menuMsg?.remetenteUid === meuUid;
   const msgMenuApagada = !!menuMsg?.apagadaParaTodos;
@@ -582,6 +617,13 @@ export default function GrupoChat({ navigation, route }: any) {
                     </View>
                   ))}
                 </>
+              )}
+
+              {souMembro && (
+                <TouchableOpacity style={[styles.btnSair, styles.btnLimpar]} onPress={limparConversa} accessibilityRole="button">
+                  <Ionicons name="brush-outline" size={18} color={CORES_SYMBIUS.texto} />
+                  <Text style={[styles.btnSairTxt, { color: CORES_SYMBIUS.texto }]}>Limpar conversa</Text>
+                </TouchableOpacity>
               )}
 
               {souMembro && (
@@ -800,6 +842,7 @@ const styles = StyleSheet.create({
   btnMais: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
   btnDesbanir: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 },
   btnSair: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, minHeight: 48, borderRadius: 14, borderWidth: 1.5, borderColor: '#D6454555' },
+  btnLimpar: { borderColor: CORES_SYMBIUS.borda2 },
   btnSairTxt: { fontSize: 14, fontFamily: F.bold, color: '#D64545' },
 
   menuCard: { backgroundColor: CORES_SYMBIUS.fundoCard, borderRadius: 20, padding: 16 },
