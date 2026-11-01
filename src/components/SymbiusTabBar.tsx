@@ -148,6 +148,10 @@ export function DockGlobal() {
   return (
     <Animated.View
       pointerEvents={mostrar ? 'box-none' : 'none'}
+      // Escondida: some também para leitores de tela (só opacidade não basta).
+      accessibilityElementsHidden={!mostrar}
+      importantForAccessibility={mostrar ? 'auto' : 'no-hide-descendants'}
+      aria-hidden={!mostrar}
       style={[
         styles.faixa,
         {

@@ -8,7 +8,7 @@ import { db, auth } from './src/config/firebaseConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppSettingsProvider } from './src/contexts/AppSettingsContext';
 import { NotificacaoProvider } from './src/contexts/NotificacaoProvider';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { navegacaoRef } from './src/navegacao';
 import { DockGlobal, definirRotaDock } from './src/components/SymbiusTabBar';
 import { CORES_SYMBIUS } from './src/constants/coresSymbius';
@@ -75,9 +75,10 @@ const TesteNivelUpA = comEntradaAnimada(TesteNivelUp);
 const FeedResumosA  = comEntradaAnimada(FeedResumos);
 
 const estilos = StyleSheet.create({
-  // pointerEvents pelo style (o prop é ignorado pelo SafeAreaProvider na web):
-  // a faixa do rodapé deixa passar os cliques; só a pílula da dock os recebe.
-  dock: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 50, pointerEvents: 'box-none' },
+  // Faixa do rodapé com o tamanho da dock: deixa passar os cliques (box-none,
+  // pelo style, que vale na web e no nativo) e só a pílula os recebe.
+  // elevation garante que no Android ela seja desenhada por cima das telas.
+  dock: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 50, elevation: 50, pointerEvents: 'box-none' },
 });
 
 export default function App() {
@@ -138,6 +139,9 @@ export default function App() {
   }
 
   return (
+    // Provider na raiz, já com as medidas iniciais da tela: a dock e as telas
+    // leem as margens (notch, barra de navegação) desde o primeiro quadro.
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
     <AppSettingsProvider>
       <NotificacaoProvider>
         <View style={{ flex: 1 }}>
@@ -177,14 +181,14 @@ export default function App() {
           </Stack.Navigator>
         </NavigationContainer>
         {/* Dock única por cima do Stack: não é desmontada ao trocar de tela.
-            O provider tem só o tamanho da dock (rodapé), nunca a tela inteira:
-            na web ele ignora pointerEvents, e uma camada de tela cheia engolia
-            todos os cliques do app. */}
-        <SafeAreaProvider style={estilos.dock}>
+            Não use um SafeAreaProvider aqui: no Android ele não mede views de
+            altura 0 e nunca desenha os filhos (a dock sumia no APK). */}
+        <View style={estilos.dock}>
           <DockGlobal />
-        </SafeAreaProvider>
+        </View>
         </View>
       </NotificacaoProvider>
     </AppSettingsProvider>
+    </SafeAreaProvider>
   );
 }
