@@ -1209,8 +1209,10 @@ export default function Index({ navigation, route }: any) {
               accessibilityState={{ checked: modoEscuro }}
               accessibilityLabel="Modo escuro"
             >
-              <Ionicons name={modoEscuro ? 'moon' : 'moon-outline'} size={17} color={CORES_SYMBIUS.verdeEscuro} />
-              <Text style={[styles.menuItemText, { flex: 1 }]}>Modo escuro</Text>
+              <Ionicons name={modoEscuro ? 'moon' : 'sunny'} size={17} color={CORES_SYMBIUS.verdeEscuro} />
+              {/* flexGrow (não flex: 1): no Android, flex: 1 começa o texto com
+                  largura 0 dentro do popup e ele quebrava/sumia. */}
+              <Text style={[styles.menuItemText, styles.menuItemTextoCresce]} numberOfLines={1}>Modo</Text>
               <Switch
                 value={modoEscuro}
                 onValueChange={(v) => { setMiniMenuAberto(false); setModoEscuro(v); }}
@@ -1247,7 +1249,7 @@ export default function Index({ navigation, route }: any) {
               accessibilityLabel={`Notificações${totalNotificacoesAtivas > 0 ? `, ${totalNotificacoesAtivas} novas` : ''}`}
             >
               <Ionicons name="notifications" size={17} color={CORES_SYMBIUS.verdeEscuro} />
-              <Text style={[styles.menuItemText, { flex: 1 }]}>Notificações</Text>
+              <Text style={[styles.menuItemText, styles.menuItemTextoCresce]} numberOfLines={1}>Notificações</Text>
               {totalNotificacoesAtivas > 0 && (
                 <View style={styles.menuBadge}><Text style={styles.menuBadgeTxt}>{totalNotificacoesAtivas}</Text></View>
               )}
@@ -1275,7 +1277,7 @@ export default function Index({ navigation, route }: any) {
                   accessibilityLabel="Modo editor"
                 >
                   <FontAwesome5 name="pen" size={14} color={CORES_SYMBIUS.verdeEscuro} />
-                  <Text style={[styles.menuItemText, { flex: 1 }]}>Modo editor</Text>
+                  <Text style={[styles.menuItemText, styles.menuItemTextoCresce]} numberOfLines={1}>Modo editor</Text>
                   {modoEdicao && <Ionicons name="checkmark-circle" size={18} color={CORES_SYMBIUS.verdeEscuro} />}
                 </TouchableOpacity>
               </>
@@ -1544,6 +1546,7 @@ const styles = StyleSheet.create({
   },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13 },
   menuItemText: { fontSize: 14, fontFamily: F.semibold, color: CORES_SYMBIUS.texto },
+  menuItemTextoCresce: { flexGrow: 1 },
   menuBadge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, backgroundColor: CORES_SYMBIUS.laranjaTexto, justifyContent: 'center', alignItems: 'center' },
   menuBadgeTxt: { color: '#FFFFFF', fontSize: 12, fontFamily: F.bold },
   menuDivider: { height: 1, backgroundColor: CORES_SYMBIUS.borda, marginVertical: 2 },
