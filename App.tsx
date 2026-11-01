@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator, Platform } from 'react-native';
+import { View, ActivityIndicator, Platform, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { doc, getDoc } from 'firebase/firestore';
@@ -8,7 +8,9 @@ import { db, auth } from './src/config/firebaseConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppSettingsProvider } from './src/contexts/AppSettingsContext';
 import { NotificacaoProvider } from './src/contexts/NotificacaoProvider';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { navegacaoRef } from './src/navegacao';
+import { DockGlobal, definirRotaDock } from './src/components/SymbiusTabBar';
 import { CORES_SYMBIUS } from './src/constants/coresSymbius';
 
 import {
@@ -72,6 +74,12 @@ const LojaA         = comEntradaAnimada(Loja);
 const TesteNivelUpA = comEntradaAnimada(TesteNivelUp);
 const FeedResumosA  = comEntradaAnimada(FeedResumos);
 
+const estilos = StyleSheet.create({
+  // pointerEvents pelo style (o prop é ignorado pelo SafeAreaProvider na web):
+  // a faixa do rodapé deixa passar os cliques; só a pílula da dock os recebe.
+  dock: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 50, pointerEvents: 'box-none' },
+});
+
 export default function App() {
   const [initialRoute, setInitialRoute] = useState<string | null>(null);
   const [initialUid,   setInitialUid]   = useState<string | null>(null);
@@ -132,7 +140,12 @@ export default function App() {
   return (
     <AppSettingsProvider>
       <NotificacaoProvider>
-        <NavigationContainer ref={navegacaoRef}>
+        <View style={{ flex: 1 }}>
+        <NavigationContainer
+          ref={navegacaoRef}
+          onReady={() => definirRotaDock(navegacaoRef.getCurrentRoute()?.name ?? null)}
+          onStateChange={() => definirRotaDock(navegacaoRef.getCurrentRoute()?.name ?? null)}
+        >
           <Stack.Navigator
             initialRouteName={initialRoute}
             screenOptions={{ headerShown: false, cardStyle: { backgroundColor: CORES_SYMBIUS.fundo, ...(Platform.OS === 'web' ? ({ height: '100vh' } as any) : {}) } }}
@@ -163,6 +176,14 @@ export default function App() {
             <Stack.Screen name="Resumos"         component={FeedResumosA} />
           </Stack.Navigator>
         </NavigationContainer>
+        {/* Dock única por cima do Stack: não é desmontada ao trocar de tela.
+            O provider tem só o tamanho da dock (rodapé), nunca a tela inteira:
+            na web ele ignora pointerEvents, e uma camada de tela cheia engolia
+            todos os cliques do app. */}
+        <SafeAreaProvider style={estilos.dock}>
+          <DockGlobal />
+        </SafeAreaProvider>
+        </View>
       </NotificacaoProvider>
     </AppSettingsProvider>
   );
